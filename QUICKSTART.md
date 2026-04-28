@@ -3,6 +3,19 @@
 ## Get Started in 4 Steps
 
 ### Step 1: Install Dependencies
+
+Some dataset related features require dependencies that only exist in Domino execution. To develop in a Domino Workspace,
+- Create a Git-Based Project with this repo
+- In the central config dashboard, set `com.cerebro.domino.workbench.workspace.sandboxForwardedPortsInVsCode=false`
+- Launch a vscode workspace
+- Set `MAIN_APP_PORT=8000`
+- Follow the next instructions to install and run the app.
+- Then open the vscode proxied port for the flask app via the popup provided by vscode
+-
+**install required tools**
+- [uv](https://docs.astral.sh/uv/)
+
+**install app dependencies**
 ```bash
 uv sync --locked
 ```

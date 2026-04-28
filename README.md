@@ -16,19 +16,6 @@ Data Explorer provides three main capabilities:
 
 Data Explorer is designed to run as a Domino App. Dependencies are managed with `uv` via `pyproject.toml` and `uv.lock`.
 
-**required tools**
-- uv
-
-### Development Quick-Start
-
-- Some dataset related features require that the app runs in a Domino execution. To develop in a workspace, create a git based project with this repo, in the central config dashboard, set `com.cerebro.domino.workbench.workspace.sandboxForwardedPortsInVsCode=false`, then launch a vscode workspace, set `MAIN_APP_PORT=8000`, and follow the next instructions to install and run the app. Then open the vscode proxied port for the flask app
-- Rename the `.env-example` to `.env` and fill in the environment variables
-- Install and run the app:
-```sh
-uv sync --locked
-./start_servers.sh
-```
-
 ### App Configuration
 
 1. Navigate to your Domino project and select **Publish > App**
