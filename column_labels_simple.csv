@@ -1,0 +1,149 @@
+column_name,label
+A1HI,Analysis Range 1 Upper Limit
+A1LO,Analysis Range 1 Lower Limit
+ABLFL,Baseline Record Flag
+ADT,Analysis Date
+ADURN,AE Duration (N)
+ADURU,AE Duration Units
+ADY,Analysis Relative Day
+AEACN,Action Taken with Study Treatment
+AEBODSYS,Body System or Organ Class
+AEDECOD,Dictionary-Derived Term
+AEHLGT,High Level Group Term
+AEHLGTCD,High Level Group Term Code
+AEHLT,High Level Term
+AEHLTCD,High Level Term Code
+AELLT,Lowest Level Term
+AELLTCD,Lowest Level Term Code
+AENDT,Analysis End Date
+AENDY,Analysis End Relative Day
+AENTMTFL,Last value in treatment visit
+AEOUT,Outcome of Adverse Event
+AEPTCD,Preferred Term Code
+AEREL,Causality
+AESCAN,Involves Cancer
+AESCONG,Congenital Anomaly or Birth Defect
+AESDISAB,Persist or Signif Disability/Incapacity
+AESDTH,Results in Death
+AESEQ,Sequence Number
+AESER,Serious Event
+AESEV,Severity/Intensity
+AESHOSP,Requires or Prolongs Hospitalization
+AESLIFE,Is Life Threatening
+AESOC,Primary System Organ Class
+AESOCCD,Primary System Organ Class Code
+AESOD,Occurred with Overdose
+AETERM,Reported Term for the Adverse Event
+AGE,Age
+AGEGR1,Pooled Age Group 1
+AGEGR1N,Pooled Age Group 1 (N)
+AGEU,Age Units
+ALBTRVAL,Amount Threshold Range
+ANL01FL,Analysis Flag 01
+ANRIND,Analysis Reference Range Indicator
+AOCC01FL,1st Occurrence 01 Flag for CQ01
+AOCC02FL,1st Occurrence 02 Flag for Serious
+AOCC03FL,1st Occurrence 03 Flag for Serious SOC
+AOCC04FL,1st Occurrence 04 Flag for Serious PT
+AOCCFL,1st Occurrence of Any AE Flag
+AOCCPFL,1st Occurrence of Preferred Term Flag
+AOCCSFL,1st Occurrence of SOC Flag
+ARM,Description of Planned Arm
+ASTDT,Analysis Start Date
+ASTDTF,Analysis Start Date Imputation Flag
+ASTDY,Analysis Start Relative Day
+ATPT,Analysis Timepoint
+ATPTN,Analysis Timepoint (N)
+AVAL,Analysis Value
+AVGDD,Avg Daily Dose (as planned)
+AVISIT,Analysis Visit
+AVISITN,Analysis Visit (N)
+AWHI,Analysis Window Ending Timepoint
+AWLO,Analysis Window Beginning Timepoint
+AWRANGE,Analysis Window Valid Relative Range
+AWTARGET,Analysis Window Target
+AWTDIFF,Analysis Window Diff from Target
+AWU,Analysis Window Unit
+BASE,Baseline Value
+BASETYPE,Baseline Type
+BMIBL,Baseline BMI (kg/m^2)
+BMIBLGR1,Pooled Baseline BMI Group 1
+BNRIND,Baseline Reference Range Indicator
+BR2A1HI,Base Ratio to Analysis Range 1 Upper Lim
+BR2A1LO,Base Ratio to Analysis Range 1 Lower Lim
+CHG,Change from Baseline
+CNSR,Censor
+COMP16FL,Completers of Week 16 Population Flag
+COMP24FL,Completers of Week 24 Population Flag
+COMP8FL,Completers of Week 8 Population Flag
+CQ01NAM,Customized Query 01 Name
+CRIT1,Analysis Criterion 1
+CRIT1FL,Criterion 1 Evaluation Result Flag
+CRIT1FN,Criterion 1 Evaluation Result Flag (N)
+CUMDOSE,Cumulative Dose (as planned)
+DCDECOD,Standardized Disposition Term
+DCSREAS,Reason for Discontinuation from Study
+DISCONFL,Did the Subject Discontinue the Study?
+DISONSDT,Date of Onset of Disease
+DSRAEFL,Discontinued due to AE?
+DTHFL,Subject Died?
+DTYPE,Derivation Type
+DURDIS,Duration of Disease (Months)
+DURDSGR1,Pooled Disease Duration Group 1
+EDUCLVL,Years of Education
+EFFFL,Efficacy Population Flag
+EOSSTT,End of Study Status
+ETHNIC,Ethnicity
+EVNTDESC,Event or Censoring Description
+HEIGHTBL,Baseline Height (cm)
+ITTFL,Intent-to-Treat Population Flag
+LBNRIND,Reference Range Indicator
+LBSEQ,Sequence Number
+LBSTRESN,Numeric Result/Finding in Standard Units
+MMSETOT,MMSE Total
+PARAM,Parameter
+PARAMCD,Parameter Code
+PARAMN,Parameter (N)
+PARAMTYP,Parameter Type
+PARCAT1,Parameter Category 1
+PCHG,Percent Change from Baseline
+QSSEQ,Sequence Number
+R2A1HI,Ratio to Analysis Range 1 Upper Limit
+R2A1LO,Ratio to Analysis Range 1 Lower Limit
+RACE,Race
+RACEN,Race (N)
+RFENDT,Date of Discontinuation/Completion
+RFENDTC,Subject Reference End Date/Time
+RFSTDTC,Subject Reference Start Date/Time
+SAFFL,Safety Population Flag
+SEX,Sex
+SHIFT1,Shift 1
+SHIFT1N,Shift 1 (N)
+SITEGR1,Pooled Site Group 1
+SITEID,Study Site Identifier
+SRCDOM,Source Domain
+SRCSEQ,Source Sequence Number
+SRCVAR,Source Variable
+STARTDT,Time to Event Origin Date for Subject
+STUDYID,Study Identifier
+SUBJID,Subject Identifier for the Study
+TRT01A,Actual Treatment for Period 01
+TRT01AN,Actual Treatment for Period 01 (N)
+TRT01P,Planned Treatment for Period 01
+TRT01PN,Planned Treatment for Period 01 (N)
+TRTA,Actual Treatment
+TRTAN,Actual Treatment (N)
+TRTDUR,Duration of treatment (days)
+TRTDURD,Total Treatment Duration (Days)
+TRTEDT,Date of Last Exposure to Treatment
+TRTEMFL,Treatment Emergent Analysis Flag
+TRTP,Planned Treatment
+TRTPN,Planned Treatment (N)
+TRTSDT,Date of First Exposure to Treatment
+USUBJID,Unique Subject Identifier
+VISIT,Visit Name
+VISIT1DT,Date of Visit 1
+VISITNUM,Visit Number
+VISNUMEN,End of Trt Visit (Vis 12 or Early Term.)
+VSSEQ,Sequence Number
+WEIGHTBL,Baseline Weight (kg)

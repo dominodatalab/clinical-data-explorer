@@ -1,0 +1,98 @@
+"""Per-session DataFrame storage + the middleware that wires sessions to requests.
+
+Extracted from `mcp_server/app.py` as step 2.3 of REFACTOR_PLAN.md §2
+(mirror of `backend/session.py` on the Flask side, but adapted for the
+FastAPI/Starlette middleware world).
+
+Each user session gets its own DataFrame so concurrent users don't clobber
+each other. The session ID comes from the `X-Session-Id` request header
+(set by the Flask proxy). A `"default"` session ID is used when no header
+is present (normal single-user mode). The active session ID is stored in
+a `contextvars.ContextVar` so it's correctly isolated per request even
+under concurrent async load.
+
+Per the plan watch-out for §2: `_sessions` is module-level state that
+every route reaches via `get_current_df()`. After this extraction, every
+caller imports `get_current_df` from this module — there is no copy and
+no DataFrame-as-parameter passing.
+"""
+import contextvars
+import logging
+import time
+from typing import Dict, Optional
+
+import pandas as pd
+from fastapi import HTTPException, Request
+from starlette.middleware.base import BaseHTTPMiddleware
+
+from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
+
+logger = logging.getLogger(__name__)
+
+
+# ===== SESSION-BASED DATASET STORAGE =====
+# Each user session gets its own DataFrame so concurrent users don't clobber each other.
+# Session ID comes from the X-Session-Id header (set by the Flask proxy).
+# A "default" session is used when no header is present (normal single-user mode).
+
+_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
+
+# {session_id: {"df": DataFrame, "name": str, "last_accessed": float}}
+_sessions: Dict[str, dict] = {}
+
+
+class SessionMiddleware(BaseHTTPMiddleware):
+    """Extract X-Session-Id header and set it in contextvars for the request."""
+    async def dispatch(self, request: Request, call_next):
+        session_id = request.headers.get("x-session-id", "default")
+        _current_session_id.set(session_id)
+        # Touch the session so it stays alive
+        if session_id in _sessions:
+            _sessions[session_id]["last_accessed"] = time.time()
+        response = await call_next(request)
+        return response
+
+
+def _evict_stale_sessions():
+    """Remove sessions that haven't been accessed recently."""
+    now = time.time()
+    stale = [sid for sid, s in _sessions.items()
+             if now - s.get("last_accessed", 0) > SESSION_MAX_AGE]
+    for sid in stale:
+        logger.info(f"Evicting stale session: {sid}")
+        del _sessions[sid]
+    # If still over limit, evict oldest
+    if len(_sessions) > SESSION_MAX_COUNT:
+        by_age = sorted(_sessions.items(), key=lambda x: x[1].get("last_accessed", 0))
+        for sid, _ in by_age[:len(_sessions) - SESSION_MAX_COUNT]:
+            logger.info(f"Evicting session (over limit): {sid}")
+            del _sessions[sid]
+
+
+def _set_current_df(df: pd.DataFrame, name: str):
+    """Store a DataFrame for the current session."""
+    session_id = _current_session_id.get()
+    _sessions[session_id] = {
+        "df": df,
+        "name": name,
+        "last_accessed": time.time(),
+    }
+    _evict_stale_sessions()
+
+
+def _get_session_dataset_name() -> Optional[str]:
+    """Get the dataset name for the current session."""
+    session_id = _current_session_id.get()
+    session = _sessions.get(session_id)
+    if session:
+        return session.get("name")
+    return None
+
+
+def get_current_df() -> pd.DataFrame:
+    """Get the current dataframe for this session, raise error if none loaded"""
+    session_id = _current_session_id.get()
+    session = _sessions.get(session_id)
+    if session is None or session.get("df") is None:
+        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+    return session["df"]

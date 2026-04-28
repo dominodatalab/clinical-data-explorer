@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinical Data Explorer - Dataset Analysis</title>
+    <link rel="stylesheet" href="style.css">
+    <!-- Highcharts Library (vendored locally) -->
+    <script src="vendor/highcharts/highcharts.js"></script>
+    <script src="vendor/highcharts/highcharts-more.js"></script>
+    <script src="vendor/highcharts/heatmap.js"></script>
+    <script src="vendor/highcharts/exporting.js"></script>
+    <script src="vendor/highcharts/export-data.js"></script>
+</head>
+<body>
+    <!-- Top Loading Banner (more visible than button indicator) -->
+    <div class="loading-banner" id="loading-banner">
+        <div class="loading-banner-content">
+            <div class="spinner-small"></div>
+            <span class="loading-banner-text" id="loading-banner-text">Loading dataset...</span>
+        </div>
+    </div>
+
+    <div class="app-container">
+        <!-- Top Navigation -->
+        <div class="header">
+            <div class="logo-section">
+                <div class="logo">
+                    <img src="logo-domino0.svg" alt="Domino Logo" />
+                </div>
+                <h2>Clinical Data Explorer</h2>
+            </div>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="tab-navigation">
+            <div class="tab-buttons">
+                <button class="tab-button active" data-tab="table" data-testid="tab-table">Table View</button>
+                <button class="tab-button" data-tab="chat" data-testid="tab-chat">Chat</button>
+                <button class="tab-button" data-tab="explore" data-testid="tab-explore">Explore</button>
+            </div>
+            <div class="dataset-selector">
+                <span class="current-dataset-label" id="current-dataset-label" data-testid="current-dataset-label">No dataset loaded</span>
+                <button id="browse-files-button" class="dataset-browse-btn" data-testid="browse-files-button">Browse Files</button>
+
+                <!-- Governance Bundle Indicator -->
+                <div class="governance-indicator" id="governance-indicator" style="display: none;">
+                    <div class="governance-badge" id="governance-badge" role="button" tabindex="0" aria-haspopup="true" aria-expanded="false" title="This dataset is governed">
+                        <span class="governance-badge-prefix" id="governance-badge-prefix">Governed</span>
+                        <span class="governance-badge-bundle-name" id="governance-badge-bundle-name"></span>
+                        <span class="governance-badge-count" id="governance-badge-count" aria-hidden="true" style="display: none;"></span>
+                        <svg class="governance-badge-caret" id="governance-badge-caret" viewBox="0 0 12 8" width="10" height="6" aria-hidden="true" style="display: none;">
+                            <path d="M1 1l5 5 5-5" stroke="currentColor" stroke-width="1.5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+                        </svg>
+                    </div>
+                    <div class="governance-popover" id="governance-popover">
+                        <div class="governance-popover-header">
+                            <span class="governance-popover-title" id="governance-popover-title">Governance Bundle</span>
+                            <button class="governance-popover-close" id="governance-popover-close">&times;</button>
+                        </div>
+                        <div class="governance-popover-body">
+                            <div class="governance-bundle-selector" id="governance-bundle-selector-container" style="display: none;">
+                                <label for="governance-bundle-select">This file is attached to multiple bundles. Filing finding in:</label>
+                                <select id="governance-bundle-select"></select>
+                            </div>
+                            <div class="governance-bundle-info">
+                                <div class="bundle-name" id="governance-bundle-name">Loading...</div>
+                                <div class="bundle-state" id="governance-bundle-state"></div>
+                            </div>
+                        </div>
+                        <div class="governance-popover-footer">
+                            <a class="btn-primary btn-small" id="governance-view-bundle" href="#" target="_blank">View in Governance</a>
+                        </div>
+                    </div>
+                </div>
+                <button class="toolbar-btn toolbar-btn-primary header-create-finding-btn" id="create-finding-btn" style="display: none;" title="Create a governance finding">
+                    <span>Create Finding</span>
+                </button>
+                
+                <div class="label-toggle" id="label-toggle-container" style="display: none;">
+                    <label class="toggle-label" title="Show human-readable column names">
+                        <input type="checkbox" id="use-labels-checkbox">
+                        <span class="toggle-text">Friendly Names</span>
+                    </label>
+                </div>
+            </div>
+        </div>
+
+        <!-- Table View Tab Content -->
+        <div class="tab-content active" id="table-tab">
+            <div class="table-view-container">
+                <!-- Main table area (left) -->
+                <div class="table-main">
+                <!-- Action Toolbar Row -->
+                <div class="action-toolbar" id="action-toolbar">
+                    <div class="toolbar-left">
+                        <button class="toolbar-btn toolbar-btn-secondary" id="add-filter-btn" data-testid="add-filter-btn" title="Add a new filter">
+                            <span>+ Add Filter</span>
+                        </button>
+                        <button class="toolbar-btn toolbar-btn-secondary" id="expression-filter-btn" data-testid="expression-filter-btn" title="Filter using SAS, R, or Python syntax">
+                            <span>&lt;/&gt; Expression</span>
+                        </button>
+                        <button class="toolbar-btn toolbar-btn-tertiary" id="clear-filters-btn" title="Remove all filters">
+                            <span>Clear All</span>
+                        </button>
+                        <button class="toolbar-btn toolbar-btn-tertiary" id="copy-permalink-btn" title="Copy shareable link">
+                            <span class="permalink-icon">🔗</span>
+                            <span>Copy Link</span>
+                        </button>
+                    </div>
+                    <div class="toolbar-right">
+                        <button class="toolbar-btn toolbar-btn-secondary" id="summary-stats-toggle-btn" title="Toggle insights panel">
+                            <svg class="toolbar-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                                <line x1="15" y1="3" x2="15" y2="21"></line>
+                            </svg>
+                            <span>Insights</span>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filter Chips Bar (always visible, auto-sizes with content) -->
+                <div class="filter-chips-bar" id="filter-chips-bar">
+                    <div class="filter-chips-inner" id="active-filters" data-testid="active-filters">
+                        <!-- Active filter chips will appear here -->
+                    </div>
+                </div>
+
+                <!-- Table Section -->
+                <div class="table-section">
+                    <div class="table-toolbar">
+                        <div class="table-info">
+                            <span id="table-row-info" data-testid="table-row-info">Showing 0-0 of 0 rows</span>
+                            <span class="filtered-indicator" id="filtered-indicator"></span>
+                            <div class="table-controls">
+                                <label>Rows per page:</label>
+                                <select id="page-size-selector">
+                                    <option value="25">25</option>
+                                    <option value="50">50</option>
+                                    <option value="100" selected>100</option>
+                                    <option value="250">250</option>
+                                    <option value="500">500</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="table-wrapper" id="table-wrapper">
+                        <table class="data-table" id="data-table" data-testid="data-table">
+                            <thead id="table-header">
+                                <!-- Column headers will be inserted here -->
+                            </thead>
+                            <tbody id="table-body" data-testid="table-body">
+                                <!-- Data rows will be inserted here -->
+                            </tbody>
+                        </table>
+                        <div class="table-empty-state" id="table-empty-state">
+                            <p id="table-empty-message">Load a dataset to view data</p>
+                        </div>
+                    </div>
+                    
+                    <div class="pagination-controls" id="pagination-controls">
+                        <button class="pagination-btn" id="first-page-btn" title="First page">⟪</button>
+                        <button class="pagination-btn" id="prev-page-btn" title="Previous page">⟨</button>
+                        <span class="pagination-info">
+                            Page <input type="number" id="page-input" min="1" value="1"> of <span id="total-pages">1</span>
+                        </span>
+                        <button class="pagination-btn" id="next-page-btn" data-testid="next-page-btn" title="Next page">⟩</button>
+                        <button class="pagination-btn" id="last-page-btn" title="Last page">⟫</button>
+                    </div>
+                </div>
+                </div>
+                <!-- /table-main -->
+
+                <!-- Right panel resize handle (double-click to collapse/expand) -->
+                <div class="right-panel-resize-handle" id="right-panel-resize-handle" title="Drag to resize · Double-click to collapse"></div>
+
+                <!-- Summary Stats Sidebar (right-hand, collapsible) -->
+                <div class="summary-stats-panel summary-sidebar" id="summary-stats-panel">
+                    <div class="summary-sidebar-inner">
+                        <div class="sidebar-panel-header">
+                            <select class="sidebar-section-select" id="sidebar-section-select" aria-label="Panel section">
+                                <option value="missing">Missing Values</option>
+                                <option value="stats">Summary Stats</option>
+                                <option value="distinct">Distinct Values</option>
+                                <option value="row-details">Row Details</option>
+                            </select>
+                        </div>
+                        <div class="summary-sidebar-tab-content">
+                            <div class="summary-sidebar-pane active" id="sidebar-pane-missing" role="tabpanel" aria-labelledby="sidebar-tab-missing">
+                                <div class="summary-card" id="missing-values-card">
+                                    <div class="card-header">
+                                        <div class="card-label">Missing Values</div>
+                                        <select class="card-selector" id="missing-view-selector">
+                                            <option value="percentage">% of cells</option>
+                                            <option value="total">Total count</option>
+                                            <option value="by_column">Worst column</option>
+                                            <option value="count_per_column" selected>Count per column</option>
+                                        </select>
+                                    </div>
+                                    <div class="card-value" id="missing-values-value">-</div>
+                                    <div class="missing-per-column-list" id="missing-per-column-list"></div>
+                                </div>
+                            </div>
+                            <div class="summary-sidebar-pane" id="sidebar-pane-distinct" role="tabpanel" aria-labelledby="sidebar-tab-distinct">
+                                <div class="summary-card summary-card-expandable" id="distinct-values-card">
+                                    <div class="card-header">
+                                        <div class="card-label">Distinct Values</div>
+                                        <select class="card-selector" id="distinct-column-selector">
+                                            <option value="">Select column...</option>
+                                        </select>
+                                    </div>
+                                    <div class="card-value" id="distinct-values-value">-</div>
+                                    <div class="distinct-values-list" id="distinct-values-list"></div>
+                                </div>
+                            </div>
+                            <div class="summary-sidebar-pane" id="sidebar-pane-stats" role="tabpanel" aria-labelledby="sidebar-tab-stats">
+                                <div class="summary-card" id="stats-card">
+                                    <div class="card-header">
+                                        <div class="card-label">Summary Stats</div>
+                                        <div class="stats-header-controls">
+                                            <input type="text" class="stats-search-input" id="stats-search-input" placeholder="Search variables..." aria-label="Search variables">
+                                            <button class="btn-secondary btn-small" id="stats-load-initial-btn" type="button" style="display:none;">Load</button>
+                                        </div>
+                                    </div>
+                                    <div class="stats-table-container" id="stats-table-container"></div>
+                                </div>
+                            </div>
+                            <div class="summary-sidebar-pane" id="sidebar-pane-row-details" role="tabpanel" aria-labelledby="sidebar-tab-row-details">
+                                <div class="summary-card" id="row-details-card">
+                                    <div class="card-header">
+                                        <div class="card-label">Row Details</div>
+                                    </div>
+                                    <div class="row-details-body" id="row-details-body"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Filter Modal -->
+        <div class="modal-overlay" id="filter-modal-overlay">
+            <div class="modal" id="filter-modal">
+                <div class="modal-header">
+                    <h3>Add Filter</h3>
+                    <button class="modal-close" id="filter-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label>Column</label>
+                        <select id="filter-column-select" data-testid="filter-column-select">
+                            <option value="">Select column...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label>Operator</label>
+                        <select id="filter-operator-select" data-testid="filter-operator-select">
+                            <option value="is">is</option>
+                            <option value="is_not">is not</option>
+                            <option value="contains">contains</option>
+                            <option value="not_contains">does not contain</option>
+                            <option value="gt">greater than</option>
+                            <option value="gte">greater than or equal</option>
+                            <option value="lt">less than</option>
+                            <option value="lte">less than or equal</option>
+                            <option value="between">between</option>
+                            <option value="is_missing">is missing</option>
+                            <option value="is_not_missing">is not missing</option>
+                        </select>
+                    </div>
+                    <div class="form-group" id="filter-value-group">
+                        <label>Value</label>
+                        <div class="autocomplete-wrapper">
+                            <input type="text" id="filter-value-input" data-testid="filter-value-input" placeholder="Enter value...">
+                            <div class="autocomplete-dropdown" id="autocomplete-dropdown"></div>
+                        </div>
+                    </div>
+                    <div class="form-group" id="filter-value2-group" style="display: none;">
+                        <label>Value 2 (max)</label>
+                        <input type="text" id="filter-value2-input" placeholder="Enter max value...">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="filter-cancel-btn">Cancel</button>
+                    <button class="btn-primary" id="filter-apply-btn" data-testid="filter-apply-btn">Apply Filter</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Create Finding Modal -->
+        <div class="modal-overlay" id="finding-modal-overlay">
+            <div class="modal finding-modal" id="finding-modal">
+                <div class="modal-header">
+                    <h3>Create Finding</h3>
+                    <button class="modal-close" id="finding-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="finding-name">Finding Name <span class="required">*</span></label>
+                        <input type="text" id="finding-name" placeholder="Enter a name for this finding...">
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-severity">Severity <span class="required">*</span></label>
+                        <select id="finding-severity">
+                            <option value="">Select severity...</option>
+                            <option value="Critical">Critical</option>
+                            <option value="High">High</option>
+                            <option value="Medium">Medium</option>
+                            <option value="Low">Low</option>
+                            <option value="Informational">Informational</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-approver">Approver <span class="required">*</span></label>
+                        <select id="finding-approver">
+                            <option value="">Select approver...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-assignee">Assignee <span class="required">*</span></label>
+                        <select id="finding-assignee">
+                            <option value="">Select assignee...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-approval">Evidence</label>
+                        <select id="finding-approval">
+                            <option value="">Select approval...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-stage">Stage</label>
+                        <select id="finding-stage">
+                            <option value="">Select stage (optional)...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-description">Description</label>
+                        <textarea id="finding-description" rows="4" placeholder="Describe the finding..."></textarea>
+                    </div>
+                    <div class="form-group">
+                        <label for="finding-due-date">Due Date</label>
+                        <input type="date" id="finding-due-date">
+                    </div>
+                    <div class="finding-permalink-note" id="finding-permalink-note">
+                        <span class="note-icon">ℹ️</span>
+                        <span>The current view permalink will be automatically appended to the description.</span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="finding-cancel-btn">Cancel</button>
+                    <button class="btn-primary" id="finding-submit-btn">Create Finding</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Expression Filter Modal -->
+        <div class="modal-overlay" id="expression-modal-overlay">
+            <div class="modal expression-modal" id="expression-modal">
+                <div class="modal-header">
+                    <h3>Expression Filter</h3>
+                    <button class="modal-close" id="expression-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="expression-syntax-tabs">
+                        <button class="syntax-tab active" data-syntax="sas">SAS WHERE</button>
+                        <button class="syntax-tab" data-syntax="r">R dplyr</button>
+                        <button class="syntax-tab" data-syntax="python">Python pandas</button>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="expression-input">Enter your filter expression:</label>
+                        <textarea id="expression-input" data-testid="expression-input" rows="4" placeholder="e.g., AGE > 65 AND TRTA = 'Placebo'" spellcheck="false"></textarea>
+                        <div class="expression-hint" id="expression-hint">
+                            Column names are case-insensitive. String values are case-sensitive (e.g., 'M' not 'm').
+                        </div>
+                    </div>
+                    
+                    <div class="expression-error" id="expression-error" style="display: none;">
+                        <span class="error-icon">⚠️</span>
+                        <span class="error-message" id="expression-error-message"></span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="expression-clear-btn">Clear</button>
+                    <button class="btn-secondary" id="expression-cancel-btn">Cancel</button>
+                    <button class="btn-primary" id="expression-apply-btn" data-testid="expression-apply-btn">Apply Filter</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- File Browser Modal -->
+        <div class="modal-overlay" id="file-browser-modal-overlay">
+            <div class="modal file-browser-modal" id="file-browser-modal">
+                <div class="modal-header">
+                    <h3>Select Data File</h3>
+                    <button class="modal-close" id="file-browser-modal-close">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="fb-selectors-row">
+                        <div class="form-group fb-source-group" id="fb-source-group">
+                            <label for="fb-source-select">Data</label>
+                            <select id="fb-source-select" data-testid="fb-source-select">
+                                <option value="">Loading sources...</option>
+                            </select>
+                        </div>
+                        <div class="form-group fb-snapshot-group" id="fb-snapshot-group" style="display: none;">
+                            <label for="fb-snapshot-select">Snapshot</label>
+                            <select id="fb-snapshot-select">
+                                <option value="">Select a source first</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="fb-file-panel">
+                        <div class="fb-toolbar">
+                            <div class="fb-breadcrumb" id="fb-breadcrumb">
+                                <span class="fb-breadcrumb-item fb-breadcrumb-root" data-path="">Root</span>
+                            </div>
+                            <div class="fb-search-bar">
+                                <input type="text" id="fb-search-input" placeholder="Search files..." />
+                            </div>
+                        </div>
+                        <div class="fb-file-list" id="fb-file-list" data-testid="fb-file-list">
+                            <div class="fb-empty-state">Select a data source to browse files</div>
+                        </div>
+                    </div>
+
+                    <div class="fb-selected-file" id="fb-selected-file" style="display: none;">
+                        <span class="fb-selected-label">Selected:</span>
+                        <span class="fb-selected-name" id="fb-selected-name"></span>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button class="btn-secondary" id="file-browser-cancel-btn" data-testid="fb-cancel-btn">Cancel</button>
+                    <button class="btn-primary" id="file-browser-load-btn" data-testid="fb-load-btn" disabled>Load File</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Chat Tab Content -->
+        <div class="tab-content" id="chat-tab">
+            <!-- Chat Not Configured Empty State -->
+            <div class="chat-empty-state" id="chat-empty-state" style="display: none;">
+                <div class="empty-state-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
+                        <line x1="9" y1="10" x2="15" y2="10"></line>
+                    </svg>
+                </div>
+                <h3>Chat Not Configured</h3>
+                <p class="empty-state-description">
+                    The AI chat feature requires an LLM provider to be configured. 
+                    Set the following environment variables to enable it:
+                </p>
+                <div class="env-var-instructions">
+                    <div class="env-var-group">
+                        <div class="env-var-item required">
+                            <code>LLM_API_KEY</code>
+                            <span class="env-var-desc">Your API key for the LLM provider</span>
+                            <span class="conditional-badge">Required for cloud providers</span>
+                        </div>
+                        <div class="env-var-item optional">
+                            <code>LLM_BASE_URL</code>
+                            <span class="env-var-desc">API endpoint URL (default: https://api.openai.com/v1)</span>
+                            <span class="optional-badge">Optional</span>
+                        </div>
+                        <div class="env-var-item optional">
+                            <code>LLM_MODEL</code>
+                            <span class="env-var-desc">Model name to use (default: gpt-4o-mini)</span>
+                            <span class="optional-badge">Optional</span>
+                        </div>
+                    </div>
+                    <p class="env-var-note">
+                        <strong>Local Ollama:</strong> No API key needed — just set <code>LLM_BASE_URL</code> and <code>LLM_MODEL</code>
+                    </p>
+                </div>
+                <div class="provider-examples">
+                    <h4>Example Configurations</h4>
+                    <div class="example-tabs">
+                        <button class="example-tab active" data-example="openai">OpenAI</button>
+                        <button class="example-tab" data-example="ollama">Ollama (Local)</button>
+                        <button class="example-tab" data-example="together">Together AI</button>
+                    </div>
+                    <div class="example-content" id="example-openai">
+                        <pre><code>export LLM_API_KEY="sk-..."
+export LLM_MODEL="gpt-4o"  # optional</code></pre>
+                    </div>
+                    <div class="example-content" id="example-ollama" style="display: none;">
+                        <pre><code>export LLM_BASE_URL="http://localhost:11434/v1"
+export LLM_MODEL="llama3"</code></pre>
+                    </div>
+                    <div class="example-content" id="example-together" style="display: none;">
+                        <pre><code>export LLM_BASE_URL="https://api.together.xyz/v1"
+export LLM_API_KEY="your-together-key"
+export LLM_MODEL="meta-llama/Llama-3-70b-chat-hf"</code></pre>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Chat Container (shown when configured) -->
+            <div class="chat-container" id="chat-container">
+                <!-- Chat Messages Area -->
+                <div class="chat-box" id="chat-box">
+                    <!-- Messages will appear here -->
+                </div>
+                
+                <!-- Input Area -->
+                <div class="input-area">
+                    <input type="text" id="user-input" data-testid="chat-input" placeholder="Ask a question about your data...">
+                    <button id="send-button">Send</button>
+                    <button id="clear-chat-button" class="clear-chat-btn" title="Clear chat history">
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <polyline points="3 6 5 6 21 6"></polyline>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                        </svg>
+                        Clear
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Explore Tab Content -->
+        <div class="tab-content" id="explore-tab">
+            <div class="explore-container">
+                <!-- Left Column: Bar Chart -->
+                <div class="left-column" id="explore-left-column">
+                    <div class="left-column-content">
+                        <div class="controls">
+                            <div class="control-group">
+                                <label for="category-select">Category:</label>
+                                <select id="category-select" data-testid="bar-category-select">
+                                    <option value="">Select a category...</option>
+                                </select>
+                            </div>
+                            <div class="control-group">
+                                <label for="aggregation-select">Plot by:</label>
+                                <select id="aggregation-select">
+                                    <option value="count">Count</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div id="bar-chart" class="visualization-chart" data-testid="bar-chart"></div>
+                        <!-- Empty state for no categorical columns -->
+                        <div id="category-empty-state" class="category-empty-state hidden">
+                            <div class="category-empty-icon">
+                                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="3" y="3" width="7" height="7"></rect>
+                                    <rect x="14" y="3" width="7" height="7"></rect>
+                                    <rect x="3" y="14" width="7" height="7"></rect>
+                                    <rect x="14" y="14" width="7" height="7"></rect>
+                                </svg>
+                            </div>
+                            <p class="category-empty-title">No categories available</p>
+                            <p class="category-empty-description">This dataset doesn't contain any text-based columns to group by. No worries — you can still explore your numeric data using the main chart.</p>
+                        </div>
+                    </div>
+                </div>
+                <!-- Collapse/Expand toggle for left panel -->
+                <button class="left-column-toggle" id="left-column-toggle" title="Collapse categories panel">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <polyline points="15 18 9 12 15 6"></polyline>
+                    </svg>
+                </button>
+
+                <!-- Right Column: Main Chart -->
+                <div class="right-column">
+                    <!-- Plot mode toggle tabs -->
+                    <div class="plot-mode-tabs">
+                        <button class="plot-mode-tab active" data-mode="histogram" id="histogram-mode-tab">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <rect x="2" y="10" width="4" height="12"></rect>
+                                <rect x="10" y="4" width="4" height="18"></rect>
+                                <rect x="18" y="8" width="4" height="14"></rect>
+                            </svg>
+                            Histogram
+                        </button>
+                        <button class="plot-mode-tab" data-mode="xy" id="xy-mode-tab">
+                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+                            </svg>
+                            X-Y Plot
+                        </button>
+                    </div>
+
+                    <!-- Histogram mode controls -->
+                    <div class="controls" id="histogram-controls">
+                        <div class="control-row">
+                            <div class="control-group" style="flex:2">
+                                <label for="histogram-column-select">Column:</label>
+                                <select id="histogram-column-select" data-testid="histogram-column-select">
+                                    <option value="">Select a column...</option>
+                                </select>
+                            </div>
+                            <div class="control-group" style="flex:1">
+                                <label for="histogram-bins-select">Bins:</label>
+                                <select id="histogram-bins-select">
+                                    <option value="10">10</option>
+                                    <option value="20">20</option>
+                                    <option value="30" selected>30</option>
+                                    <option value="50">50</option>
+                                    <option value="100">100</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- X-Y Plot mode controls (existing) -->
+                    <div class="controls hidden" id="xy-controls">
+                        <div class="control-group">
+                            <label for="x-axis-select">X-Axis (Group By):</label>
+                            <select id="x-axis-select">
+                                <option value="">Select X-axis...</option>
+                            </select>
+                        </div>
+                        <div class="control-row">
+                            <div class="control-group">
+                                <label for="y-axis-select">Y-Axis:</label>
+                                <select id="y-axis-select">
+                                    <option value="">Select Y-axis...</option>
+                                </select>
+                            </div>
+                            <div class="control-group">
+                                <label for="chart-aggregation-select">Aggregation:</label>
+                                <select id="chart-aggregation-select">
+                                    <option value="mean">Average</option>
+                                    <option value="sum">Sum</option>
+                                    <option value="count">Count</option>
+                                    <option value="min">Min</option>
+                                    <option value="max">Max</option>
+                                </select>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div id="main-chart" class="visualization-chart" data-testid="main-chart"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="module" src="script.js"></script>
+</body>
+</html>

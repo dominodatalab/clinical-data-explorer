@@ -1,0 +1,473 @@
+/* Finding Modal */
+.finding-modal {
+    width: 500px;
+    max-width: 90vw;
+}
+
+.finding-modal .modal-body {
+    max-height: 60vh;
+    overflow-y: auto;
+}
+
+.finding-modal .form-group {
+    margin-bottom: var(--spacing-small);
+}
+
+.finding-modal .form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-textprimary);
+    margin-bottom: 4px;
+}
+
+.finding-modal .form-group label .required {
+    color: #dc3545;
+    margin-left: 2px;
+}
+
+.finding-modal .form-group input,
+.finding-modal .form-group select,
+.finding-modal .form-group textarea {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    font-size: 14px;
+    color: var(--color-text-textprimary);
+    background: var(--color-background-bg);
+    font-family: var(--font-family-regular);
+}
+
+.finding-modal .form-group textarea {
+    resize: vertical;
+    min-height: 80px;
+}
+
+.finding-modal .form-group input:focus,
+.finding-modal .form-group select:focus,
+.finding-modal .form-group textarea:focus {
+    outline: none;
+    border-color: var(--color-primary-primary);
+    box-shadow: 0 0 0 2px rgba(84, 63, 222, 0.1);
+}
+
+.finding-permalink-note {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    padding: 10px 12px;
+    background: var(--color-background-bgprimary);
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+    margin-top: var(--spacing-small);
+}
+
+.finding-permalink-note .note-icon {
+    flex-shrink: 0;
+}
+
+/* Severity option colors */
+.finding-modal #finding-severity option[value="Critical"] {
+    color: #dc3545;
+}
+
+.finding-modal #finding-severity option[value="High"] {
+    color: #e85d04;
+}
+
+.finding-modal #finding-severity option[value="Medium"] {
+    color: #ffc107;
+}
+
+.finding-modal #finding-severity option[value="Low"] {
+    color: #198754;
+}
+
+.finding-modal #finding-severity option[value="Informational"] {
+    color: #6c757d;
+}
+
+/* Finding creation loading state */
+#finding-submit-btn.loading {
+    position: relative;
+    color: transparent;
+}
+
+#finding-submit-btn.loading::after {
+    content: '';
+    position: absolute;
+    width: 16px;
+    height: 16px;
+    top: 50%;
+    left: 50%;
+    margin-left: -8px;
+    margin-top: -8px;
+    border: 2px solid transparent;
+    border-top-color: white;
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+/* ===== Expression Filter Modal ===== */
+.expression-modal {
+    width: 650px;
+    max-width: 90vw;
+}
+
+.expression-modal .modal-body {
+    max-height: 70vh;
+    overflow-y: auto;
+}
+
+/* Syntax Tabs */
+.expression-syntax-tabs {
+    display: flex;
+    gap: 0;
+    margin-bottom: var(--spacing-small);
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    overflow: hidden;
+}
+
+.syntax-tab {
+    flex: 1;
+    padding: 10px 16px;
+    background: var(--color-background-bglight1);
+    border: none;
+    border-right: 1px solid var(--color-border-bordermedium);
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--color-text-textsecondary);
+    transition: all 0.15s ease;
+}
+
+.syntax-tab:last-child {
+    border-right: none;
+}
+
+.syntax-tab:hover {
+    background: var(--color-background-bg);
+    color: var(--color-text-textprimary);
+}
+
+.syntax-tab.active {
+    background: var(--color-primary-primary);
+    color: var(--color-text-textprimarylight);
+}
+
+/* Expression Input */
+.expression-modal .form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-textprimary);
+    margin-bottom: 6px;
+}
+
+#expression-input {
+    width: 100%;
+    font-family: "SF Mono", "Monaco", "Inconsolata", "Fira Code", "Fira Mono", "Consolas", monospace;
+    font-size: 13px;
+    padding: 12px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    resize: vertical;
+    min-height: 80px;
+    line-height: 1.5;
+}
+
+#expression-input:focus {
+    outline: none;
+    border-color: var(--color-primary-primary);
+    box-shadow: 0 0 0 2px rgba(84, 63, 222, 0.1);
+}
+
+#expression-input::placeholder {
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.expression-hint {
+    font-size: 11px;
+    color: var(--color-text-textsecondary);
+    margin-top: 6px;
+}
+
+/* Expression Error */
+.expression-error {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    background: #fef2f2;
+    border: 1px solid #fecaca;
+    border-radius: var(--radius-small);
+    padding: 10px 12px;
+    margin-top: var(--spacing-small);
+}
+
+.expression-error .error-icon {
+    flex-shrink: 0;
+}
+
+.expression-error .error-message {
+    font-size: 12px;
+    color: #b91c1c;
+    line-height: 1.4;
+    word-break: break-word;
+}
+
+/* ===== FILE BROWSER MODAL ===== */
+
+.file-browser-modal {
+    width: 660px;
+    max-width: 92vw;
+    max-height: 85vh;
+    display: flex;
+    flex-direction: column;
+}
+
+.file-browser-modal .modal-body {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xsmall);
+    padding: var(--spacing-small);
+}
+
+.fb-selectors-row {
+    display: flex;
+    gap: var(--spacing-small);
+}
+
+.fb-selectors-row .form-group {
+    flex: 1;
+    margin-bottom: 0;
+}
+
+.fb-selectors-row select {
+    width: 100%;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    font-size: 13px;
+    color: var(--color-text-textprimary);
+    background: var(--color-background-bg);
+    height: 32px;
+}
+
+.fb-selectors-row label {
+    display: block;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-textsecondary);
+    margin-bottom: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.fb-file-panel {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    overflow: hidden;
+    min-height: 0;
+}
+
+.fb-toolbar {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xsmall);
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--color-border-borderlight);
+    background: var(--color-background-bglight1);
+}
+
+.fb-breadcrumb {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    font-size: 12px;
+}
+
+.fb-breadcrumb-item {
+    color: var(--color-primary-primary);
+    cursor: pointer;
+    white-space: nowrap;
+    padding: 2px 4px;
+    border-radius: 3px;
+}
+
+.fb-breadcrumb-item:hover {
+    background: var(--color-background-bgprimary);
+}
+
+.fb-breadcrumb-current {
+    color: var(--color-text-textprimary);
+    cursor: default;
+    font-weight: 500;
+}
+
+.fb-breadcrumb-current:hover {
+    background: transparent;
+}
+
+.fb-breadcrumb-sep {
+    color: var(--color-text-textsecondary);
+    font-size: 11px;
+    user-select: none;
+}
+
+.fb-search-bar {
+    flex-shrink: 0;
+}
+
+.fb-search-bar input {
+    width: 150px;
+    padding: 4px 8px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    color: var(--color-text-textprimary);
+    background: var(--color-background-bg);
+}
+
+.fb-search-bar input:focus {
+    outline: none;
+    border-color: var(--color-primary-primary);
+}
+
+.fb-file-list {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 200px;
+    max-height: 340px;
+}
+
+.fb-file-row {
+    display: flex;
+    align-items: center;
+    padding: 6px 12px;
+    cursor: pointer;
+    gap: 8px;
+    border-bottom: 1px solid var(--color-border-borderlight);
+    font-size: 13px;
+    transition: background 0.1s;
+}
+
+.fb-file-row:hover {
+    background: var(--color-background-bglight1);
+}
+
+.fb-file-row.selected {
+    background: var(--color-background-bgprimary);
+    border-left: 3px solid var(--color-primary-primary);
+    padding-left: 9px;
+}
+
+.fb-file-row.disabled {
+    opacity: 0.45;
+    cursor: default;
+}
+
+.fb-file-icon {
+    width: 18px;
+    text-align: center;
+    font-size: 14px;
+    flex-shrink: 0;
+    color: var(--color-text-textsecondary);
+}
+
+.fb-file-row.fb-dir .fb-file-icon {
+    color: var(--color-accent-accentpurple);
+}
+
+.fb-file-name {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    color: var(--color-text-textprimary);
+}
+
+.fb-file-row.fb-dir .fb-file-name {
+    font-weight: 500;
+}
+
+.fb-file-folder {
+    display: inline;
+    margin-left: 6px;
+    font-size: 11px;
+    color: var(--color-text-textsecondary);
+    font-weight: 400;
+}
+
+.fb-file-size {
+    font-size: 11px;
+    color: var(--color-text-textsecondary);
+    flex-shrink: 0;
+    min-width: 60px;
+    text-align: right;
+}
+
+.fb-selected-file {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-xsmall);
+    padding: 8px 12px;
+    background: var(--color-background-bgprimary);
+    border-radius: var(--radius-small);
+    font-size: 13px;
+}
+
+.fb-selected-label {
+    font-weight: 500;
+    color: var(--color-text-textsecondary);
+    flex-shrink: 0;
+}
+
+.fb-selected-name {
+    color: var(--color-primary-primary);
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.fb-empty-state,
+.fb-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: var(--color-text-textsecondary);
+    font-size: 13px;
+    gap: 8px;
+}
+
+.fb-loading .spinner-small {
+    width: 16px;
+    height: 16px;
+    border: 2px solid var(--color-border-bordermedium);
+    border-top-color: var(--color-primary-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+}
+
+.fb-error {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    color: #c0392b;
+    font-size: 13px;
+}

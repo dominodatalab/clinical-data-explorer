@@ -1,0 +1,101 @@
+subject_id,age,weight_kg,treatment,notes,visit_date,active_fl
+1,32,,DrugB,mild headache reported,2024-02-05,Y
+2,29,47.4,Placebo,mild headache reported,2024-02-17,Y
+3,43,97.6,DrugC,mild headache reported,2024-04-19,N
+4,18,57.0,DrugC,no adverse events,2024-03-05,Y
+5,61,73.5,DrugB,no adverse events,2024-03-26,Y
+6,76,118.0,DrugC,patient tolerated well,2024-03-27,N
+7,42,48.4,DrugA,no adverse events,2024-01-28,Y
+8,30,79.0,DrugB,mild headache reported,2024-03-12,Y
+9,52,96.3,Placebo,withdrew due to scheduling,2024-02-18,Y
+10,38,65.2,Control,mild headache reported,2024-03-27,Y
+11,47,105.4,DrugC,no adverse events,2024-01-07,N
+12,45,74.7,DrugC,mild headache reported,2024-03-05,Y
+13,51,77.1,Control,completed all visits,2024-03-08,Y
+14,83,101.7,Placebo,mild headache reported,2024-02-26,N
+15,26,89.7,DrugC,withdrew due to scheduling,2024-03-18,Y
+16,32,85.3,DrugB,minor nausea noted,2024-03-04,N
+17,73,45.2,DrugB,withdrew due to scheduling,2024-02-17,Y
+18,56,83.1,DrugA,mild headache reported,2024-03-25,Y
+19,85,89.9,DrugC,patient tolerated well,2024-01-12,N
+20,48,,Control,patient tolerated well,2024-01-24,N
+21,26,85.0,DrugA,mild headache reported,2024-04-18,Y
+22,51,90.5,DrugA,withdrew due to scheduling,2024-02-23,N
+23,69,93.7,DrugC,withdrew due to scheduling,2024-04-04,Y
+24,46,,Placebo,withdrew due to scheduling,2024-02-19,Y
+25,18,,Placebo,mild headache reported,2024-01-02,N
+26,27,65.9,DrugC,mild headache reported,2024-02-24,N
+27,49,105.6,DrugA,patient tolerated well,2024-01-22,N
+28,63,80.0,Placebo,minor nausea noted,2024-01-02,N
+29,61,53.2,DrugA,mild headache reported,2024-04-05,N
+30,41,63.7,Placebo,completed all visits,2024-01-02,Y
+31,29,108.7,DrugA,completed all visits,2024-04-16,Y
+32,69,57.3,Placebo,completed all visits,2024-03-26,N
+33,54,116.8,Control,minor nausea noted,2024-04-05,Y
+34,55,49.4,Control,patient tolerated well,2024-03-02,Y
+35,79,109.0,DrugA,patient tolerated well,2024-01-28,Y
+36,26,95.6,DrugA,completed all visits,2024-01-19,Y
+37,23,76.4,Control,withdrew due to scheduling,2024-03-09,Y
+38,58,74.7,DrugB,completed all visits,2024-03-25,Y
+39,19,119.9,Placebo,patient tolerated well,2024-02-17,N
+40,34,111.1,DrugA,no adverse events,2024-03-06,N
+41,56,119.0,Control,patient tolerated well,2024-03-22,Y
+42,35,111.7,Control,mild headache reported,2024-03-10,Y
+43,61,92.6,DrugB,withdrew due to scheduling,2024-04-09,Y
+44,29,107.2,Placebo,patient tolerated well,2024-03-25,Y
+45,51,78.1,DrugC,withdrew due to scheduling,2024-01-04,Y
+46,37,107.6,Control,withdrew due to scheduling,2024-02-14,Y
+47,23,112.4,Placebo,no adverse events,2024-02-22,Y
+48,31,87.0,DrugC,withdrew due to scheduling,2024-02-08,Y
+49,40,46.9,DrugB,completed all visits,2024-02-09,Y
+50,31,47.9,DrugC,mild headache reported,2024-02-27,N
+51,62,104.7,DrugA,mild headache reported,2024-01-22,Y
+52,69,109.8,DrugB,no adverse events,2024-04-22,N
+53,21,117.8,DrugA,withdrew due to scheduling,2024-03-02,Y
+54,73,104.0,DrugC,withdrew due to scheduling,2024-01-13,Y
+55,50,,DrugC,patient tolerated well,2024-02-12,N
+56,26,114.1,Control,no adverse events,2024-01-24,N
+57,82,75.6,DrugC,minor nausea noted,2024-03-18,Y
+58,42,115.5,DrugA,withdrew due to scheduling,2024-03-13,Y
+59,56,77.2,Control,withdrew due to scheduling,2024-03-15,N
+60,74,83.3,DrugA,minor nausea noted,2024-01-10,N
+61,29,101.3,DrugB,mild headache reported,2024-02-05,Y
+62,23,80.6,Placebo,completed all visits,2024-04-21,Y
+63,67,63.3,Placebo,patient tolerated well,2024-04-08,Y
+64,84,86.8,Placebo,completed all visits,2024-02-26,N
+65,85,89.7,DrugC,withdrew due to scheduling,2024-04-27,N
+66,38,80.6,DrugB,mild headache reported,2024-03-25,N
+67,48,50.8,DrugB,mild headache reported,2024-03-11,N
+68,28,62.3,DrugA,minor nausea noted,2024-02-03,N
+69,70,79.9,Placebo,mild headache reported,2024-04-13,Y
+70,66,115.7,DrugB,completed all visits,2024-04-18,Y
+71,80,77.7,Placebo,completed all visits,2024-03-22,N
+72,39,114.0,Control,withdrew due to scheduling,2024-01-13,Y
+73,28,55.2,DrugC,mild headache reported,2024-01-09,N
+74,59,69.5,DrugC,no adverse events,2024-04-09,Y
+75,78,,Control,patient tolerated well,2024-03-08,Y
+76,23,116.2,DrugA,patient tolerated well,2024-02-08,Y
+77,78,87.3,DrugA,completed all visits,2024-03-25,N
+78,39,117.3,Placebo,mild headache reported,2024-03-04,Y
+79,57,113.1,DrugC,completed all visits,2024-02-03,Y
+80,31,67.6,Control,patient tolerated well,2024-01-12,N
+81,65,,DrugB,patient tolerated well,2024-04-27,N
+82,31,72.2,DrugC,minor nausea noted,2024-02-14,Y
+83,84,65.3,Control,completed all visits,2024-04-14,N
+84,59,107.3,Placebo,no adverse events,2024-04-08,N
+85,66,82.1,DrugB,mild headache reported,2024-04-07,N
+86,51,111.0,DrugB,withdrew due to scheduling,2024-01-17,Y
+87,28,75.5,Control,mild headache reported,2024-04-21,N
+88,75,52.0,DrugA,completed all visits,2024-02-10,N
+89,78,70.8,Control,no adverse events,2024-03-23,N
+90,52,62.3,DrugA,no adverse events,2024-01-24,Y
+91,42,81.3,Control,withdrew due to scheduling,2024-03-04,Y
+92,55,58.5,Placebo,minor nausea noted,2024-02-09,Y
+93,24,97.3,DrugA,minor nausea noted,2024-04-04,Y
+94,54,78.0,DrugA,patient tolerated well,2024-03-28,N
+95,32,75.1,Placebo,withdrew due to scheduling,2024-01-05,Y
+96,56,63.6,Control,completed all visits,2024-02-25,N
+97,75,67.3,Control,completed all visits,2024-03-19,Y
+98,30,60.6,DrugA,no adverse events,2024-01-06,Y
+99,40,56.7,DrugC,completed all visits,2024-04-10,Y
+100,47,66.2,DrugC,patient tolerated well,2024-02-09,Y

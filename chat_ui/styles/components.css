@@ -1,0 +1,494 @@
+.btn-secondary {
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    padding: 6px 12px;
+    font-size: 12px;
+    color: var(--color-text-textprimary);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-secondary:hover {
+    background: var(--color-background-bglight1);
+    border-color: var(--color-primary-primary);
+}
+
+.btn-small {
+    padding: 4px 10px;
+    font-size: 11px;
+}
+
+.btn-primary {
+    background: var(--color-primary-primary);
+    border: none;
+    border-radius: var(--radius-small);
+    padding: 6px 16px;
+    font-size: 12px;
+    color: var(--color-text-textprimarylight);
+    cursor: pointer;
+    transition: all 0.2s;
+}
+
+.btn-primary:hover {
+    background: #4232c7;
+}
+
+.btn-primary:disabled {
+    background: var(--color-text-textsecondary);
+    cursor: not-allowed;
+}
+
+/* Modal Styles */
+.modal-overlay {
+    display: none;
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 0, 0.5);
+    z-index: 1000;
+    align-items: center;
+    justify-content: center;
+}
+
+.modal-overlay.visible {
+    display: flex;
+}
+
+.modal {
+    background: var(--color-background-bg);
+    border-radius: var(--radius-small);
+    width: 400px;
+    max-width: 90vw;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+}
+
+.modal-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: var(--spacing-small);
+    border-bottom: 1px solid var(--color-border-borderlight);
+}
+
+.modal-header h3 {
+    margin: 0;
+    font-size: 16px;
+    font-weight: 600;
+    color: var(--color-text-textprimary);
+}
+
+.modal-close {
+    background: none;
+    border: none;
+    font-size: 20px;
+    cursor: pointer;
+    color: var(--color-text-textsecondary);
+    padding: 0;
+    line-height: 1;
+}
+
+.modal-close:hover {
+    color: var(--color-text-textprimary);
+}
+
+.modal-body {
+    padding: var(--spacing-small);
+}
+
+.modal-footer {
+    display: flex;
+    justify-content: flex-end;
+    gap: var(--spacing-xsmall);
+    padding: var(--spacing-small);
+    border-top: 1px solid var(--color-border-borderlight);
+}
+
+.form-group {
+    margin-bottom: var(--spacing-small);
+}
+
+.form-group label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-textprimary);
+    margin-bottom: 4px;
+}
+
+.form-group select,
+.form-group input[type="text"] {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    font-size: 14px;
+    color: var(--color-text-textprimary);
+    background: var(--color-background-bg);
+}
+
+.form-group select:focus,
+.form-group input[type="text"]:focus {
+    outline: none;
+    border-color: var(--color-primary-primary);
+    box-shadow: 0 0 0 2px rgba(84, 63, 222, 0.1);
+}
+
+/* Toast notification for permalink copy */
+.toast {
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--color-background-bgdark);
+    color: var(--color-text-textprimarylight);
+    padding: 10px 20px;
+    border-radius: var(--radius-small);
+    font-size: 13px;
+    z-index: 2000;
+    animation: toastIn 0.3s ease-out, toastOut 0.3s ease-in 2.5s forwards;
+}
+
+@keyframes toastIn {
+    from { opacity: 0; transform: translateX(-50%) translateY(20px); }
+    to { opacity: 1; transform: translateX(-50%) translateY(0); }
+}
+
+@keyframes toastOut {
+    from { opacity: 1; transform: translateX(-50%) translateY(0); }
+    to { opacity: 0; transform: translateX(-50%) translateY(20px); }
+}
+
+/* ===== GOVERNANCE INDICATOR STYLES ===== */
+
+.governance-indicator {
+    position: relative;
+    margin-left: var(--spacing-small);
+    padding-left: var(--spacing-small);
+    border-left: 1px solid var(--color-border-borderlight);
+}
+
+.governance-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: linear-gradient(135deg, #30c578 0%, #28a866 100%);
+    padding: 6px 12px;
+    border-radius: var(--radius-small);
+    cursor: pointer;
+    transition: all 0.2s;
+    box-shadow: 0 2px 4px rgba(48, 197, 120, 0.3);
+    height: 32px;
+    max-width: 340px;
+    color: white;
+    font-size: 12px;
+    font-weight: 500;
+    line-height: 1;
+    user-select: none;
+}
+
+.governance-badge:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(48, 197, 120, 0.4);
+}
+
+.governance-badge:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.8);
+    outline-offset: 2px;
+}
+
+.governance-badge.active {
+    background: linear-gradient(135deg, #28a866 0%, #208050 100%);
+}
+
+.governance-badge-prefix {
+    color: white;
+    white-space: nowrap;
+}
+
+/* Colon lives in CSS so it can be hidden in the ungoverned state (no name
+   after it) and on mobile (name collapsed) without any JS branching. */
+.governance-badge-prefix::after {
+    content: ':';
+    color: rgba(255, 255, 255, 0.85);
+    font-weight: 500;
+    margin-left: 0;
+}
+
+.governance-indicator.no-governance .governance-badge-prefix::after {
+    content: '';
+}
+
+.governance-badge-bundle-name {
+    color: white;
+    font-weight: 600;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.governance-badge-count {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 18px;
+    height: 18px;
+    padding: 0 5px;
+    border-radius: 9px;
+    background: rgba(255, 255, 255, 0.22);
+    color: white;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1;
+}
+
+.governance-badge-caret {
+    color: white;
+    opacity: 0.85;
+    flex-shrink: 0;
+    transition: transform 0.15s ease;
+}
+
+.governance-badge.active .governance-badge-caret {
+    transform: rotate(180deg);
+}
+
+/* Governance Popover */
+.governance-popover {
+    display: none;
+    position: absolute;
+    top: 100%;
+    right: 0;
+    margin-top: 8px;
+    width: 320px;
+    background: var(--color-background-bg);
+    border-radius: var(--radius-small);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    z-index: 1000;
+    animation: popoverFadeIn 0.2s ease-out;
+}
+
+.governance-popover.visible {
+    display: block;
+}
+
+@keyframes popoverFadeIn {
+    from {
+        opacity: 0;
+        transform: translateY(-8px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+.governance-popover-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--color-border-borderlight);
+    background: var(--color-background-bgprimary);
+    border-radius: var(--radius-small) var(--radius-small) 0 0;
+}
+
+.governance-popover-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-textprimary);
+}
+
+.governance-popover-close {
+    background: none;
+    border: none;
+    font-size: 18px;
+    cursor: pointer;
+    color: var(--color-text-textsecondary);
+    padding: 0;
+    line-height: 1;
+}
+
+.governance-popover-close:hover {
+    color: var(--color-text-textprimary);
+}
+
+.governance-popover-body {
+    padding: 16px;
+}
+
+.governance-bundle-info {
+    margin-bottom: 12px;
+}
+
+/* When the selector is visible (multi-bundle case), the bundle-info
+   acts as a secondary "currently filing against" summary underneath it. */
+.governance-bundle-selector:not([style*="display: none"]) + .governance-bundle-info {
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid var(--color-border-borderlight);
+    margin-bottom: 0;
+}
+
+.bundle-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--color-text-textprimary);
+    margin-bottom: 4px;
+}
+
+.bundle-state {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: var(--color-background-bgprimary);
+    color: var(--color-text-textsecondary);
+}
+
+.bundle-state.state-active {
+    background: #e6f7ed;
+    color: #1d7a4a;
+}
+
+.bundle-state.state-archived {
+    background: #f5f5f5;
+    color: #666;
+}
+
+.governance-bundle-selector {
+    margin-bottom: 0;
+}
+
+.governance-bundle-selector label {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--color-text-textprimary);
+    margin-bottom: 4px;
+}
+
+.governance-bundle-selector select {
+    width: 100%;
+    padding: 8px 10px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    font-size: 13px;
+    color: var(--color-text-textprimary);
+    background: var(--color-background-bg);
+}
+
+.governance-popover-footer {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--spacing-xsmall);
+    padding: 12px 16px;
+    border-top: 1px solid var(--color-border-borderlight);
+    background: var(--color-background-bglight1);
+    border-radius: 0 0 var(--radius-small) var(--radius-small);
+}
+
+.governance-popover-footer .btn-primary {
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+}
+
+/* No governance fallback */
+.governance-indicator.no-governance .governance-badge {
+    background: linear-gradient(135deg, #9e9e9e 0%, #757575 100%);
+    box-shadow: none;
+    cursor: default;
+    max-width: none;
+}
+
+.governance-indicator.no-governance .governance-badge:hover {
+    transform: none;
+    box-shadow: none;
+}
+
+.governance-indicator.no-governance .governance-badge-prefix {
+    color: rgba(255, 255, 255, 0.9);
+}
+
+/* ===== CREATE FINDING BUTTON & MODAL STYLES ===== */
+
+#create-finding-btn {
+    background: linear-gradient(135deg, var(--color-primary-primary) 0%, #4232c7 100%) !important;
+    box-shadow: 0 2px 4px rgba(84, 63, 222, 0.3);
+    border-color: transparent !important;
+}
+
+#create-finding-btn:hover {
+    box-shadow: 0 4px 8px rgba(84, 63, 222, 0.4);
+    transform: translateY(-1px);
+}
+
+/* Create Finding when placed in the header next to the governance badge.
+   Visually pair it with the badge: same height, small separator gap, and
+   a subtle left-margin so it doesn't hug the badge too tight. */
+.dataset-selector .header-create-finding-btn {
+    margin-left: 2px;
+    height: 32px;
+}
+
+@keyframes spin {
+    to { transform: rotate(360deg); }
+}
+
+/* Component-level loading indicators */
+.component-loading {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 100px;
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.component-loading .spinner-small {
+    width: 20px;
+    height: 20px;
+    border: 2px solid var(--color-border-bordermedium);
+    border-top-color: var(--color-primary-primary);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    margin-right: 8px;
+}
+
+.summary-card.loading .card-value {
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+    font-size: 14px;
+}
+
+.table-loading-row {
+    text-align: center;
+    padding: 40px;
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.chart-loading, .chart-error, .chart-placeholder {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    min-height: 200px;
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.chart-error {
+    color: #d9534f;
+}
+
+.chart-placeholder {
+    background: var(--color-background-bglight1);
+    border-radius: var(--radius-small);
+}

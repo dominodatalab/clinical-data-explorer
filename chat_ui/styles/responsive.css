@@ -1,0 +1,200 @@
+/* Responsive adjustments for smaller screens */
+@media (max-width: 768px) {
+    .header {
+        flex-direction: column;
+        height: auto;
+        padding: var(--spacing-xsmall);
+        gap: var(--spacing-xsmall);
+        align-items: stretch;
+    }
+
+    .logo-section {
+        justify-content: space-between;
+        width: 100%;
+    }
+
+    .tab-navigation {
+        flex-wrap: wrap;
+        gap: var(--spacing-xsmall);
+    }
+
+    .dataset-selector {
+        width: 100%;
+        justify-content: flex-end;
+    }
+
+    .message {
+        max-width: 90%;
+    }
+
+    .chart-container {
+        min-height: 300px;
+        padding: var(--spacing-xsmall);
+    }
+
+    .chat-box {
+        padding: var(--spacing-small);
+    }
+
+    .input-area {
+        padding: var(--spacing-small);
+    }
+}
+
+/* Responsive adjustments for Explore tab */
+@media (max-width: 1024px) {
+    .explore-container {
+        flex-direction: column;
+    }
+
+    .left-column,
+    .right-column {
+        width: 100% !important;
+        border-right: none;
+        border-bottom: 1px solid var(--color-border-borderlight);
+    }
+
+    .left-column {
+        height: 40%;
+    }
+
+    .right-column {
+        height: 60%;
+    }
+
+    .left-column-toggle {
+        display: none;
+    }
+}
+
+@media (max-width: 768px) {
+    .control-row {
+        flex-direction: column;
+        align-items: stretch;
+    }
+}
+
+/* Responsive adjustments for Table View */
+@media (max-width: 1024px) {
+    .summary-stats-panel.summary-sidebar {
+        width: var(--right-panel-width, 320px);
+        min-width: 280px;
+    }
+    
+    .summary-sidebar-inner {
+        min-width: 0;
+    }
+}
+
+@media (max-width: 768px) {
+    .table-view-container {
+        flex-direction: column;
+        padding: var(--spacing-xsmall);
+    }
+    
+    .table-main {
+        min-height: 0;
+    }
+    
+    .summary-stats-panel.summary-sidebar {
+        width: 100% !important;
+        min-width: 0 !important;
+        max-height: 40vh;
+        border-left: none;
+        border-top: 1px solid var(--color-border-borderlight);
+    }
+    
+    .summary-stats-panel.summary-sidebar.collapsed {
+        width: 0 !important;
+        min-width: 0 !important;
+        max-height: 0;
+        min-height: 0;
+        overflow: hidden;
+    }
+    
+    .summary-sidebar-inner {
+        min-width: 0;
+    }
+
+    .right-panel-resize-handle {
+        display: none;
+    }
+    
+    .action-toolbar {
+        flex-wrap: wrap;
+    }
+    
+    .toolbar-left {
+        flex-wrap: wrap;
+    }
+    
+    .table-toolbar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: var(--spacing-xsmall);
+    }
+    
+    .pagination-controls {
+        flex-wrap: wrap;
+    }
+}
+
+/* Responsive adjustments for governance elements */
+@media (max-width: 768px) {
+    .governance-indicator {
+        margin-left: var(--spacing-xsmall);
+        padding-left: var(--spacing-xsmall);
+    }
+
+    .governance-badge {
+        padding: 4px 8px;
+        max-width: none;
+    }
+
+    /* Collapse the badge to just "Governed" + count + caret on narrow screens
+       so it doesn't eat the header row. Full context is still one tap away
+       in the popover. Hide the colon along with the name. */
+    .governance-badge-bundle-name {
+        display: none !important;
+    }
+
+    .governance-badge-prefix::after {
+        content: '' !important;
+    }
+
+    .governance-popover {
+        width: calc(100vw - 32px);
+        right: -16px;
+    }
+
+    .dataset-selector .header-create-finding-btn span {
+        /* Shrink label on mobile; the purple color still signals the action. */
+        font-size: 12px;
+    }
+
+    .finding-modal,
+    .file-browser-modal {
+        width: calc(100vw - 32px);
+    }
+}
+
+/* Responsive adjustments for chat empty state */
+@media (max-width: 600px) {
+    .chat-empty-state {
+        padding: var(--spacing-large) var(--spacing-small);
+    }
+    
+    .env-var-instructions,
+    .provider-examples {
+        max-width: 100%;
+    }
+    
+    .env-var-item {
+        flex-direction: column;
+        align-items: flex-start;
+    }
+    
+    .env-var-item .env-var-desc {
+        min-width: auto;
+    }
+}
