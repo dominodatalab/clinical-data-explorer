@@ -9,6 +9,8 @@ echo "=========================================="
 echo ""
 
 # Check if datasets folder exists
+# # TODO is this folder made in the right place in order to use a domino dataset?
+# is it just a random folder on the file system?
 if [ ! -d "datasets" ]; then
     echo "⚠️  Warning: datasets folder not found"
     echo "Creating datasets folder..."
@@ -22,21 +24,6 @@ if ! command -v python &> /dev/null; then
 fi
 
 echo "✓ Python found: $(python --version)"
-echo ""
-
-# Check if requirements are installed
-echo "Checking dependencies..."
-python -c "import flask, fastapi, pydantic_ai, pandas" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "⚠️  Some dependencies are missing."
-    echo "Installing requirements..."
-    pip install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "❌ Failed to install requirements. Please run: pip install -r requirements.txt"
-        exit 1
-    fi
-fi
-echo "✓ All dependencies installed"
 echo ""
 
 # Function to cleanup on exit
@@ -70,7 +57,7 @@ if ! ps -p $MCP_PID > /dev/null; then
 fi
 
 # Start Flask App
-FLASK_PORT=8888
+FLASK_PORT=${MAIN_APP_PORT:-8888}
 echo "Starting Flask App on port $FLASK_PORT..."
 python app.py $FLASK_PORT &
 FLASK_PID=$!

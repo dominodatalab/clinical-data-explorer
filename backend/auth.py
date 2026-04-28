@@ -31,7 +31,7 @@ def get_passthrough_token():
     auth_header = request.headers.get('Authorization', '')
     if auth_header.startswith('Bearer '):
         return auth_header[7:]
-    return None
+    return os.environ.get('DEV_ACCESS_TOKEN')
 
 
 def get_domino_api_host():

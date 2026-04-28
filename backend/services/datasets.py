@@ -177,7 +177,7 @@ def list_datasets_via_api(project_id):
 
         # Get datasets (the API returns all accessible datasets; we filter by projectId)
         response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?projectId={project_id}&limit=100',
+            f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
             headers=headers,
             timeout=30
         )

@@ -7,7 +7,7 @@ silently broken.
 ## Run it
 
 ```
-pip install -r requirements-dev.txt
+uv sync --dev
 playwright install chromium
 make test-e2e
 ```
