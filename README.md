@@ -16,8 +16,7 @@ Data Explorer provides three main capabilities:
 
 Data Explorer is designed to run as a Domino App. Dependencies are managed with `uv` via `pyproject.toml` and `uv.lock`.
 
-**required packages**
-- python 3.13
+**required tools**
 - uv
 
 ### Development Quick-Start
@@ -26,7 +25,7 @@ Data Explorer is designed to run as a Domino App. Dependencies are managed with 
 - Rename the `.env-example` to `.env` and fill in the environment variables
 - Install and run the app:
 ```sh
-uv sync
+uv sync --locked
 ./start_servers.sh
 ```
 
