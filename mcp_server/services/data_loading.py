@@ -326,7 +326,7 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             if not PYREADSTAT_AVAILABLE:
                 raise HTTPException(
                     status_code=500, 
-                    detail="SAS file support requires pyreadstat library. Please install it: pip install pyreadstat"
+                    detail="SAS file support requires pyreadstat. Run `uv sync --locked` to install project dependencies."
                 )
             df, meta = pyreadstat.read_sas7bdat(str(dataset_path))
             logger.info(f"Loaded SAS dataset with {len(df)} rows and {len(df.columns)} columns")
@@ -337,7 +337,7 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             if not PYREADSTAT_AVAILABLE:
                 raise HTTPException(
                     status_code=500, 
-                    detail="SAS Transport file support requires pyreadstat library. Please install it: pip install pyreadstat"
+                    detail="SAS Transport file support requires pyreadstat. Run `uv sync --locked` to install project dependencies."
                 )
             df, meta = pyreadstat.read_xport(str(dataset_path))
             logger.info(f"Loaded SAS Transport file with {len(df)} rows and {len(df.columns)} columns")

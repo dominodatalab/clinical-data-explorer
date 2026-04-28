@@ -14,10 +14,9 @@ Data Explorer provides three main capabilities:
 
 ### Prerequisites
 
-Data Explorer is designed to run as a Domino App. The application includes a `requirements.txt` file that Domino automatically uses with the Domino Standard Environment. If you prefer a custom environment, ensure the dependencies are installed.
+Data Explorer is designed to run as a Domino App. Dependencies are managed with `uv` via `pyproject.toml` and `uv.lock`.
 
-**required packages**
-- python 3.13
+**required tools**
 - uv
 
 ### Development Quick-Start
@@ -26,7 +25,7 @@ Data Explorer is designed to run as a Domino App. The application includes a `re
 - Rename the `.env-example` to `.env` and fill in the environment variables
 - Install and run the app:
 ```sh
-uv sync
+uv sync --locked
 ./start_servers.sh
 ```
 
@@ -308,8 +307,8 @@ Run `make test` before committing. Run `make test-all` before opening a PR.
 First-time setup:
 
 ```
-uv sync --dev
-playwright install chromium     # only needed for make test-e2e
+uv sync --locked
+uv run --locked playwright install chromium     # only needed for make test-e2e
 ```
 
 ### When you add a feature

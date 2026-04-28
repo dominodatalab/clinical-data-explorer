@@ -66,7 +66,6 @@ WORKDIR /home/${DOMINO_USER}/clinical-data-explorer
 
 # install uv to improve depependency resolution
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-#RUN uv pip install --upgrade pip setuptools wheel Cython
 
 RUN uv sync
 
@@ -79,4 +78,3 @@ RUN rm -rf /var/lib/apt/lists/*
 
 # allow model endpoint builds to succeed -- permission errors with certain directory operations without this
 USER ${DOMINO_USER}
-

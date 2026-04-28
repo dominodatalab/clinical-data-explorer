@@ -7,8 +7,8 @@ silently broken.
 ## Run it
 
 ```
-uv sync --dev
-playwright install chromium
+uv sync --locked
+uv run --locked playwright install chromium
 make test-e2e
 ```
 

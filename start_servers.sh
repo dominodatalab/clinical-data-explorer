@@ -17,15 +17,6 @@ if [ ! -d "datasets" ]; then
     mkdir datasets
 fi
 
-# Check for Python
-if ! command -v python &> /dev/null; then
-    echo "❌ Python not found. Please install Python 3.7 or higher."
-    exit 1
-fi
-
-echo "✓ Python found: $(python --version)"
-echo ""
-
 # Function to cleanup on exit
 cleanup() {
     echo ""
@@ -43,7 +34,7 @@ trap cleanup INT TERM
 
 # Start MCP Server
 echo "Starting MCP Server on port 3333..."
-python data_analysis_mcp.py > mcp_server.log 2>&1 &
+uv run --locked --no-sync python data_analysis_mcp.py > mcp_server.log 2>&1 &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
@@ -59,7 +50,7 @@ fi
 # Start Flask App
 FLASK_PORT=${MAIN_APP_PORT:-8888}
 echo "Starting Flask App on port $FLASK_PORT..."
-python app.py $FLASK_PORT &
+uv run --locked --no-sync python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
 
@@ -95,4 +86,3 @@ echo ""
 
 # Wait for user to interrupt
 wait
-
