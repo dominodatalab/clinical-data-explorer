@@ -197,18 +197,23 @@ def test_list_dataset_files_by_id_uses_v1_single_dataset_endpoint(monkeypatch):
 def test_create_temp_path_builds_expected_path_and_cleans_up(monkeypatch, tmp_path):
     services = _load_datasets_service(monkeypatch)
 
+    # Force the helper to build its temp tree under pytest's sandbox.
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
 
     expected_root = tmp_path / "domino_api_datasets" / "dataset" / "ds-1" / "snap-1"
     expected_path = expected_root / "nested" / "adsl.csv"
 
     with services._create_temp_path("ds-1", "nested/adsl.csv", "dataset", "snap-1") as temp_path:
+        # The contextmanager should hand back the fully-qualified file path the
+        # caller will write into, including nested subdirectories from file_name.
         assert Path(temp_path) == expected_path
         assert expected_root.is_dir()
         assert expected_path.parent.is_dir()
         expected_path.write_text("new dataset contents", encoding="utf-8")
         assert expected_path.read_text(encoding="utf-8") == "new dataset contents"
 
+    # After the with-block exits, cache-backed cleanup should remove the file
+    # and prune the now-empty parent directories for this download path.
     assert not expected_root.exists()
 
 
@@ -218,16 +223,21 @@ def test_create_temp_path_removes_clashing_file_without_touching_other_files(mon
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
 
     temp_root = tmp_path / "domino_api_datasets" / "netapp" / "ds-2" / "snap-2"
+
     stale_file = temp_root / "reports" / "visit.csv"
     stale_file.parent.mkdir(parents=True, exist_ok=True)
     stale_file.write_text("stale contents", encoding="utf-8")
+
     sibling_file = temp_root / "other.csv"
     sibling_file.write_text("stale sibling", encoding="utf-8")
 
     with services._create_temp_path("ds-2", "reports/visit.csv", "netapp", "snap-2") as temp_path:
         temp_path_obj = Path(temp_path)
+        # Reusing the exact same logical download target should clear only that
+        # stale file before the caller writes new content into it.
         assert temp_path_obj == stale_file
         assert not stale_file.exists()
+        # Unrelated files in the same snapshot directory should be left alone.
         assert sibling_file.exists()
         temp_path_obj.write_text("fresh contents", encoding="utf-8")
         assert temp_path_obj.read_text(encoding="utf-8") == "fresh contents"
@@ -250,6 +260,8 @@ def test_create_temp_path_finally_runs_when_with_body_raises(monkeypatch, tmp_pa
             path_obj.write_text("partial contents", encoding="utf-8")
             assert path_obj == expected_path
             assert expected_path.exists()
+            # Simulate a failure after the download path has been created and
+            # partially written so we can prove the finally cleanup still runs.
             raise RuntimeError("download failed")
 
     assert not expected_root.exists()

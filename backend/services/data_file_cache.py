@@ -1,6 +1,7 @@
 from functools import lru_cache
 import os
 import shutil
+import tempfile
 
 from cachetools import TTLCache
 
@@ -27,6 +28,17 @@ class DataFileCache(TTLCache):
                 os.remove(path)
             except FileNotFoundError:
                 pass
+
+        cleanup_root = os.path.abspath(os.path.join(tempfile.gettempdir(), "domino_api_datasets"))
+        current = os.path.abspath(os.path.dirname(path))
+        while os.path.commonpath([cleanup_root, current]) == cleanup_root:
+            try:
+                os.rmdir(current)
+            except OSError:
+                break
+            if current == cleanup_root:
+                break
+            current = os.path.abspath(os.path.dirname(current))
 
     def __delitem__(self, key):
         value = super().__getitem__(key)

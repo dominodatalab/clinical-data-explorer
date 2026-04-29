@@ -878,20 +878,21 @@ def _create_temp_path(dataset_id: str, file_name: str, source_type: SourceType =
     is still running. The cache will also reduce latency if the user refreshes the page or wants to view the same file
     in two separate windows
     """
-    sid = get_session_id()
-    temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid, source_type, dataset_id, snapshot_id)
+    temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', source_type, dataset_id, snapshot_id)
     temp_path = os.path.join(temp_dir, file_name)
-
+    key = create_key(dataset_id, file_name, source_type, snapshot_id)
     file_cache = get_file_cache()
 
-    def remove():
-        key = create_key(dataset_id, file_name, source_type, snapshot_id)
+    def cleanup_file():
         if key in file_cache:
             del file_cache[key]
+            return
+        file_cache._cleanup_path(temp_path)
 
     try:
+        cleanup_file()
         os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-
+        file_cache[key] = temp_path
         yield temp_path
     finally:
-        remove()
+        cleanup_file()
