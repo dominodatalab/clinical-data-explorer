@@ -15,6 +15,7 @@ context. The route layer will continue to call them as `return helper(...)`.
 pre-refactor pattern). They're slow to import and only needed when the app
 is actually running inside a Domino environment.
 """
+from contextlib import contextmanager
 import io
 import logging
 import os
@@ -27,7 +28,9 @@ import requests
 from flask import jsonify
 
 from backend.auth import get_domino_api_host, get_passthrough_token
+from backend.services.data_file_cache import get_file_cache, create_key
 from backend.session import get_session_id, mcp_post
+from backend.types import SourceType
 from chat_agent import clear_history
 
 logger = logging.getLogger(__name__)
@@ -447,40 +450,32 @@ def load_dataset_via_api(dataset_display_name, project_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        sid = get_session_id()
-        temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid)
-        # Clean previous downloads for this session
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, file_name)
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        with _create_temp_path(dataset.id, file_name) as temp_path:
+            logger.info(f"Downloading {file_name} from dataset {ds_name} to {temp_path}")
+            file_content = _download_dataset_file(dataset, file_name, token)
+            with open(temp_path, 'wb') as f:
+                f.write(file_content)
+            logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
-        logger.info(f"Downloading {file_name} from dataset {ds_name} to {temp_path}")
-        file_content = _download_dataset_file(dataset, file_name, token)
-        with open(temp_path, 'wb') as f:
-            f.write(file_content)
-        logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
+            # Tell the MCP server to load this file from the temp path
+            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
 
-        # Tell the MCP server to load this file from the temp path
-        mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
-
-        if mcp_response.status_code == 200:
-            result = mcp_response.json()
-            # Show the friendly display name, not the temp path
-            result['dataset'] = dataset_display_name
-            # Identifier fields for snapshot-specific governance lookup
-            active_snap_id = _get_active_dataset_snapshot_id(api_host, ds_id, token)
-            result['sourceType'] = 'dataset'
-            result['datasetId'] = ds_id
-            if active_snap_id:
-                result['snapshotId'] = active_snap_id
-            result['governanceFilename'] = file_name
-            clear_history(session_id=get_session_id())
-            return jsonify(result)
-        else:
-            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-            return jsonify({'error': error_detail}), mcp_response.status_code
+            if mcp_response.status_code == 200:
+                result = mcp_response.json()
+                # Show the friendly display name, not the temp path
+                result['dataset'] = dataset_display_name
+                # Identifier fields for snapshot-specific governance lookup
+                active_snap_id = _get_active_dataset_snapshot_id(api_host, ds_id, token)
+                result['sourceType'] = 'dataset'
+                result['datasetId'] = ds_id
+                if active_snap_id:
+                    result['snapshotId'] = active_snap_id
+                result['governanceFilename'] = file_name
+                clear_history(session_id=get_session_id())
+                return jsonify(result)
+            else:
+                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+                return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading dataset via API: {e}")
@@ -527,39 +522,32 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        sid = get_session_id()
-        temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, file_name)
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        with _create_temp_path(dataset.id, file_name) as temp_path:
+            logger.info(f"Downloading {file_name} from dataset {ds_name} (id={dataset_id}) to {temp_path}")
+            file_content = _download_dataset_file(dataset, file_name, token)
+            with open(temp_path, 'wb') as f:
+                f.write(file_content)
+            logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
-        logger.info(f"Downloading {file_name} from dataset {ds_name} (id={dataset_id}) to {temp_path}")
-        file_content = _download_dataset_file(dataset, file_name, token)
-        with open(temp_path, 'wb') as f:
-            f.write(file_content)
-        logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
+            # Tell the MCP server to load this file from the temp path
+            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
 
-        # Tell the MCP server to load this file from the temp path
-        mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
-
-        if mcp_response.status_code == 200:
-            result = mcp_response.json()
-            result['dataset'] = dataset_display_name
-            # Identifier fields for snapshot-specific governance lookup.
-            # No explicit snapshot was requested, so resolve the active one.
-            active_snap_id = _get_active_dataset_snapshot_id(get_domino_api_host(), dataset_id, token)
-            result['sourceType'] = 'dataset'
-            result['datasetId'] = dataset_id
-            if active_snap_id:
-                result['snapshotId'] = active_snap_id
-            result['governanceFilename'] = file_name
-            clear_history(session_id=get_session_id())
-            return jsonify(result)
-        else:
-            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-            return jsonify({'error': error_detail}), mcp_response.status_code
+            if mcp_response.status_code == 200:
+                result = mcp_response.json()
+                result['dataset'] = dataset_display_name
+                # Identifier fields for snapshot-specific governance lookup.
+                # No explicit snapshot was requested, so resolve the active one.
+                active_snap_id = _get_active_dataset_snapshot_id(get_domino_api_host(), dataset_id, token)
+                result['sourceType'] = 'dataset'
+                result['datasetId'] = dataset_id
+                if active_snap_id:
+                    result['snapshotId'] = active_snap_id
+                result['governanceFilename'] = file_name
+                clear_history(session_id=get_session_id())
+                return jsonify(result)
+            else:
+                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+                return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading dataset file by ID: {e}")
@@ -610,38 +598,30 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
             return jsonify({'error': f'Failed to download file from snapshot (HTTP {response.status_code})'}), response.status_code
 
         # Save to session-specific temp directory
-        sid = get_session_id()
-        temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        os.makedirs(temp_dir, exist_ok=True)
-
         file_name = file_path.split('/')[-1]
-        temp_path = os.path.join(temp_dir, file_name)
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+        with _create_temp_path(dataset.id, file_name, 'dataset', snapshot_id) as temp_path:
+            logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
+            with open(temp_path, 'wb') as f:
+                for chunk in response.iter_content(chunk_size=8192):
+                    f.write(chunk)
+            logger.info(f"Downloaded snapshot file to {temp_path}")
 
-        logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
-        with open(temp_path, 'wb') as f:
-            for chunk in response.iter_content(chunk_size=8192):
-                f.write(chunk)
-        logger.info(f"Downloaded snapshot file to {temp_path}")
+            # Load into MCP server
+            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
 
-        # Load into MCP server
-        mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
-
-        if mcp_response.status_code == 200:
-            result = mcp_response.json()
-            result['dataset'] = dataset_display_name
-            # Identifier fields for snapshot-specific governance lookup
-            result['sourceType'] = 'dataset'
-            result['datasetId'] = dataset_id
-            result['snapshotId'] = snapshot_id
-            result['governanceFilename'] = file_path.split('/')[-1]
-            clear_history(session_id=get_session_id())
-            return jsonify(result)
-        else:
-            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-            return jsonify({'error': error_detail}), mcp_response.status_code
+            if mcp_response.status_code == 200:
+                result = mcp_response.json()
+                result['dataset'] = dataset_display_name
+                # Identifier fields for snapshot-specific governance lookup
+                result['sourceType'] = 'dataset'
+                result['datasetId'] = dataset_id
+                result['snapshotId'] = snapshot_id
+                result['governanceFilename'] = file_path.split('/')[-1]
+                clear_history(session_id=get_session_id())
+                return jsonify(result)
+            else:
+                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+                return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading snapshot file: {e}")
@@ -669,6 +649,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
 
     # Parse "volume_name/file_name" format
+    # TODO why not send names separately?
     parts = dataset_display_name.split('/', 1)
     if len(parts) != 2:
         return jsonify({'error': f'Invalid volume file reference: {dataset_display_name}'}), 400
@@ -694,6 +675,8 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             files = [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
         else:
             files = vol_client.list_files(volume_key)
+
+        # TODO is there a way to check for membership via the vol_client?
         if file_name not in files:
             return jsonify({'error': f'File "{file_name}" not found in volume "{vol_name}"'}), 404
 
@@ -701,43 +684,43 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         target_file = volume.File(file_name)
 
         # Download to session-specific temp directory
-        sid = get_session_id()
-        temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid)
-        if os.path.exists(temp_dir):
-            shutil.rmtree(temp_dir, ignore_errors=True)
-        os.makedirs(temp_dir, exist_ok=True)
-        temp_path = os.path.join(temp_dir, file_name)
+        # TODO temp dir handling should be centralized and shared between the file downloading helpers
+        # TODO the session ID is set by the app in the flask session cookie header, so if multiple tabs in a user's
+        # browser are working on different files, their downloads will clobber each other
+        # should more uniquely identify the file being downloaded
+        # There is a slightly more niche bug, where the user views the same dataset file in two different tabs
+        # in this bug, the file will get deleted and redownloaded, when maybe we could just view the same download
+        with _create_temp_path(dataset.id, file_name, 'netapp', snapshot_version) as temp_path:
+            logger.info(f"Downloading {file_name} from NetApp volume {vol_name} to {temp_path}")
+            buf = io.BytesIO()
+            target_file.download_fileobj(buf)
+            with open(temp_path, 'wb') as f:
+                f.write(buf.getbuffer())
+            logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
 
-        logger.info(f"Downloading {file_name} from NetApp volume {vol_name} to {temp_path}")
-        buf = io.BytesIO()
-        target_file.download_fileobj(buf)
-        with open(temp_path, 'wb') as f:
-            f.write(buf.getbuffer())
-        logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
+            # Tell the MCP server to load this file from the temp path
+            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
 
-        # Tell the MCP server to load this file from the temp path
-        mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
-
-        if mcp_response.status_code == 200:
-            result = mcp_response.json()
-            result['dataset'] = dataset_display_name
-            # Identifier fields for governance lookup. Only when the load was
-            # pinned to a specific snapshot version can this match an attachment
-            # (r/w-head files cannot be attached to a bundle).
-            vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
-            result['sourceType'] = 'netapp'
-            if vol_id:
-                result['volumeId'] = vol_id
-            if snapshot_version is not None and snapshot_version != '':
-                result['snapshotVersion'] = snapshot_version
-            if snapshot_id:
-                result['snapshotId'] = snapshot_id
-            result['governanceFilename'] = file_name.split('/')[-1]
-            clear_history(session_id=get_session_id())
-            return jsonify(result)
-        else:
-            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-            return jsonify({'error': error_detail}), mcp_response.status_code
+            if mcp_response.status_code == 200:
+                result = mcp_response.json()
+                result['dataset'] = dataset_display_name
+                # Identifier fields for governance lookup. Only when the load was
+                # pinned to a specific snapshot version can this match an attachment
+                # (r/w-head files cannot be attached to a bundle).
+                vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
+                result['sourceType'] = 'netapp'
+                if vol_id:
+                    result['volumeId'] = vol_id
+                if snapshot_version is not None and snapshot_version != '':
+                    result['snapshotVersion'] = snapshot_version
+                if snapshot_id:
+                    result['snapshotId'] = snapshot_id
+                result['governanceFilename'] = file_name.split('/')[-1]
+                clear_history(session_id=get_session_id())
+                return jsonify(result)
+            else:
+                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+                return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
@@ -745,6 +728,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
     except Exception as e:
         logger.error(f"Error loading NetApp volume file: {e}")
         logger.error(traceback.format_exc())
+        # TODO there should be file cleanup logic here
         return jsonify({'error': f'Error loading file from volume: {str(e)}'}), 500
 
 
@@ -885,3 +869,29 @@ def _parse_datasetrw_rows(rows, subpath):
 
     entries.sort(key=lambda e: (0 if e['isDir'] else 1, e['name'].lower()))
     return entries
+
+@contextmanager
+def _create_temp_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:
+    """
+    This creates a unique temporary path for downloading a dataset or netapp volume's file into
+    The temp dir is cleaned up after use and a file cache will handle removing any files that get orphaned while the pod
+    is still running. The cache will also reduce latency if the user refreshes the page or wants to view the same file
+    in two separate windows
+    """
+    sid = get_session_id()
+    temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', sid, source_type, dataset_id, snapshot_id)
+    temp_path = os.path.join(temp_dir, file_name)
+
+    file_cache = get_file_cache()
+
+    def remove():
+        key = create_key(dataset_id, file_name, source_type, snapshot_id)
+        if key in file_cache:
+            del file_cache[key]
+
+    try:
+        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
+
+        yield temp_path
+    finally:
+        remove()
