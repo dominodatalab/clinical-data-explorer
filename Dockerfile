@@ -66,7 +66,7 @@ WORKDIR /home/${DOMINO_USER}/clinical-data-explorer
 
 # install uv to improve depependency resolution
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-
+ENV PATH="/root/.local/bin:${PATH}"
 RUN uv sync
 
 # allow model endpoint builds to succeed -- seems /mnt is a python slim pre-existing dir
