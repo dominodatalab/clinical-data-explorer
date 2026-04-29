@@ -818,6 +818,7 @@ def _list_netapp_snapshots(volume_unique_name, token):
             status = ''
             if hasattr(s, 'status') and s.status:
                 status = str(s.status)
+            # TODO do these usually not have versions?
             ver = s.version if hasattr(s, 'version') else 0
             if ver > max_version:
                 max_version = ver
