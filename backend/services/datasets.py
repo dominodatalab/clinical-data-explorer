@@ -265,10 +265,8 @@ def list_dataset_files_by_id(dataset_id, snapshot_id=None):
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        # The datasetrw list endpoint supports filtering — query all accessible datasets
-        # and find the one matching our dataset ID.
         response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?limit=100',
+            f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
             headers=headers,
             timeout=30
         )
@@ -280,21 +278,17 @@ def list_dataset_files_by_id(dataset_id, snapshot_id=None):
                 'datasets': []
             }), response.status_code
 
-        if response.status_code != 200:
-            logger.error(f"Datasets API error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []}), 500
-
-        all_datasets = response.json().get('datasets', [])
-        # Find the dataset matching our ID
-        target_ds = None
-        for d in all_datasets:
-            ds = d.get('dataset', d)
-            if ds.get('id') == dataset_id:
-                target_ds = ds
-                break
-
-        if not target_ds:
+        if response.status_code == 404:
             return jsonify({'error': f'Dataset with ID "{dataset_id}" not found or not accessible', 'datasets': []}), 404
+
+        if response.status_code != 200:
+            logger.error(f"Dataset API error: {response.status_code} - {response.text}")
+            return jsonify({'error': f'Failed to get dataset (HTTP {response.status_code})', 'datasets': []}), 500
+
+        target_ds = response.json().get('dataset')
+        if not target_ds:
+            logger.error(f"Dataset API returned an unexpected payload for dataset {dataset_id}: {response.text}")
+            return jsonify({'error': 'Dataset API returned an unexpected response', 'datasets': []}), 500
 
         ds_name = target_ds['name']
         ds_id = target_ds['id']
