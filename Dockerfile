@@ -6,7 +6,7 @@ LABEL maintainer="Domino Data Lab"
 LABEL description="Clinical Data Explorer"
 LABEL version="1.0.0"
 
-ARG EXTENSION_VERSION=niole.noticket.add_dockerfile_development_quickstart_fix_dataset_bug_uv
+ARG EXTENSION_VERSION=main
 ARG GITHUB_ORG=dominodatalab
 ARG DUSER=ubuntu
 ARG DGROUP=ubuntu
