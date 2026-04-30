@@ -25,7 +25,7 @@ jobs:
 
         cat ci_dockerfile.txt
 
-        docker build . -f ci_dockerfile.txt \
+        docker build -f ci_dockerfile.txt . \
         echo "FROM python:3.13-slim-bullseye" | cat - Dockerfile | echo 'CMD ["./start_servers.sh"]' | docker build \
             --build-arg EXTENSION_VERSION=$EXTENSION_VERSION \
             --build-arg GITHUB_ORG=$GITHUB_ORG \
