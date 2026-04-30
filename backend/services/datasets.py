@@ -28,7 +28,7 @@ import requests
 from flask import jsonify
 
 from backend.auth import get_domino_api_host, get_passthrough_token
-from backend.services.data_file_cache import get_file_cache, create_key
+from backend.services.data_file_cache import get_file_cache, DataFileCache
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
 from chat_agent import clear_history
@@ -450,7 +450,7 @@ def load_dataset_via_api(dataset_display_name, project_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        with _create_temp_path(dataset.id, file_name) as temp_path:
+        with data_file_path(dataset.id, file_name) as temp_path:
             logger.info(f"Downloading {file_name} from dataset {ds_name} to {temp_path}")
             file_content = _download_dataset_file(dataset, file_name, token)
             with open(temp_path, 'wb') as f:
@@ -522,7 +522,7 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        with _create_temp_path(dataset.id, file_name) as temp_path:
+        with data_file_path(dataset.id, file_name) as temp_path:
             logger.info(f"Downloading {file_name} from dataset {ds_name} (id={dataset_id}) to {temp_path}")
             file_content = _download_dataset_file(dataset, file_name, token)
             with open(temp_path, 'wb') as f:
@@ -599,7 +599,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
 
         # Save to session-specific temp directory
         file_name = file_path.split('/')[-1]
-        with _create_temp_path(dataset.id, file_name, 'dataset', snapshot_id) as temp_path:
+        with data_file_path(dataset.id, file_name, 'dataset', snapshot_id) as temp_path:
             logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
             with open(temp_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -690,7 +690,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         # should more uniquely identify the file being downloaded
         # There is a slightly more niche bug, where the user views the same dataset file in two different tabs
         # in this bug, the file will get deleted and redownloaded, when maybe we could just view the same download
-        with _create_temp_path(dataset.id, file_name, 'netapp', snapshot_version) as temp_path:
+        with data_file_path(dataset.id, file_name, 'netapp', snapshot_version) as temp_path:
             logger.info(f"Downloading {file_name} from NetApp volume {vol_name} to {temp_path}")
             buf = io.BytesIO()
             target_file.download_fileobj(buf)
@@ -871,28 +871,20 @@ def _parse_datasetrw_rows(rows, subpath):
     return entries
 
 @contextmanager
-def _create_temp_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:
+def data_file_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:
     """
-    This creates a unique temporary path for downloading a dataset or netapp volume's file into
+    This creates a temporary path for downloading a dataset or netapp volume's file into
     The temp dir is cleaned up after use and a file cache will handle removing any files that get orphaned while the pod
-    is still running. The cache will also reduce latency if the user refreshes the page or wants to view the same file
-    in two separate windows
+    is still running.
     """
-    temp_dir = os.path.join(tempfile.gettempdir(), 'domino_api_datasets', source_type, dataset_id, snapshot_id)
-    temp_path = os.path.join(temp_dir, file_name)
-    key = create_key(dataset_id, file_name, source_type, snapshot_id)
     file_cache = get_file_cache()
 
-    def cleanup_file():
-        if key in file_cache:
-            del file_cache[key]
-            return
-        file_cache._cleanup_path(temp_path)
-
     try:
-        cleanup_file()
-        os.makedirs(os.path.dirname(temp_path), exist_ok=True)
-        file_cache[key] = temp_path
+        temp_path = file_cache.set(source_type, dataset_id, snapshot_id, file_name)
+        if temp_path.exists():
+            # remove the file contents that are there
+            Path(temp_path).write_text("")
+
         yield temp_path
     finally:
-        cleanup_file()
+        file_cache.remove(source_type, dataset_id, snapshot_id, file_name)
