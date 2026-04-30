@@ -27,3 +27,14 @@ jobs:
             --build-arg EXTENSION_VERSION=$EXTENSION_VERSION \
             --build-arg GITHUB_ORG=$GITHUB_ORG \
             .
+
+        docker run -d --name cde test:1
+
+        sleep 10
+
+        logs=$(docker logs cde)
+
+        cat $logs
+
+        found_success_log=$(cat $logs | grep "Both servers are running")
+        if [[ -z $found_success_log ]]; then echo "Failed to run app" && exit 1; fi
