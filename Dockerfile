@@ -1,3 +1,4 @@
+FROM python:3.13-slim-bullseye
 #
 # Required Domino Environment Base Image: python:3.13-slim-bullseye
 #
@@ -6,7 +7,7 @@ LABEL maintainer="Domino Data Lab"
 LABEL description="Clinical Data Explorer"
 LABEL version="1.0.0"
 
-ARG EXTENSION_VERSION=main
+ARG EXTENSION_VERSION=niole.noticket.add_dockerfile_development_quickstart_fix_dataset_bug_uv
 ARG GITHUB_ORG=dominodatalab
 ARG DUSER=ubuntu
 ARG DGROUP=ubuntu
@@ -72,13 +73,7 @@ WORKDIR ${HOME}/clinical-data-explorer
 USER ${DOMINO_USER}
 ENV PATH="${HOME}/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-RUN if [ -f pyproject.toml ]; then \
-        uv sync --locked; \
-    elif [ -f requirements.txt ]; then \
-        python -m pip install --user --no-cache-dir -r requirements.txt; \
-    else \
-        echo "No supported dependency manifest found" && exit 1; \
-    fi
+RUN uv sync --locked
 
 # allow model endpoint builds to succeed -- seems /mnt is a python slim pre-existing dir
 # and model endpoint builds create directories inside it which fails since its owned by another user
@@ -90,3 +85,5 @@ RUN rm -rf /var/lib/apt/lists/*
 
 # allow model endpoint builds to succeed -- permission errors with certain directory operations without this
 USER ${DOMINO_USER}
+
+CMD ["./start_servers.sh"]

@@ -29,6 +29,8 @@ cleanup() {
 
 trap cleanup INT TERM
 
+cp -r ~/clinical-data-explorer/.venv .
+
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
