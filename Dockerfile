@@ -14,6 +14,7 @@ ARG DEBIAN_FRONTEND=noninteractive
 
 ENV DOMINO_USER=$DUSER
 ENV DOMINO_GROUP=$DGROUP
+ENV HOME=/home/${DOMINO_USER}
 
 # Set Python environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -51,26 +52,37 @@ RUN if ! id 12574 >/dev/null 2>&1; then \
         useradd -u 12574 -g 12574 -m -N -s /bin/bash ${DOMINO_USER}; \
     fi
 
-RUN chown -R ${DOMINO_USER}:${DOMINO_GROUP} "/home/${DOMINO_USER}"
+RUN chown -R ${DOMINO_USER}:${DOMINO_GROUP} "${HOME}"
 
-WORKDIR /home/${DOMINO_USER}
+WORKDIR ${HOME}
 
 RUN test -n "$EXTENSION_VERSION" || (echo "EXTENSION_VERSION build arg is empty" && exit 1)
 RUN git clone https://github.com/$GITHUB_ORG/clinical-data-explorer.git && cd clinical-data-explorer && git checkout $EXTENSION_VERSION
+RUN chown -R ${DOMINO_USER}:${DOMINO_GROUP} "${HOME}/clinical-data-explorer"
 
-WORKDIR /home/${DOMINO_USER}/clinical-data-explorer
+WORKDIR ${HOME}/clinical-data-explorer
 
 #
 # Install dependencies
 #
 
-# install uv to improve depependency resolution
+# install uv as the runtime user so it is available after the final USER switch.
+# Some refs of this repo use uv/pyproject, while older refs still use
+# requirements.txt + plain python startup, so install dependencies accordingly.
+USER ${DOMINO_USER}
+ENV PATH="${HOME}/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.local/bin:${PATH}"
-RUN uv sync
+RUN if [ -f pyproject.toml ]; then \
+        uv sync --locked; \
+    elif [ -f requirements.txt ]; then \
+        python -m pip install --user --no-cache-dir -r requirements.txt; \
+    else \
+        echo "No supported dependency manifest found" && exit 1; \
+    fi
 
 # allow model endpoint builds to succeed -- seems /mnt is a python slim pre-existing dir
 # and model endpoint builds create directories inside it which fails since its owned by another user
+USER root
 RUN chmod 777 /mnt
 
 # Cleanup after apt package installs

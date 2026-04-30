@@ -44,6 +44,7 @@ sleep 2
 # Check if MCP server is running
 if ! ps -p $MCP_PID > /dev/null; then
     echo "❌ MCP Server failed to start. Check mcp_server.log for details."
+    cat mcp_server.log
     exit 1
 fi
 
