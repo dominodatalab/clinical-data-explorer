@@ -17,6 +17,9 @@ MAX_ITEM_COUNT = int(os.environ.get('DATA_FILE_CACHE_MAX_ITEM_COUNT', 100))
 This stores file metadata references for downloaded files
 This is here to cleanup files in the case that they have not already been
 cleaned up after use
+
+in the case of netapp volumes, the dataset_id is actually the volume key, and the snapshot_id is the
+snapshot version
 """
 class DataFileCache(TTLCache):
     def __init__(self, temp_root: Optional[str] = None, *args, **kwargs):

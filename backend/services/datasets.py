@@ -450,7 +450,7 @@ def load_dataset_via_api(dataset_display_name, project_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        with data_file_path(dataset.id, file_name) as temp_path:
+        with data_file_path(ds_id, file_name) as temp_path:
             logger.info(f"Downloading {file_name} from dataset {ds_name} to {temp_path}")
             file_content = _download_dataset_file(dataset, file_name, token)
             with open(temp_path, 'wb') as f:
@@ -522,7 +522,7 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
             return jsonify({'error': f'File "{file_name}" not found in dataset "{ds_name}"'}), 404
 
         # Download to session-specific temp directory (avoids filename collisions between users)
-        with data_file_path(dataset.id, file_name) as temp_path:
+        with data_file_path(dataset_id, file_name) as temp_path:
             logger.info(f"Downloading {file_name} from dataset {ds_name} (id={dataset_id}) to {temp_path}")
             file_content = _download_dataset_file(dataset, file_name, token)
             with open(temp_path, 'wb') as f:
@@ -599,7 +599,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
 
         # Save to session-specific temp directory
         file_name = file_path.split('/')[-1]
-        with data_file_path(dataset.id, file_name, 'dataset', snapshot_id) as temp_path:
+        with data_file_path(dataset_id, file_name, 'dataset', snapshot_id) as temp_path:
             logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
             with open(temp_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
@@ -684,13 +684,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         target_file = volume.File(file_name)
 
         # Download to session-specific temp directory
-        # TODO temp dir handling should be centralized and shared between the file downloading helpers
-        # TODO the session ID is set by the app in the flask session cookie header, so if multiple tabs in a user's
-        # browser are working on different files, their downloads will clobber each other
-        # should more uniquely identify the file being downloaded
-        # There is a slightly more niche bug, where the user views the same dataset file in two different tabs
-        # in this bug, the file will get deleted and redownloaded, when maybe we could just view the same download
-        with data_file_path(dataset.id, file_name, 'netapp', snapshot_version) as temp_path:
+        with data_file_path(volume_key, file_name, 'netapp', snapshot_version) as temp_path:
             logger.info(f"Downloading {file_name} from NetApp volume {vol_name} to {temp_path}")
             buf = io.BytesIO()
             target_file.download_fileobj(buf)
