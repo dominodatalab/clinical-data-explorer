@@ -3,8 +3,21 @@
 ## Get Started in 4 Steps
 
 ### Step 1: Install Dependencies
+
+Some dataset related features require dependencies that only exist in Domino execution. To develop in a Domino Workspace,
+- Create a Git-Based Project with this repo
+- In the central config dashboard, set `com.cerebro.domino.workbench.workspace.sandboxForwardedPortsInVsCode=false`
+- Launch a vscode workspace
+- Set `MAIN_APP_PORT=8000`
+- Follow the next instructions to install and run the app.
+- Then open the vscode proxied port for the flask app via the popup provided by vscode
+-
+**install required tools**
+- [uv](https://docs.astral.sh/uv/)
+
+**install app dependencies**
 ```bash
-pip install -r requirements.txt
+uv sync --locked
 ```
 
 ### Step 2: Configure LLM (Optional for Chat Feature)
@@ -39,12 +52,12 @@ export LLM_MODEL="meta-llama/Llama-3-70b-chat-hf"
 
 Terminal 1 - Start MCP Server:
 ```bash
-python data_analysis_mcp.py
+uv run --locked python data_analysis_mcp.py
 ```
 
 Terminal 2 - Start Flask App:
 ```bash
-python app.py
+uv run --locked python app.py
 ```
 
 ### Step 4: Open Your Browser
@@ -98,14 +111,13 @@ Navigate to: http://localhost:5000
 
 Run the test suite to verify everything works:
 ```bash
-python test_system.py
+uv run --locked playwright install chromium  # one-time setup for e2e
+make test-all
 ```
 
 This will test:
-- MCP server endpoints
-- Flask app endpoints
-- Dataset loading
-- System integration
+- MCP contract coverage
+- End-to-end browser smoke coverage
 
 ## Troubleshooting
 
@@ -115,7 +127,7 @@ This will test:
 ### "Could not connect to MCP server"
 **Solution**: Make sure the MCP server is running on port 8888
 ```bash
-python data_analysis_mcp.py
+uv run --locked python data_analysis_mcp.py
 ```
 
 ### "No dataset loaded"
@@ -124,7 +136,7 @@ python data_analysis_mcp.py
 ### Import errors
 **Solution**: Install all dependencies
 ```bash
-pip install -r requirements.txt
+uv sync --locked
 ```
 
 ### Port already in use
@@ -179,4 +191,3 @@ Start exploring your data with natural language queries. The AI will handle the 
 ---
 
 **Pro Tip**: The more specific your question, the better the answer. Include column names and specific metrics when possible.
-

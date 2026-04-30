@@ -1,0 +1,38 @@
+name: Build docker image on push
+
+on:
+  pull_request:
+
+jobs:
+
+  build:
+
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@v6
+    - name: Build the Docker image
+      env:
+        EXTENSION_VERSION: ${{ github.head_ref || github.ref_name }}
+        GITHUB_ORG: ${{ github.event.pull_request.head.repo.owner.login || github.repository_owner }}
+      run: |
+        echo "FROM python:3.13-slim-bullseye" >> ci_dockerfile.txt
+        cat Dockerfile >> ci_dockerfile.txt
+        echo 'CMD ["./start_servers.sh"]' >> ci_dockerfile.txt
+
+        docker buildx build \
+            -f ci_dockerfile.txt \
+            -t test:1 \
+            --build-arg EXTENSION_VERSION=$EXTENSION_VERSION \
+            --build-arg GITHUB_ORG=$GITHUB_ORG \
+            .
+
+        docker run -d --name cde test:1
+
+        sleep 15
+
+        logs=$(docker logs cde)
+
+        found_success_log=$(cat $logs | grep "Both servers are running")
+        if [[ -z $found_success_log ]]; then echo "Failed to run app" && exit 1; fi

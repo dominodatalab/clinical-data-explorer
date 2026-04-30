@@ -9,35 +9,13 @@ echo "=========================================="
 echo ""
 
 # Check if datasets folder exists
+# # TODO is this folder made in the right place in order to use a domino dataset?
+# is it just a random folder on the file system?
 if [ ! -d "datasets" ]; then
     echo "⚠️  Warning: datasets folder not found"
     echo "Creating datasets folder..."
     mkdir datasets
 fi
-
-# Check for Python
-if ! command -v python &> /dev/null; then
-    echo "❌ Python not found. Please install Python 3.7 or higher."
-    exit 1
-fi
-
-echo "✓ Python found: $(python --version)"
-echo ""
-
-# Check if requirements are installed
-echo "Checking dependencies..."
-python -c "import flask, fastapi, pydantic_ai, pandas" 2>/dev/null
-if [ $? -ne 0 ]; then
-    echo "⚠️  Some dependencies are missing."
-    echo "Installing requirements..."
-    pip install -r requirements.txt
-    if [ $? -ne 0 ]; then
-        echo "❌ Failed to install requirements. Please run: pip install -r requirements.txt"
-        exit 1
-    fi
-fi
-echo "✓ All dependencies installed"
-echo ""
 
 # Function to cleanup on exit
 cleanup() {
@@ -51,12 +29,15 @@ cleanup() {
 
 trap cleanup INT TERM
 
+# copy the preinstalled packages to the local app directory
+cp -r ~/clinical-data-explorer/.venv .
+
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
 # Start MCP Server
 echo "Starting MCP Server on port 3333..."
-python data_analysis_mcp.py > mcp_server.log 2>&1 &
+uv run --locked --no-sync python data_analysis_mcp.py > mcp_server.log 2>&1 &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
@@ -66,13 +47,14 @@ sleep 2
 # Check if MCP server is running
 if ! ps -p $MCP_PID > /dev/null; then
     echo "❌ MCP Server failed to start. Check mcp_server.log for details."
+    cat mcp_server.log
     exit 1
 fi
 
 # Start Flask App
-FLASK_PORT=8888
+FLASK_PORT=${MAIN_APP_PORT:-8888}
 echo "Starting Flask App on port $FLASK_PORT..."
-python app.py $FLASK_PORT &
+uv run --locked --no-sync python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
 
@@ -108,4 +90,3 @@ echo ""
 
 # Wait for user to interrupt
 wait
-
