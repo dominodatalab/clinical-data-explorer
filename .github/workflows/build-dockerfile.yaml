@@ -21,7 +21,10 @@ jobs:
       run: |
         echo "FROM python:3.13-slim-bullseye" >> ci_dockerfile.txt && \
         cat Dockerfile >> ci_dockerfile.txt && \
-        echo 'CMD ["./start_servers.sh"]' >> ci_dockerfile.txt && \
+        echo 'CMD ["./start_servers.sh"]' >> ci_dockerfile.txt
+
+        cat ci_dockerfile.txt
+
         docker build . -f ci_dockerfile.txt \
         echo "FROM python:3.13-slim-bullseye" | cat - Dockerfile | echo 'CMD ["./start_servers.sh"]' | docker build \
             --build-arg EXTENSION_VERSION=$EXTENSION_VERSION \
