@@ -9,8 +9,8 @@ from cachetools import TTLCache
 
 from backend.types import SourceType
 
-EXPIRATION_SECONDS = 60
-MAX_ITEM_COUNT = 100
+EXPIRATION_SECONDS = int(os.environ.get('DATA_FILE_CACHE_EXPIRATION_SECONDS', 60))
+MAX_ITEM_COUNT = int(os.environ.get('DATA_FILE_CACHE_MAX_ITEM_COUNT', 100))
 
 
 """
