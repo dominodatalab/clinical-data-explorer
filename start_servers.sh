@@ -29,6 +29,7 @@ cleanup() {
 
 trap cleanup INT TERM
 
+# copy the preinstalled packages to the local app directory
 cp -r ~/clinical-data-explorer/.venv .
 
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)

@@ -1,4 +1,3 @@
-FROM python:3.13-slim-bullseye
 #
 # Required Domino Environment Base Image: python:3.13-slim-bullseye
 #
@@ -7,7 +6,7 @@ LABEL maintainer="Domino Data Lab"
 LABEL description="Clinical Data Explorer"
 LABEL version="1.0.0"
 
-ARG EXTENSION_VERSION=niole.noticket.add_dockerfile_development_quickstart_fix_dataset_bug_uv
+ARG EXTENSION_VERSION=main
 ARG GITHUB_ORG=dominodatalab
 ARG DUSER=ubuntu
 ARG DGROUP=ubuntu
@@ -67,12 +66,12 @@ WORKDIR ${HOME}/clinical-data-explorer
 # Install dependencies
 #
 
-# install uv as the runtime user so it is available after the final USER switch.
-# Some refs of this repo use uv/pyproject, while older refs still use
-# requirements.txt + plain python startup, so install dependencies accordingly.
+# install uv
 USER ${DOMINO_USER}
 ENV PATH="${HOME}/.local/bin:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# install packages
 RUN uv sync --locked
 
 # allow model endpoint builds to succeed -- seems /mnt is a python slim pre-existing dir
@@ -85,5 +84,3 @@ RUN rm -rf /var/lib/apt/lists/*
 
 # allow model endpoint builds to succeed -- permission errors with certain directory operations without this
 USER ${DOMINO_USER}
-
-CMD ["./start_servers.sh"]
