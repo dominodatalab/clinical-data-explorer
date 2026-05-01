@@ -872,6 +872,9 @@ def data_file_path(dataset_id: str, file_name: str, source_type: SourceType = 'd
     is still running.
     """
     file_cache = get_file_cache()
+    dataset_id = str(dataset_id)
+    file_name = str(file_name)
+    snapshot_id = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
 
     try:
         temp_path = file_cache.set(source_type, dataset_id, snapshot_id, file_name)
