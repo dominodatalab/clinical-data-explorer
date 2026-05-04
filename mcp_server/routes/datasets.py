@@ -51,10 +51,11 @@ async def list_datasets():
 
 
 @router.post("/dataset/load", operation_id="load_dataset")
-async def load_dataset_endpoint(dataset_name: str = Query(..., description="Name of the CSV file to load")):
-    """Load a specific dataset from the datasets folder and return column metadata"""
-	# TODO does this name encapsulate the snapshot name, too?
-    df = load_dataset(dataset_name)
+async def load_dataset_endpoint(
+    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
+):
+    """Load a specific dataset file and return column metadata."""
+    df = load_dataset(file_snapshot_path)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)
@@ -79,8 +80,8 @@ async def load_dataset_endpoint(dataset_name: str = Query(..., description="Name
     column_types = {col: str(df[col].dtype) for col in df.columns}
 
     return {
-        "message": f"Successfully loaded dataset: {dataset_name}",
-        "dataset": dataset_name,
+        "message": f"Successfully loaded dataset: {file_snapshot_path}",
+        "dataset": file_snapshot_path,
         "columns": df.columns.tolist(),
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,

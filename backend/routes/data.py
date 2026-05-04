@@ -76,7 +76,7 @@ def load_dataset():
 
     # Normal mode: load from filesystem via MCP server
     try:
-        response = mcp_post("/dataset/load", params={'dataset_name': dataset_name})
+        response = mcp_post("/dataset/load", params={'file_snapshot_path': dataset_name})
         if response.status_code == 200:
             clear_history(session_id=get_session_id())
             return jsonify(response.json())

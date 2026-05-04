@@ -295,7 +295,7 @@ def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeyp
 
     def fake_mcp_post(path, params):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()
@@ -356,7 +356,7 @@ def test_load_dataset_file_by_id_uses_data_file_path_without_dataset_object_id(m
 
     def fake_mcp_post(path, params):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()
@@ -411,7 +411,7 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
 
     def fake_mcp_post(path, params):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()
@@ -496,7 +496,7 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
 
     def fake_mcp_post(path, params):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()

@@ -458,7 +458,7 @@ def load_dataset_via_api(dataset_display_name, project_id):
             logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
+            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -530,7 +530,7 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
             logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
+            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -607,7 +607,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
             logger.info(f"Downloaded snapshot file to {temp_path}")
 
             # Load into MCP server
-            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
+            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -693,7 +693,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'dataset_name': temp_path})
+            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()

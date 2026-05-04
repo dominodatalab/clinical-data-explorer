@@ -7,7 +7,8 @@ What lives here:
 - `find_data_files()` — recursive search for supported files across the
   five known data roots (`datasets/`, `/mnt/data`, `/mnt/netapp-volumes`,
   `/domino/datasets`, `/domino/netapp-volumes`).
-- `load_dataset(name)` — resolves a dataset name to a path, reads it
+- `load_dataset(file_snapshot_path)` — resolves a dataset path reference,
+  reads it
   (CSV / parquet / SAS7BDAT / XPT), normalizes types, and stores the
   resulting DataFrame for the current session.
 - `_convert_arrow_types(df)` — defensive type coercion for parquet files
@@ -258,64 +259,12 @@ def find_data_files() -> List[Dict[str, str]]:
     return data_files
 
 
-def load_dataset(dataset_name: str) -> pd.DataFrame:
-    """Load a dataset from the datasets folder or /mnt/data"""
-    # TODO we discussed not saving this data into datasets for security purposes
-    # should probalby remove this code, to ensure that can't happen
-    # dataset name needs to be unique enough that we don't have two files from different snapshots
-    # getting treated as the same file
+def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
+    """Load a dataset"""
+    dataset_path = Path(file_snapshot_path)
 
-    # Find the dataset path - it could be a direct filename or a full path
-    dataset_path = None
-
-    # First check if it's a path starting with /mnt/data
-    if dataset_name.startswith('/mnt/data/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-
-    # Check if it's a path starting with /mnt/netapp-volumes
-    if dataset_path is None and dataset_name.startswith('/mnt/netapp-volumes/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-
-    # Check if it's a path starting with /domino/datasets
-    if dataset_path is None and dataset_name.startswith('/domino/datasets/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-
-    # Check if it's a path starting with /domino/netapp-volumes
-    if dataset_path is None and dataset_name.startswith('/domino/netapp-volumes/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-
-    # Handle any other absolute path (e.g. temp files from API downloads)
-    if dataset_path is None and dataset_name.startswith('/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists() and candidate_path.is_file():
-            dataset_path = candidate_path
-
-    # Then check the datasets folder
-    if dataset_path is None:
-        candidate_path = datasets_folder / dataset_name
-        if candidate_path.exists():
-            dataset_path = candidate_path
-
-    # If still not found, search all data files
-    if dataset_path is None:
-        # TODO how does find_data_files find my dataset file?
-        # need to double check the origin of the file
-        data_files = find_data_files()
-        for df_info in data_files:
-            if df_info['name'] == dataset_name or df_info['path'] == dataset_name:
-                dataset_path = Path(df_info['path'])
-                break
-
-    if dataset_path is None or not dataset_path.exists():
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_name}' not found")
+    if not dataset_path.exists():
+        raise HTTPException(status_code=404, detail=f"Dataset '{file_snapshot_path}' not found")
 
     try:
         # Load based on file extension
@@ -353,10 +302,10 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             raise HTTPException(status_code=400, detail=f"Unsupported file format: {file_ext}")
 
         # TODO when is this read?
-        _set_current_df(df, dataset_name)
+        _set_current_df(df, file_snapshot_path)
 
         # Log column types for debugging
-        logger.info(f"Loaded dataset: {dataset_name} (format: {file_ext})")
+        logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")
         logger.info(f"Column types after conversion:")
         for col in df.columns:
             logger.info(f"  {col}: {df[col].dtype}")

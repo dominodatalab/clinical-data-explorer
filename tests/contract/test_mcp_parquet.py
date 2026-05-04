@@ -61,7 +61,7 @@ def parquet_client(_mcp_app, parquet_path):
     session_id = f"pqtest-{uuid.uuid4().hex}"
     client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
 
-    resp = client.post("/dataset/load", params={"dataset_name": str(parquet_path)})
+    resp = client.post("/dataset/load", params={"file_snapshot_path": str(parquet_path)})
     assert resp.status_code == 200, f"parquet load failed: {resp.status_code} {resp.text}"
 
     yield client

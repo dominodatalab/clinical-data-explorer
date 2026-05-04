@@ -34,7 +34,7 @@ def mcp_client(_mcp_app):
     client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
 
     # Load the sample dataset via the public API — no internal poking.
-    resp = client.post("/dataset/load", params={"dataset_name": str(SAMPLE_CSV)})
+    resp = client.post("/dataset/load", params={"file_snapshot_path": str(SAMPLE_CSV)})
     assert resp.status_code == 200, f"fixture load failed: {resp.status_code} {resp.text}"
 
     yield client
