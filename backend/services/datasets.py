@@ -686,9 +686,8 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             try:
                 snaps = vol_client.list_snapshots(volume_unique_name=volume_key) or []
                 for s in snaps:
-                    sid = getattr(s, 'id', None)
-                    if sid == snapshot_id:
-                        snapshot_version = getattr(s, 'version', None)
+                    if s.id == snapshot_id:
+                        snapshot_version = s.version
                         break
             except Exception as e:
                 logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
