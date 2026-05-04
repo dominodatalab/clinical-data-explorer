@@ -64,6 +64,13 @@ export const state = {
         searchQuery: '',
         isSearchResult: false,
         loading: false,
+        // True once the deeplink URL hints (snapshot id, file path) have
+        // been applied to the modal once. Without this flag, every later
+        // snapshot change or modal reopen would yank the user back to the
+        // URL's original snapshot/folder/file. The hints are only useful
+        // for the first browser-open after a deeplink load — after that
+        // the user's manual choices should win.
+        deeplinkConsumed: false,
     },
 
     // Column metadata from /dataset/load - used to initialize UI without

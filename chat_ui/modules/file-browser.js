@@ -314,10 +314,24 @@ function populateSnapshotDropdown() {
         select.appendChild(option);
     });
 
-    // Pre-select: state.extensionSnapshotId if it matches, else active, else first
-    const preselect = state.extensionSnapshotId
-        && state.fileBrowserState.snapshots.find(s => s.id === state.extensionSnapshotId)
-        ? state.extensionSnapshotId
+    // Pre-select: URL-derived snapshot id if it matches, else active, else first.
+    // For datasets the URL carries datasetSnapshotId (state.extensionSnapshotId);
+    // for netapp it carries netAppVolumeSnapshotId (which may be the synthetic
+    // 'latest' — that matches the synthetic snapshot the backend appends).
+    // Once the user has manually chosen a snapshot (deeplinkConsumed flips
+    // true), we stop applying the URL hint.
+    const source = state.fileBrowserState.selectedSource;
+    let urlSnapshotId = null;
+    if (!state.fileBrowserState.deeplinkConsumed && source) {
+        if (source.type === 'dataset') {
+            urlSnapshotId = state.extensionSnapshotId;
+        } else if (source.type === 'netapp') {
+            urlSnapshotId = state.extensionNetAppVolumeSnapshotId;
+        }
+    }
+    const preselect = urlSnapshotId
+        && state.fileBrowserState.snapshots.find(s => s.id === urlSnapshotId)
+        ? urlSnapshotId
         : (state.fileBrowserState.activeSnapshotId || (state.fileBrowserState.snapshots[0] && state.fileBrowserState.snapshots[0].id));
 
     if (preselect) {
@@ -333,16 +347,43 @@ async function onSnapshotSelected() {
     if (!snapshotId) return;
 
     state.fileBrowserState.selectedSnapshot = state.fileBrowserState.snapshots.find(s => s.id === snapshotId);
-    state.fileBrowserState.currentPath = '';
+
+    // On the first deeplink-driven open, drop the user into the folder
+    // that contains the target file so they don't have to navigate to it.
+    // The basename gets highlighted after the listing loads (below).
+    let targetPath = '';
+    let targetBasename = null;
+    if (!state.fileBrowserState.deeplinkConsumed && state.extensionFilePath) {
+        const lastSlash = state.extensionFilePath.lastIndexOf('/');
+        if (lastSlash >= 0) {
+            targetPath = state.extensionFilePath.substring(0, lastSlash);
+        }
+        targetBasename = state.extensionFilePath.substring(lastSlash + 1);
+    }
+
+    state.fileBrowserState.currentPath = targetPath;
     state.fileBrowserState.selectedFile = null;
     document.getElementById('file-browser-load-btn').disabled = true;
     document.getElementById('fb-selected-file').style.display = 'none';
 
     const source = state.fileBrowserState.selectedSource;
     if (source && source.type === 'dataset') {
-        await loadSnapshotFiles(snapshotId, '');
+        await loadSnapshotFiles(snapshotId, targetPath);
     } else if (source && source.type === 'netapp') {
         await loadNetAppFilesForBrowser(source.volumeKey || source.id);
+    }
+
+    if (targetBasename) {
+        const entry = state.fileBrowserState.entries.find(e => !e.isDir && e.name === targetBasename);
+        if (entry) {
+            selectFile(entry);
+        }
+    }
+    // Mark consumed after the first attempted apply, even if the file
+    // wasn't found — otherwise a subsequent snapshot change would keep
+    // forcing the user back into the deeplink folder.
+    if (!state.fileBrowserState.deeplinkConsumed && state.extensionFilePath) {
+        state.fileBrowserState.deeplinkConsumed = true;
     }
 }
 
