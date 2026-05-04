@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 from flask import Flask
 
-from backend.services.data_file_cache import DataFileCache
+from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
 from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
 
@@ -209,7 +209,7 @@ def test_data_file_path_removes_clashing_file_without_touching_other_files(monke
 
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
 
-    file_cache = DataFileCache(temp_root=tmp_path, maxsize=10, ttl=1)
+    file_cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=10, ttl=1)
 
     temp_root = tmp_path / "domino_api_datasets" / "netapp" / "ds-2" / "snap-2"
 

@@ -37,6 +37,7 @@ logger = logging.getLogger(__name__)
 
 _current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
 
+# TODO not thread safe
 # {session_id: {"df": DataFrame, "name": str, "last_accessed": float}}
 _sessions: Dict[str, dict] = {}
 

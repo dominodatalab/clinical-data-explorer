@@ -28,7 +28,7 @@ import requests
 from flask import jsonify
 
 from backend.auth import get_domino_api_host, get_passthrough_token
-from backend.services.data_file_cache import get_file_cache, DataFileCache
+from backend.services.download_file_metadata_cache import get_file_cache
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
 from chat_agent import clear_history

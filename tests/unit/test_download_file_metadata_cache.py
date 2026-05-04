@@ -1,17 +1,17 @@
-"""Unit tests for filesystem cleanup behavior in DataFileCache."""
+"""Unit tests for filesystem cleanup behavior in DownloadFileMetadataCache."""
 
 import importlib
 
-import backend.services.data_file_cache as data_file_cache_module
+import backend.services.download_file_metadata_cache as download_file_metadata_cache_module
 
 from pathlib import Path
 
-from backend.services.data_file_cache import DataFileCache
+from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
 
 
 def test_expire_removes_expired_file_from_filesystem(tmp_path):
     now = [100.0]
-    cache = DataFileCache(temp_root=tmp_path, maxsize=10, ttl=1, timer=lambda: now[0])
+    cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=10, ttl=1, timer=lambda: now[0])
 
     cached_file = cache.set(
         source_type="dataset",
@@ -34,7 +34,7 @@ def test_expire_removes_expired_file_from_filesystem(tmp_path):
 
 
 def test_popitem_removes_file_when_cache_exceeds_maxsize(tmp_path):
-    cache = DataFileCache(temp_root=tmp_path, maxsize=1, ttl=60)
+    cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=1, ttl=60)
 
     evicted_file = cache.set(
         source_type="dataset",
@@ -52,7 +52,7 @@ def test_popitem_removes_file_when_cache_exceeds_maxsize(tmp_path):
     )
 
     # Adding the second entry forces TTLCache to evict the older one, which
-    # should trigger DataFileCache.popitem() and delete the old file on disk.
+    # should trigger DownloadFileMetadataCache.popitem() and delete the old file on disk.
     assert not evicted_file.exists()
     assert surviving_file == Path(tmp_path) / "domino_api_datasets" / "dataset" / "ds-2" / "snap-2" / "adae.csv"
     assert surviving_file.parent.exists()
@@ -64,7 +64,7 @@ def test_get_file_cache_uses_cache_config_environment_variables(monkeypatch):
 
     # These settings are read when the module is imported, so reload it after
     # changing the environment and then construct the singleton cache.
-    reloaded_module = importlib.reload(data_file_cache_module)
+    reloaded_module = importlib.reload(download_file_metadata_cache_module)
     reloaded_module.get_file_cache.cache_clear()
 
     cache = reloaded_module.get_file_cache()
