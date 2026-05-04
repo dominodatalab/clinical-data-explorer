@@ -28,12 +28,12 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
-from mcp_server.session import _get_session_dataset_name, get_current_df
+from mcp_server.session import _get_session_dataset_name, get_current_df, load_current_df
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
 )
-from mcp_server.services.data_loading import find_data_files, load_dataset
+from mcp_server.services.data_loading import find_data_files
 from mcp_server.types import DatasetInfo, DatasetList
 
 logger = logging.getLogger(__name__)
@@ -55,7 +55,7 @@ async def load_dataset_endpoint(
     file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
 ):
     """Load a specific dataset file and return column metadata."""
-    df = load_dataset(file_snapshot_path)
+    df = load_current_df(file_snapshot_path)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)

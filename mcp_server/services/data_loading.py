@@ -9,8 +9,7 @@ What lives here:
   `/domino/datasets`, `/domino/netapp-volumes`).
 - `load_dataset(file_snapshot_path)` — resolves a dataset path reference,
   reads it
-  (CSV / parquet / SAS7BDAT / XPT), normalizes types, and stores the
-  resulting DataFrame for the current session.
+  (CSV / parquet / SAS7BDAT / XPT), and normalizes types.
 - `_convert_arrow_types(df)` — defensive type coercion for parquet files
   that come back with PyArrow-backed dtypes or string-typed numeric
   columns (very common for upstream-exported clinical data).
@@ -44,7 +43,6 @@ from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
 )
-from mcp_server.session import _set_current_df
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +258,7 @@ def find_data_files() -> List[Dict[str, str]]:
 
 
 def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
-    """Load a dataset"""
+    """Load a dataset file from disk and return the DataFrame."""
     dataset_path = Path(file_snapshot_path)
 
     if not dataset_path.exists():
@@ -300,9 +298,6 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
             df = _convert_arrow_types(df)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file format: {file_ext}")
-
-        # TODO when is this read?
-        _set_current_df(df, file_snapshot_path)
 
         # Log column types for debugging
         logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")

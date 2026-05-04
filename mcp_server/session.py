@@ -28,6 +28,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
 from mcp_server.dataframe_cache import get_cache
+from mcp_server.services.data_loading import load_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +44,7 @@ _current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('sessi
 
 @dataclass
 class LoadedDataEntry:
-    name: str
+    file_snapshot_path: str
     last_accessed: float = 0
 
 _sessions: Dict[str, LoadedDataEntry] = {}
@@ -76,15 +77,15 @@ def _evict_stale_sessions():
             del _sessions[sid]
 
 
-def _set_current_df(df: pd.DataFrame, name: str):
+def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
     """Store a DataFrame for the current session."""
     session_id = _current_session_id.get()
 
     df_cache = get_cache()
-    df_cache[name] = df
+    df_cache[file_snapshot_path] = df
 
     _sessions[session_id] = LoadedDataEntry(
-        name=name,
+        file_snapshot_path=file_snapshot_path,
         last_accessed=time.time()
     )
     _evict_stale_sessions()
@@ -95,19 +96,27 @@ def _get_session_dataset_name() -> Optional[str]:
     session_id = _current_session_id.get()
     session = _sessions.get(session_id)
     if session:
-        return session.name
+        return session.file_snapshot_path
     return None
 
 
+def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
+    """Load a dataset file for the current session and cache it."""
+    df = load_dataset(file_snapshot_path)
+    _set_current_df(df, file_snapshot_path)
+    return df
+
+
 def get_current_df() -> pd.DataFrame:
-    """Get the current dataframe for this session, raise error if none loaded"""
+    """Get the current dataframe for this session, reloading on cache miss."""
     session_id = _current_session_id.get()
     session = _sessions.get(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
 
     df_cache = get_cache()
-    df = df_cache.get(session.name)
+    df = df_cache.get(session.file_snapshot_path)
     if df is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+        logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
+        df = load_current_df(session.file_snapshot_path)
     return df
