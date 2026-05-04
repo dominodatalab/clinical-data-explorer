@@ -17,6 +17,7 @@ caller imports `get_current_df` from this module — there is no copy and
 no DataFrame-as-parameter passing.
 """
 import contextvars
+from dataclasses import dataclass
 import logging
 import time
 from typing import Dict, Optional
@@ -26,6 +27,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
+from mcp_server.dataframe_cache import get_cache
 
 logger = logging.getLogger(__name__)
 
@@ -38,9 +40,13 @@ logger = logging.getLogger(__name__)
 _current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
 
 # TODO not thread safe
-# {session_id: {"df": DataFrame, "name": str, "last_accessed": float}}
-_sessions: Dict[str, dict] = {}
 
+@dataclass
+class LoadedDataEntry:
+    name: str
+    last_accessed: float = 0
+
+_sessions: Dict[str, LoadedDataEntry] = {}
 
 class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
@@ -49,7 +55,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         _current_session_id.set(session_id)
         # Touch the session so it stays alive
         if session_id in _sessions:
-            _sessions[session_id]["last_accessed"] = time.time()
+            _sessions[session_id].last_accessed = time.time()
         response = await call_next(request)
         return response
 
@@ -58,13 +64,13 @@ def _evict_stale_sessions():
     """Remove sessions that haven't been accessed recently."""
     now = time.time()
     stale = [sid for sid, s in _sessions.items()
-             if now - s.get("last_accessed", 0) > SESSION_MAX_AGE]
+             if now - s.last_accessed > SESSION_MAX_AGE]
     for sid in stale:
         logger.info(f"Evicting stale session: {sid}")
         del _sessions[sid]
     # If still over limit, evict oldest
     if len(_sessions) > SESSION_MAX_COUNT:
-        by_age = sorted(_sessions.items(), key=lambda x: x[1].get("last_accessed", 0))
+        by_age = sorted(_sessions.items(), key=lambda x: x[1].last_accessed)
         for sid, _ in by_age[:len(_sessions) - SESSION_MAX_COUNT]:
             logger.info(f"Evicting session (over limit): {sid}")
             del _sessions[sid]
@@ -73,11 +79,14 @@ def _evict_stale_sessions():
 def _set_current_df(df: pd.DataFrame, name: str):
     """Store a DataFrame for the current session."""
     session_id = _current_session_id.get()
-    _sessions[session_id] = {
-        "df": df,
-        "name": name,
-        "last_accessed": time.time(),
-    }
+
+    df_cache = get_cache()
+    df_cache[name] = df
+
+    _sessions[session_id] = LoadedDataEntry(
+        name=name,
+        last_accessed=time.time()
+    )
     _evict_stale_sessions()
 
 
@@ -86,7 +95,7 @@ def _get_session_dataset_name() -> Optional[str]:
     session_id = _current_session_id.get()
     session = _sessions.get(session_id)
     if session:
-        return session.get("name")
+        return session.name
     return None
 
 
@@ -94,6 +103,11 @@ def get_current_df() -> pd.DataFrame:
     """Get the current dataframe for this session, raise error if none loaded"""
     session_id = _current_session_id.get()
     session = _sessions.get(session_id)
-    if session is None or session.get("df") is None:
+    if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
-    return session["df"]
+
+    df_cache = get_cache()
+    df = df_cache.get(session.name)
+    if df is None:
+        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+    return df
