@@ -89,15 +89,21 @@ def find_data_files_fallback():
 
 
 def discover_netapp_files_for_project(project_id, token):
-    """Discover NetApp volume files for a project.
+    """Discover NetApp volumes (and their r/w-head files) for a project.
     Queries the RemoteFS microservice for volumes attached to the project,
     then lists supported files in each volume using the domino_data SDK.
-    Returns a list of {display_name, volume_key} dicts, or empty list on failure.
+    Returns (netapp_files, netapp_volumes):
+      - netapp_files: list of {display_name, volume_key, volume_name, volume_id}
+      - netapp_volumes: list of {id, name, unique_name} for every volume,
+        even ones whose r/w head currently has no supported files. The
+        netapp deeplink flow needs the volume registry to resolve a
+        netAppVolumeId in the URL when the target file lives only in a
+        non-current snapshot.
     """
     remotefs_host = os.environ.get('DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT')
     if not remotefs_host:
         logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
-        return []
+        return [], []
 
     # Ensure the host has a scheme
     if not remotefs_host.startswith('http'):
@@ -116,23 +122,30 @@ def discover_netapp_files_for_project(project_id, token):
 
         if response.status_code != 200:
             logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
-            return []
+            return [], []
 
         volumes_data = response.json()
         # The response may be a list directly or wrapped in a key
         volumes = volumes_data if isinstance(volumes_data, list) else volumes_data.get('data', volumes_data.get('volumes', []))
 
         if not volumes:
-            return []
+            return [], []
 
         from domino_data.netapp_volumes import NetAppVolumeClient
         vol_client = NetAppVolumeClient(token=token)
 
         netapp_files = []
+        netapp_volumes = []
         for vol in volumes:
             vol_name = vol.get('name', '')
             vol_id = vol.get('id', '')
             vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
+
+            netapp_volumes.append({
+                'id': vol_id,
+                'name': vol_name,
+                'unique_name': vol_unique_name,
+            })
 
             try:
                 # Use client.list_files() which returns plain strings (file paths),
@@ -151,14 +164,14 @@ def discover_netapp_files_for_project(project_id, token):
                 error_msg = str(e).split('\n')[0][:200]
                 logger.warning(f'Failed to list files for NetApp volume {vol_name}: {error_msg}')
 
-        return netapp_files
+        return netapp_files, netapp_volumes
 
     except requests.exceptions.ConnectionError:
         logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
-        return []
+        return [], []
     except Exception as e:
         logger.warning(f"Error discovering NetApp volumes: {e}")
-        return []
+        return [], []
 
 
 def list_datasets_via_api(project_id):
@@ -228,13 +241,17 @@ def list_datasets_via_api(project_id):
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
 
-        # Also discover NetApp volume files for this project
-        netapp_files = discover_netapp_files_for_project(project_id, token)
+        # Also discover NetApp volume files (and the volume registry) for
+        # this project. The volume registry lets the netapp deeplink flow
+        # resolve a netAppVolumeId from the URL even when the target file
+        # only exists in a non-current snapshot.
+        netapp_files, netapp_volumes = discover_netapp_files_for_project(project_id, token)
 
         return jsonify({
             'datasets': file_list,
             'dataset_info': dataset_info,
             'netapp_files': netapp_files,
+            'netapp_volumes': netapp_volumes,
             'current_dataset': None,
             'extension_mode': True,
             'project_id': project_id
@@ -660,6 +677,21 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         from domino_data.netapp_volumes import NetAppVolumeClient
         vol_client = NetAppVolumeClient(token=token)
         volume = vol_client.get_volume(volume_key)
+
+        # The SDK pins reads by version (int), but the netapp deeplink URL
+        # carries only a snapshot UUID. When we have an id but no version
+        # (e.g. the user landed via a netAppVolumeFileContext URL), look up
+        # the version from the volume's snapshot list.
+        if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
+            try:
+                snaps = vol_client.list_snapshots(volume_unique_name=volume_key) or []
+                for s in snaps:
+                    sid = getattr(s, 'id', None)
+                    if sid == snapshot_id:
+                        snapshot_version = getattr(s, 'version', None)
+                        break
+            except Exception as e:
+                logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
 
         # Pin the volume to a specific snapshot so list_files / File() operate
         # against that snapshot's contents rather than the r/w head.

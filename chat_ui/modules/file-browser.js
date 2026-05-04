@@ -121,6 +121,17 @@ export function openFileBrowserModal() {
             srcSelect.value = match.id;
             onSourceSelected();
         }
+    } else if (state.extensionNetAppVolumeId) {
+        // NetApp deeplink: preselect the source matching the URL's
+        // netAppVolumeId. resolveNetAppDeeplink in script.js has
+        // already added the volume to the source list when needed.
+        const match = state.fileBrowserState.sources.find(
+            s => s.type === 'netapp' && s.volumeId === state.extensionNetAppVolumeId
+        );
+        if (match) {
+            srcSelect.value = match.id;
+            onSourceSelected();
+        }
     }
 }
 

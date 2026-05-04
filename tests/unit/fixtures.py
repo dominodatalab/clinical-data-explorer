@@ -63,6 +63,8 @@ def install_fake_netapp_client(monkeypatch, volume_files_by_key, file_contents_b
             return FakeVolumeFile(file_name)
 
     class FakeNetAppVolumeClient:
+        snapshots_by_volume = {}
+
         def __init__(self, token):
             captured["tokens"].append(token)
 
@@ -73,6 +75,10 @@ def install_fake_netapp_client(monkeypatch, volume_files_by_key, file_contents_b
         def list_files(self, volume_key):
             captured["list_files_calls"].append(volume_key)
             return volume_files_by_key[volume_key]
+
+        def list_snapshots(self, volume_unique_name):
+            captured.setdefault("list_snapshots_calls", []).append(volume_unique_name)
+            return list(self.snapshots_by_volume.get(volume_unique_name, []))
 
     class FakeNetAppVolumeConfig:
         def __init__(self, snapshot_version):
