@@ -120,6 +120,25 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     assert "this server is at capacity." in response.get_data(as_text=True)
 
 
+def test_load_dataset_returns_413_when_processor_rejects_large_file(monkeypatch):
+    app = _create_test_app(testing=True)
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-too-large")
+    monkeypatch.setattr(
+        data_routes,
+        "process_dataset_load_request",
+        lambda load_request: (_ for _ in ()).throw(
+            data_routes.file_size_limits.DataFileTooLarge("too-big.csv must be less than or equal to 10 bytes to be processable")
+        ),
+    )
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={"dataset": "too-big.csv"})
+
+    assert response.status_code == 413
+    assert "too-big.csv must be less than or equal to 10 bytes to be processable" in response.get_data(as_text=True)
+
+
 def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
     queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=10)
     app = _create_test_app()

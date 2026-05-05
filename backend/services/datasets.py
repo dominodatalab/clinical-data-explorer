@@ -477,6 +477,9 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, sessio
     session_id = session_id or get_session_id()
     if not token:
         return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
+    api_host = get_domino_api_host()
+    if not api_host:
+        return jsonify({'error': 'Domino API host not configured'}), 500
 
     # Parse "dataset_name/file_name" format
     parts = dataset_display_name.split('/', 1)
@@ -485,20 +488,33 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, sessio
 
     ds_name, file_name = parts
 
-    list_snapshots_url = f'/api/datasetrw/v1/datasets/{dataset_id}/snapshots'
-    snapshots_list_response = httpclient.get(
-        list_snapshots_url,
-        params={'limit': 1},
-        headers=headers,
-    )
+    headers = {'Authorization': f'Bearer {token}'}
 
-    snapshots = snapshots_list_response["snapshots"]
-    if len(snapshots) == 0:
-        raise HTTPException(status_code=422, detail=f"No snapshots found for dataset {dataset_id}")
+    try:
+        snapshots_list_response = httpclient.get(
+            f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}/snapshots',
+            params={'limit': 1},
+            headers=headers,
+        )
+        snapshots = snapshots_list_response.get("snapshots", [])
+        if len(snapshots) == 0:
+            return jsonify({'error': f'No snapshots found for dataset {dataset_id}'}), 422
 
-    default_snapshot_id = snapshots[0]["id"]
-
-    return load_dataset_file_from_snapshot(dataset_display_name, dataset_id, default_snapshot_id, token, session_id)
+        default_snapshot_id = snapshots[0]["id"]
+        return load_dataset_file_from_snapshot(
+            dataset_display_name,
+            dataset_id,
+            default_snapshot_id,
+            token,
+            session_id,
+        )
+    except httpclient.HTTPClientError as exc:
+        logger.error(f"Error listing snapshots for dataset {dataset_id}: {exc.text}")
+        return jsonify({'error': exc.text}), exc.status_code
+    except Exception as e:
+        logger.error(f"Error loading dataset file by ID: {e}")
+        logger.error(traceback.format_exc())
+        return jsonify({'error': f'Error loading dataset: {str(e)}'}), 500
 
 
 def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id, token=None, session_id=None):
@@ -522,7 +538,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
 
     ds_name, file_path = parts
 
-    validate_dataset_file_size(snapshot_id, file_path)
+    validate_dataset_file_size(snapshot_id, file_path, token=token, api_host=api_host)
 
     try:
 
@@ -607,9 +623,10 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 
     vol_name, file_name = parts
 
-    # There is no API for getting the metadata for a netapp file, so we can't know the size before downloading
-    # So, we assume that the user knows what they're doing and wouldn't download a file bigger than 500 MB
-    file_size_limits.enforce(file_path, file_size_limits.DATA_FILE_SIZE_LIMIT)
+    # There is no API for getting the metadata for a netapp file, so we can't know
+    # the exact size before download. Use the configured size limit as a worst-case
+    # bound so we still reject obviously unsafe memory conditions.
+    file_size_limits.enforce(file_name, file_size_limits.DATA_FILE_SIZE_LIMIT)
 
     try:
         from domino_data.netapp_volumes import NetAppVolumeClient
@@ -866,28 +883,26 @@ def _parse_datasetrw_rows(rows, subpath):
     return entries
 
 
-def validate_dataset_file_size(snapshot_id: str, file_path: str):
-    api_host = get_domino_api_host()
+def validate_dataset_file_size(snapshot_id: str, file_path: str, token=None, api_host=None):
+    """Fetch dataset file metadata and enforce file-size limits before download."""
+    api_host = api_host or get_domino_api_host()
     token = token or get_passthrough_token()
+    if not api_host:
+        raise RuntimeError('Domino API host not configured')
+    if not token:
+        raise RuntimeError('Authentication required.')
 
     headers = {'Authorization': f'Bearer {token}'}
-
     metadata_url = f"{api_host}/v4/datasetrw/snapshot/{snapshot_id}/file/meta"
-    try:
-        metadata = httpclient.get(
-            metadata_url,
-            params={'path': file_path},
-            headers=headers,
-        )
-
-        file_size_limits.enforce(file_path, metadata.fileSize)
-
-    except HTTPException as exn:
-        if exn.status_code not in (401, 403):
-            logger.error(f"failed to get file metadata: {exn.status_code} - {exn.text[:200]}")
-            return jsonify({'error': f'Failed to get file metadata (HTTP {exn.status_code})'}), exn.status_code
-
-        raise exn
+    metadata = httpclient.get(
+        metadata_url,
+        params={'path': file_path},
+        headers=headers,
+    )
+    file_size = metadata.get("fileSize")
+    if file_size is None:
+        raise RuntimeError(f'Missing fileSize in metadata for {file_path}')
+    file_size_limits.enforce(file_path, file_size)
 
 @contextmanager
 def data_file_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:

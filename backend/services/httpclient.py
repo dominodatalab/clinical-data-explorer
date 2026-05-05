@@ -1,9 +1,19 @@
-from flask import jsonify
+"""Small HTTP helpers for backend service calls."""
 
-"""
-These helpers just pass through arguments to requests, but add some defaults
-"""
-def get(is_json: bool=True, *args, **kwargs):
+import requests
+
+
+class HTTPClientError(RuntimeError):
+    """Raised when an HTTP helper call returns a non-success response."""
+
+    def __init__(self, status_code: int, text: str):
+        super().__init__(text)
+        self.status_code = status_code
+        self.text = text
+
+
+def get(*args, is_json: bool = True, **kwargs):
+    """Issue a GET request with backend defaults and uniform error handling."""
     response = requests.get(
         *args,
         **kwargs,
@@ -12,10 +22,10 @@ def get(is_json: bool=True, *args, **kwargs):
     )
 
     if response.status_code in (401, 403):
-        raise HTTPException(status_code=response.status_code, detail='Access denied. Your session may have expired.')
+        raise HTTPClientError(response.status_code, 'Access denied. Your session may have expired.')
 
     if response.status_code > 399:
-        raise HTTPException(status_code=response.status_code, detail=response.text)
+        raise HTTPClientError(response.status_code, response.text)
 
     if is_json:
         return response.json()

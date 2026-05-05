@@ -30,7 +30,7 @@ import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
-from werkzeug.exceptions import TooManyRequests
+from werkzeug.exceptions import RequestEntityTooLarge, TooManyRequests
 
 from backend.services.column_labels import load_column_labels
 from backend.services.datasets import (
@@ -80,9 +80,8 @@ def load_dataset():
         ) from exc
 
     except file_size_limits.DataFileTooLarge as exc:
-        raise HTTPException(
-            status_code=413,
-            detail=exc.text,
+        raise RequestEntityTooLarge(
+            description=str(exc),
         ) from exc
 
 
