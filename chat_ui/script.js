@@ -220,6 +220,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasetsUrl += '&snapshotId=' + encodeURIComponent(state.extensionSnapshotId);
             }
         } else if (state.extensionProjectId) {
+            // Project mode also covers the netapp deeplink shapes — they
+            // always carry projectId, and the project listing already
+            // includes per-volume file/volume metadata we need to resolve
+            // netAppVolumeId from the URL.
             datasetsUrl = apiUrl('datasets') + '?projectId=' + encodeURIComponent(state.extensionProjectId);
         } else {
             datasetsUrl = apiUrl('datasets');
@@ -249,6 +253,16 @@ document.addEventListener('DOMContentLoaded', () => {
                 // Build sources list from response
                 buildSourcesList(data);
 
+                // Resolve a netapp deeplink (mountPointType=netAppVolume[FileContext])
+                // before the auto-load gate runs. We need the /datasets
+                // response to map netAppVolumeId (UUID) -> volume_key
+                // (uniqueName) and volume_name. For *FileContext we then
+                // synthesize a pendingDataset / pendingLoadContext just
+                // like a permalink would have produced — even when the
+                // target file lives only in a non-current snapshot and
+                // therefore won't be in the r/w-head listing.
+                resolveNetAppDeeplink(data);
+
                 const allValues = [
                     ...(data.datasets || []),
                     ...(data.netapp_files || []).map(nf => nf.display_name)
@@ -273,6 +287,13 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => {
                         autoLoadDataset(pendingDs, data);
                     }, 100);
+                } else if (state.extensionNetAppVolumeId && !state.extensionFilePath) {
+                    // NetApp volume deeplink without specific file: open
+                    // the file browser with the target volume preselected.
+                    // Takes precedence over the empty-state message — even
+                    // when the project has no other files, the user still
+                    // wants to browse this volume's snapshots.
+                    setTimeout(() => openFileBrowserModal(), 200);
                 } else if (allValues.length === 0) {
                     const emptyMessage = document.getElementById('table-empty-message');
                     const tableEmptyState = document.getElementById('table-empty-state');
@@ -341,6 +362,73 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         state.fileBrowserState.sources = sources;
+    }
+
+    function resolveNetAppDeeplink(data) {
+        // Translate the netapp deeplink URL params into the same
+        // (pendingDataset, pendingLoadContext) shape that
+        // parsePermalinkFromUrl produces, so the existing auto-load path
+        // in autoLoadDataset() can carry the file load through. No-op
+        // unless we're actually in a netapp deeplink.
+        if (!state.extensionNetAppVolumeId) return;
+
+        const volumes = data.netapp_volumes || [];
+        const filesForVol = (data.netapp_files || []).filter(nf => nf.volume_id === state.extensionNetAppVolumeId);
+        let volumeMeta = volumes.find(v => v.id === state.extensionNetAppVolumeId);
+
+        // Older /datasets responses may not include netapp_volumes — fall
+        // back to whatever volume metadata we can salvage from netapp_files.
+        if (!volumeMeta && filesForVol.length > 0) {
+            const sample = filesForVol[0];
+            volumeMeta = {
+                id: sample.volume_id,
+                name: sample.volume_name,
+                unique_name: sample.volume_key,
+            };
+        }
+
+        if (!volumeMeta) {
+            console.warn('NetApp volume from URL not found in project listing:', state.extensionNetAppVolumeId);
+            return;
+        }
+
+        // Make sure the volume is browsable from the file-browser source
+        // list even when its r/w head has no supported files (e.g. the
+        // file we want only exists in an older snapshot).
+        const sources = state.fileBrowserState.sources;
+        if (!sources.some(s => s.type === 'netapp' && s.volumeKey === volumeMeta.unique_name)) {
+            sources.push({
+                id: volumeMeta.unique_name,
+                name: volumeMeta.name,
+                type: 'netapp',
+                volumeKey: volumeMeta.unique_name,
+                volumeId: volumeMeta.id,
+            });
+        }
+
+        if (!state.extensionFilePath) {
+            // mountPointType=netAppVolume — caller will open the file
+            // browser; we just needed to ensure the volume is selectable.
+            return;
+        }
+
+        // File context shape: synthesize pendingDataset + load context.
+        // 'latest' is a synthetic snapshot id meaning "r/w head" — treat
+        // it as no snapshot pinning, matching the file-browser convention.
+        const snapId = state.extensionNetAppVolumeSnapshotId;
+        const pinnedSnapshot = snapId && snapId !== 'latest' ? snapId : null;
+
+        const displayName = `${volumeMeta.name}/${state.extensionFilePath}`;
+        tableState.pendingDataset = displayName;
+        tableState.pendingLoadContext = {
+            sourceType: 'netapp',
+            volumeKey: volumeMeta.unique_name,
+            volumeId: volumeMeta.id,
+            snapshotId: pinnedSnapshot,
+            // snapshotVersion (int) is what the SDK pin needs. The URL
+            // only carries the UUID, so the backend resolves it.
+            snapshotVersion: null,
+        };
     }
 
     function autoLoadDataset(datasetName, data) {

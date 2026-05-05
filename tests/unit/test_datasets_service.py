@@ -76,14 +76,23 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
     monkeypatch.setattr(
         services,
         "discover_netapp_files_for_project",
-        lambda project_id, token: netapp_calls.append((project_id, token)) or [
-            {
-                "display_name": "NetApp Volume/adsl.csv",
-                "volume_key": "vol-123",
-                "volume_name": "NetApp Volume",
-                "volume_id": "nv-1",
-            }
-        ],
+        lambda project_id, token: netapp_calls.append((project_id, token)) or (
+            [
+                {
+                    "display_name": "NetApp Volume/adsl.csv",
+                    "volume_key": "vol-123",
+                    "volume_name": "NetApp Volume",
+                    "volume_id": "nv-1",
+                }
+            ],
+            [
+                {
+                    "id": "nv-1",
+                    "name": "NetApp Volume",
+                    "unique_name": "vol-123",
+                }
+            ],
+        ),
     )
 
     captured = install_fake_dataset_client(
@@ -112,6 +121,13 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
                 "volume_key": "vol-123",
                 "volume_name": "NetApp Volume",
                 "volume_id": "nv-1",
+            }
+        ],
+        "netapp_volumes": [
+            {
+                "id": "nv-1",
+                "name": "NetApp Volume",
+                "unique_name": "vol-123",
             }
         ],
         "current_dataset": None,
@@ -539,3 +555,57 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
     assert not expected_path.parent.exists()
+
+
+def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_omitted(
+    monkeypatch,
+    tmp_path,
+):
+    """When the netapp deeplink URL provides a snapshot UUID but no version,
+    load_netapp_volume_file resolves the version via list_snapshots so the SDK
+    can pin reads to that snapshot."""
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    monkeypatch.setattr(services, "clear_history", lambda session_id: None)
+
+    netapp_client = install_fake_netapp_client(
+        monkeypatch,
+        {"vol-123": ["diabetes_dataset.csv"]},
+        {"diabetes_dataset.csv": b"A,B\n1,2\n"},
+    )
+
+    # Set up the snapshot UUID -> version mapping the resolver will look up.
+    from domino_data.netapp_volumes import NetAppVolumeClient as FakeClient
+    FakeClient.snapshots_by_volume = {
+        "vol-123": [
+            types.SimpleNamespace(id="snap-uuid-aaa", version=4),
+            types.SimpleNamespace(id="snap-uuid-bbb", version=9),
+        ]
+    }
+
+    monkeypatch.setattr(
+        services,
+        "mcp_post",
+        lambda path, params: _FakeResponse(200, {"loaded": True}),
+    )
+
+    response = _call_service(
+        app,
+        services.load_netapp_volume_file,
+        "Safety Volume/diabetes_dataset.csv",
+        "vol-123",
+        None,         # snapshot_version omitted (URL only carries the UUID)
+        "snap-uuid-bbb",
+    )
+
+    assert response.status_code == 200
+    body = response.get_json()
+    # SDK pin happened with the resolved version (9) — captured via volume.update().
+    assert netapp_client["updated_snapshot_versions"] == ["9"]
+    assert netapp_client.get("list_snapshots_calls") == ["vol-123"]
+    assert body["snapshotVersion"] == 9
+    assert body["snapshotId"] == "snap-uuid-bbb"

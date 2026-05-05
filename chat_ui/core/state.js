@@ -35,6 +35,19 @@ export const state = {
     extensionSnapshotId: new URLSearchParams(window.location.search).get('datasetSnapshotId') || null,
     extensionFilePath: new URLSearchParams(window.location.search).get('filePath') || null,
 
+    // NetApp deeplink mode. Two shapes:
+    //   ?mountPointType=netAppVolume&netAppVolumeId=<uuid>&projectId=Z
+    //     -> open the file browser scoped to that volume.
+    //   ?mountPointType=netAppVolumeFileContext&netAppVolumeId=<uuid>
+    //     &netAppVolumeSnapshotId=<latest|uuid>&filePath=<path>&projectId=Z
+    //     -> auto-load the file from that snapshot (or the r/w head if
+    //        the snapshot id is the synthetic 'latest').
+    // mountPointType is also kept around so permalink generation can
+    // round-trip the original deeplink.
+    extensionMountPointType: new URLSearchParams(window.location.search).get('mountPointType') || null,
+    extensionNetAppVolumeId: new URLSearchParams(window.location.search).get('netAppVolumeId') || null,
+    extensionNetAppVolumeSnapshotId: new URLSearchParams(window.location.search).get('netAppVolumeSnapshotId') || null,
+
     // ===== FILE BROWSER STATE =====
     cachedDatasetListResponse: null,
     fileBrowserState: {
@@ -51,6 +64,13 @@ export const state = {
         searchQuery: '',
         isSearchResult: false,
         loading: false,
+        // True once the deeplink URL hints (snapshot id, file path) have
+        // been applied to the modal once. Without this flag, every later
+        // snapshot change or modal reopen would yank the user back to the
+        // URL's original snapshot/folder/file. The hints are only useful
+        // for the first browser-open after a deeplink load — after that
+        // the user's manual choices should win.
+        deeplinkConsumed: false,
     },
 
     // Column metadata from /dataset/load - used to initialize UI without
