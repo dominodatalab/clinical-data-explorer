@@ -117,6 +117,9 @@ def get_current_df() -> pd.DataFrame:
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
     if df is None:
+        # if there is a cache miss here, we have already deleted the file snapshot on disk
+        # reloading would mean that this server needs to be able to authorize calling the data APIs
+        # it needs the user's identity to do that
+        # so we can't reload the dataset from here
         logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
-        df = load_current_df(session.file_snapshot_path)
     return df
