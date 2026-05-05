@@ -9,6 +9,7 @@ from pathlib import Path
 import pytest
 from flask import Flask
 
+from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
 from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
@@ -256,6 +257,72 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
     assert not expected_root.exists()
 
 
+@pytest.mark.parametrize(
+    ("load_request", "handler_name", "expected_args", "expected_kwargs"),
+    [
+        (
+            DatasetLoadRequest(dataset="datasets/adsl.csv", session_id="sid-local", authorization_header="Bearer token-123"),
+            "load_local_dataset_file",
+            ("datasets/adsl.csv",),
+            {"session_id": "sid-local"},
+        ),
+        (
+            DatasetLoadRequest(dataset="AE/adsl.csv", session_id="sid-proj", authorization_header="Bearer token-123", project_id="proj-1"),
+            "load_dataset_via_api",
+            ("AE/adsl.csv", "proj-1"),
+            {"token": "token-123", "session_id": "sid-proj"},
+        ),
+        (
+            DatasetLoadRequest(dataset="Study/adsl.csv", session_id="sid-ds", authorization_header="Bearer token-123", dataset_id="ds-1"),
+            "load_dataset_file_by_id",
+            ("Study/adsl.csv", "ds-1"),
+            {"token": "token-123", "session_id": "sid-ds"},
+        ),
+        (
+            DatasetLoadRequest(
+                dataset="Study/reports/adsl.csv",
+                session_id="sid-snap",
+                authorization_header="Bearer token-123",
+                dataset_id="ds-1",
+                snapshot_id="snap-1",
+            ),
+            "load_dataset_file_from_snapshot",
+            ("Study/reports/adsl.csv", "ds-1", "snap-1"),
+            {"token": "token-123", "session_id": "sid-snap"},
+        ),
+        (
+            DatasetLoadRequest(
+                dataset="Safety Volume/reports/adlb.csv",
+                session_id="sid-netapp",
+                authorization_header="Bearer token-123",
+                source_type="netapp",
+                volume_key="vol-1",
+                snapshot_version=7,
+                snapshot_id="snap-7",
+            ),
+            "load_netapp_volume_file",
+            ("Safety Volume/reports/adlb.csv", "vol-1", 7, "snap-7"),
+            {"token": "token-123", "session_id": "sid-netapp"},
+        ),
+    ],
+)
+def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, load_request, handler_name, expected_args, expected_kwargs):
+    services = _load_datasets_service(monkeypatch)
+
+    captured = []
+
+    def fake_handler(*args, **kwargs):
+        captured.append((args, kwargs))
+        return "ok"
+
+    monkeypatch.setattr(services, handler_name, fake_handler)
+
+    result = services.process_dataset_load_request(load_request)
+
+    assert result == "ok"
+    assert captured == [(expected_args, expected_kwargs)]
+
+
 def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeypatch, tmp_path):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
@@ -293,8 +360,9 @@ def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeyp
     expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-1" / "unset_snapshot_id" / "reports" / "visit.csv"
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
+        assert session_id == "sid-123"
         temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
@@ -354,8 +422,9 @@ def test_load_dataset_file_by_id_uses_data_file_path_without_dataset_object_id(m
     expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-123" / "unset_snapshot_id" / "adsl.csv"
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
+        assert session_id == "sid-456"
         temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
@@ -409,8 +478,9 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-9" / "snap-9" / "adsl.csv"
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
+        assert session_id == "sid-789"
         temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
@@ -494,8 +564,9 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     )
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
+        assert session_id == "sid-netapp"
         temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path

@@ -27,7 +27,12 @@ from pathlib import Path
 import requests
 from flask import jsonify
 
-from backend.auth import get_domino_api_host, get_passthrough_token
+from backend.auth import (
+    get_domino_api_host,
+    get_passthrough_token,
+    get_passthrough_token_from_authorization_header,
+)
+from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import get_file_cache
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
@@ -386,9 +391,29 @@ def _download_dataset_file(dataset, file_name, token):
         return response.content
 
 
-def load_dataset_via_api(dataset_display_name, project_id):
+def load_local_dataset_file(dataset_display_name, session_id=None):
+    """Load a filesystem-backed dataset into the MCP server."""
+    session_id = session_id or get_session_id()
+
+    try:
+        response = mcp_post(
+            "/dataset/load",
+            params={'file_snapshot_path': dataset_display_name},
+            session_id=session_id,
+        )
+        if response.status_code == 200:
+            clear_history(session_id=session_id)
+            return jsonify(response.json())
+        return jsonify({'error': response.json().get('detail', 'Failed to load dataset')}), response.status_code
+    except Exception as e:
+        logger.error(f"Error loading dataset: {e}")
+        return jsonify({'error': 'Could not connect to MCP server'}), 500
+
+
+def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None):
     """Download a file from a Domino dataset via API and load it into the MCP server."""
-    token = get_passthrough_token()
+    token = token or get_passthrough_token()
+    session_id = session_id or get_session_id()
     if not token:
         return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
 
@@ -458,7 +483,11 @@ def load_dataset_via_api(dataset_display_name, project_id):
             logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
+            mcp_response = mcp_post(
+                "/dataset/load",
+                params={'file_snapshot_path': temp_path},
+                session_id=session_id,
+            )
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -471,7 +500,7 @@ def load_dataset_via_api(dataset_display_name, project_id):
                 if active_snap_id:
                     result['snapshotId'] = active_snap_id
                 result['governanceFilename'] = file_name
-                clear_history(session_id=get_session_id())
+                clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -486,12 +515,13 @@ def load_dataset_via_api(dataset_display_name, project_id):
         return jsonify({'error': f'Error loading dataset: {str(e)}'}), 500
 
 
-def load_dataset_file_by_id(dataset_display_name, dataset_id):
+def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None):
     """Download a file from a Domino dataset by dataset ID and load it into the MCP server.
     Used when the app is opened via 'Open with...' (datasetFileContext mode).
     Skips the project-based dataset lookup since we already have the dataset ID.
     """
-    token = get_passthrough_token()
+    token = token or get_passthrough_token()
+    session_id = session_id or get_session_id()
     if not token:
         return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
 
@@ -530,7 +560,11 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
             logger.info(f"Downloaded {len(file_content)} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
+            mcp_response = mcp_post(
+                "/dataset/load",
+                params={'file_snapshot_path': temp_path},
+                session_id=session_id,
+            )
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -543,7 +577,7 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
                 if active_snap_id:
                     result['snapshotId'] = active_snap_id
                 result['governanceFilename'] = file_name
-                clear_history(session_id=get_session_id())
+                clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -558,12 +592,13 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id):
         return jsonify({'error': f'Error loading dataset: {str(e)}'}), 500
 
 
-def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id):
+def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id, token=None, session_id=None):
     """Download a file from a specific dataset snapshot using Domino API.
     Unlike DatasetClient which always uses the active snapshot,
     this uses /v4/datasetrw/snapshot/{snapshotId}/file/raw to download from any snapshot.
     """
-    token = get_passthrough_token()
+    token = token or get_passthrough_token()
+    session_id = session_id or get_session_id()
     if not token:
         return jsonify({'error': 'Authentication required.'}), 401
 
@@ -607,7 +642,11 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
             logger.info(f"Downloaded snapshot file to {temp_path}")
 
             # Load into MCP server
-            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
+            mcp_response = mcp_post(
+                "/dataset/load",
+                params={'file_snapshot_path': temp_path},
+                session_id=session_id,
+            )
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -617,7 +656,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
                 result['datasetId'] = dataset_id
                 result['snapshotId'] = snapshot_id
                 result['governanceFilename'] = file_path.split('/')[-1]
-                clear_history(session_id=get_session_id())
+                clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -632,7 +671,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
         return jsonify({'error': f'Error loading file from snapshot: {str(e)}'}), 500
 
 
-def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None):
+def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None, token=None, session_id=None):
     """Download a file from a NetApp volume and load it into the MCP server.
     Args:
         dataset_display_name: "VolumeName/file_name" format
@@ -644,7 +683,8 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             populate governance context in the response. The SDK pins the read
             by version, but governance attachments are keyed by snapshotId.
     """
-    token = get_passthrough_token()
+    token = token or get_passthrough_token()
+    session_id = session_id or get_session_id()
     if not token:
         return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
 
@@ -693,7 +733,11 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
-            mcp_response = mcp_post("/dataset/load", params={'file_snapshot_path': temp_path})
+            mcp_response = mcp_post(
+                "/dataset/load",
+                params={'file_snapshot_path': temp_path},
+                session_id=session_id,
+            )
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
@@ -710,7 +754,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
                 if snapshot_id:
                     result['snapshotId'] = snapshot_id
                 result['governanceFilename'] = file_name.split('/')[-1]
-                clear_history(session_id=get_session_id())
+                clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -724,6 +768,48 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         logger.error(traceback.format_exc())
         # TODO there should be file cleanup logic here
         return jsonify({'error': f'Error loading file from volume: {str(e)}'}), 500
+
+
+def process_dataset_load_request(load_request: DatasetLoadRequest):
+    """Process a queued dataset-load request through the appropriate load path."""
+    token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
+
+    if load_request.source_type == 'netapp' and load_request.volume_key:
+        return load_netapp_volume_file(
+            load_request.dataset,
+            load_request.volume_key,
+            load_request.snapshot_version,
+            load_request.snapshot_id,
+            token=token,
+            session_id=load_request.session_id,
+        )
+
+    if load_request.dataset_id and load_request.snapshot_id:
+        return load_dataset_file_from_snapshot(
+            load_request.dataset,
+            load_request.dataset_id,
+            load_request.snapshot_id,
+            token=token,
+            session_id=load_request.session_id,
+        )
+
+    if load_request.dataset_id:
+        return load_dataset_file_by_id(
+            load_request.dataset,
+            load_request.dataset_id,
+            token=token,
+            session_id=load_request.session_id,
+        )
+
+    if load_request.project_id:
+        return load_dataset_via_api(
+            load_request.dataset,
+            load_request.project_id,
+            token=token,
+            session_id=load_request.session_id,
+        )
+
+    return load_local_dataset_file(load_request.dataset, session_id=load_request.session_id)
 
 
 def _list_dataset_snapshots(dataset_id, token):

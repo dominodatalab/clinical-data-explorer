@@ -22,16 +22,20 @@ from flask import request
 logger = logging.getLogger(__name__)
 
 
+def get_passthrough_token_from_authorization_header(auth_header):
+    """Extract a passthrough bearer token from an Authorization header value."""
+    if auth_header and auth_header.startswith('Bearer '):
+        return auth_header[7:]
+    return os.environ.get('DEV_ACCESS_TOKEN')
+
+
 def get_passthrough_token():
     """
     Extract the user's passthrough Bearer token from the request Authorization header.
     When the app is accessed as a Domino Extension, the platform injects the visiting
     user's JWT in the Authorization header of every request.
     """
-    auth_header = request.headers.get('Authorization', '')
-    if auth_header.startswith('Bearer '):
-        return auth_header[7:]
-    return os.environ.get('DEV_ACCESS_TOKEN')
+    return get_passthrough_token_from_authorization_header(request.headers.get('Authorization', ''))
 
 
 def get_domino_api_host():
