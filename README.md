@@ -96,6 +96,7 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 | `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `524288000` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. The default is 500 MiB. |
 | `MCP_SESSION_MAX_AGE` | `3600` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
+| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `50` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
 
 #### Optional: AI Chat Feature
 
