@@ -59,7 +59,7 @@ from mcp_server.routes.tables import router as tables_router
 
 # Configure logging - write to stdout so logs appear in Domino app logs
 logging.basicConfig(
-    level=logging.INFO,
+    level=os.environ.get('LOG_LEVEL', logging.INFO),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )
