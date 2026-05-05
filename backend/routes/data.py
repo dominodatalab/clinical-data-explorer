@@ -28,6 +28,7 @@ import logging
 
 import requests
 from flask import Blueprint, jsonify, request
+from werkzeug.exceptions import TooManyRequests
 
 from chat_agent import clear_history
 
@@ -37,6 +38,11 @@ from backend.services.datasets import (
     load_dataset_file_from_snapshot,
     load_dataset_via_api,
     load_netapp_volume_file,
+)
+from backend.services.dataset_load_request_queue import (
+    DatasetLoadRequest,
+    DatasetLoadRequestQueueFullError,
+    get_dataset_load_request_queue,
 )
 from backend.session import get_session_id, mcp_get, mcp_post
 
@@ -48,15 +54,35 @@ bp = Blueprint('data', __name__)
 @bp.route('/dataset/load', methods=['POST'])
 def load_dataset():
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
-    dataset_name = request.json.get('dataset')
-    project_id = request.json.get('projectId')
-    dataset_id = request.json.get('datasetId')
-    snapshot_id = request.json.get('snapshotId')
-    source_type = request.json.get('sourceType')
-    volume_key = request.json.get('volumeKey')
-    snapshot_version = request.json.get('snapshotVersion')
+    request_json = request.get_json(silent=True) or {}
+    dataset_name = request_json.get('dataset')
+    project_id = request_json.get('projectId')
+    dataset_id = request_json.get('datasetId')
+    snapshot_id = request_json.get('snapshotId')
+    source_type = request_json.get('sourceType')
+    volume_key = request_json.get('volumeKey')
+    snapshot_version = request_json.get('snapshotVersion')
     if not dataset_name:
         return jsonify({'error': 'No dataset name provided'}), 400
+
+    try:
+        get_dataset_load_request_queue().put(
+            DatasetLoadRequest(
+                dataset=dataset_name,
+                session_id=get_session_id(),
+                authorization_header=request.headers.get('Authorization'),
+                project_id=project_id,
+                dataset_id=dataset_id,
+                snapshot_id=snapshot_id,
+                source_type=source_type,
+                volume_key=volume_key,
+                snapshot_version=snapshot_version,
+            )
+        )
+    except DatasetLoadRequestQueueFullError as exc:
+        raise TooManyRequests(
+            description="Sorry, we can't process your dataset, this server is at capacity."
+        ) from exc
 
     # NetApp volume file: load using volume SDK
     if source_type == 'netapp' and volume_key:
