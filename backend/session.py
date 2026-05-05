@@ -31,15 +31,15 @@ def get_session_id():
     return session.get('sid', 'default')
 
 
-def mcp_get(path, **kwargs):
+def mcp_get(path, session_id=None, **kwargs):
     """GET request to MCP server with session ID header."""
     headers = kwargs.pop('headers', {})
-    headers['X-Session-Id'] = get_session_id()
+    headers['X-Session-Id'] = session_id or get_session_id()
     return requests.get(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
 
 
-def mcp_post(path, **kwargs):
+def mcp_post(path, session_id=None, **kwargs):
     """POST request to MCP server with session ID header."""
     headers = kwargs.pop('headers', {})
-    headers['X-Session-Id'] = get_session_id()
+    headers['X-Session-Id'] = session_id or get_session_id()
     return requests.post(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
