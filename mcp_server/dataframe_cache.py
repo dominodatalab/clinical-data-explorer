@@ -4,7 +4,7 @@ from functools import lru_cache
 
 from cachetools import LRUCache
 
-DEFAULT_MAX_CACHE_SIZE_BYTES = 500 * 1024 * 1024
+DEFAULT_MAX_CACHE_SIZE_BYTES = 1024 * 1024 * 1024
 MAX_CACHE_SIZE = int(os.environ.get('MCP_SERVER_DATAFRAME_CACHE_SIZE_B', DEFAULT_MAX_CACHE_SIZE_BYTES))
 
 """

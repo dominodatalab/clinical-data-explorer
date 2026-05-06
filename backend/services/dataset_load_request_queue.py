@@ -15,7 +15,7 @@ from typing import Callable, Deque, Optional
 
 # Hard cap for queued load requests. When the queue reaches this size, new
 # requests are rejected so the server does not accumulate unbounded work.
-MAX_QUEUE_LENGTH = int(os.environ.get("DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH", 50))
+MAX_QUEUE_LENGTH = int(os.environ.get("DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH", 10))
 
 
 @dataclass(frozen=True)
