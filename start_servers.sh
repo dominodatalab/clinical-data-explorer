@@ -8,7 +8,12 @@ echo "Starting Data Explorer Servers"
 echo "=========================================="
 echo ""
 
-export UV_PROJECT_ENVIRONMENT="~/clinical-data-explorer/.venv"
+# In production, this will refer to the pre-installed deps
+prod_venv_dir="~/clinical-data-explorer/.venv"
+if [ -d $prod_venv_dir ]
+then
+    export UV_PROJECT_ENVIRONMENT=$prod_venv_dir
+fi
 
 # Check if datasets folder exists
 # # TODO is this folder made in the right place in order to use a domino dataset?
@@ -37,7 +42,7 @@ trap cleanup INT TERM
 # Start MCP Server
 date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
-$UV_PROJECT_ENVIRONMENT/python python data_analysis_mcp.py &
+uv run python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
