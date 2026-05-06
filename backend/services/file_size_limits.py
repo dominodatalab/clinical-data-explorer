@@ -4,6 +4,7 @@ import os
 logger = logging.getLogger(__name__)
 
 ONE_MB = 1024 * 1024
+DATA_TO_DATAFRAME_SIZE_MULTIPLIER = 5
 
 DATA_FILE_SIZE_LIMIT = int(os.environ.get('DATA_FILE_SIZE_LIMIT_B', 500 * ONE_MB))
 RAM_BUFFER = int(os.environ.get('SERVICE_RAM_BUFFER_B', 5 * ONE_MB))
@@ -29,7 +30,7 @@ def enforce(file_name: str, file_size: int):
         )
 
     # this is the estimated size that the dataframe will be when it's created
-    estimated_df_size_b = file_size * 5
+    estimated_df_size_b = file_size * DATA_TO_DATAFRAME_SIZE_MULTIPLIER
 
     used_b = _get_container_memory_usage_bytes()
     limit_b = _get_container_memory_limit_bytes()
