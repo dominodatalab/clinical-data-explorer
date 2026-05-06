@@ -9,7 +9,7 @@ echo "=========================================="
 echo ""
 
 # In production, this will refer to the pre-installed deps
-prod_venv_dir="~/clinical-data-explorer/.venv"
+prod_venv_dir="$HOME/clinical-data-explorer/.venv"
 echo "listing prod venv dir"
 echo $HOME
 ls $prod_venv_dir
