@@ -13,6 +13,8 @@ prod_venv_dir="~/clinical-data-explorer/.venv"
 if [ -d $prod_venv_dir ]
 then
     export UV_PROJECT_ENVIRONMENT=$prod_venv_dir
+else
+    echo "prod venv directory doesn't exist"
 fi
 
 # Check if datasets folder exists
@@ -58,7 +60,7 @@ fi
 # Start Flask App
 FLASK_PORT=${MAIN_APP_PORT:-8888}
 date; echo "Starting Flask App on port $FLASK_PORT..."
-uv run --locked --no-sync python app.py "$FLASK_PORT" &
+uv run python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
 
