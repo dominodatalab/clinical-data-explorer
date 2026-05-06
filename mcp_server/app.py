@@ -31,6 +31,7 @@ Reference for the original FastAPI-MCP wiring:
 https://huggingface.co/blog/lynn-mikami/fastapi-mcp-server
 """
 import logging
+import os
 import sys
 
 from fastapi import FastAPI
