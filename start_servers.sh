@@ -10,9 +10,6 @@ echo ""
 
 # In production, this will refer to the pre-installed deps
 prod_venv_dir="$HOME/clinical-data-explorer/.venv"
-echo "listing prod venv dir"
-echo $HOME
-ls $prod_venv_dir
 if [ -d $prod_venv_dir ]
 then
     export UV_PROJECT_ENVIRONMENT=$prod_venv_dir
