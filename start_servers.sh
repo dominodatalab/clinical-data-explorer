@@ -8,6 +8,8 @@ echo "Starting Data Explorer Servers"
 echo "=========================================="
 echo ""
 
+export UV_PROJECT_ENVIRONMENT="~/clinical-data-explorer/.venv"
+
 # Check if datasets folder exists
 # # TODO is this folder made in the right place in order to use a domino dataset?
 # is it just a random folder on the file system?
@@ -29,15 +31,13 @@ cleanup() {
 
 trap cleanup INT TERM
 
-export UV_PROJECT_ENVIRONMENT="~/clinical-data-explorer/.venv"
-
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
 # Start MCP Server
 date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
-./.venv/bin/python python data_analysis_mcp.py &
+$UV_PROJECT_ENVIRONMENT/python python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
