@@ -30,12 +30,15 @@ cleanup() {
 trap cleanup INT TERM
 
 # copy the preinstalled packages to the local app directory
+date; echo "copy venv start"
 cp -r ~/clinical-data-explorer/.venv .
+date; echo "copy venv done"
 
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
 # Start MCP Server
+date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
 uv run --locked --no-sync python data_analysis_mcp.py &
 MCP_PID=$!
