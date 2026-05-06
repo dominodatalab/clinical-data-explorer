@@ -37,7 +37,7 @@ cp -r ~/clinical-data-explorer/.venv .
 
 # Start MCP Server
 echo "Starting MCP Server on port 3333..."
-uv run --locked --no-sync python data_analysis_mcp.py > mcp_server.log 2>&1 &
+uv run --locked --no-sync python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
@@ -46,8 +46,7 @@ sleep 2
 
 # Check if MCP server is running
 if ! ps -p $MCP_PID > /dev/null; then
-    echo "❌ MCP Server failed to start. Check mcp_server.log for details."
-    cat mcp_server.log
+    echo "❌ MCP Server failed to start."
     exit 1
 fi
 
