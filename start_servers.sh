@@ -29,10 +29,7 @@ cleanup() {
 
 trap cleanup INT TERM
 
-# copy the preinstalled packages to the local app directory
-date; echo "copy venv start"
-cp -r ~/clinical-data-explorer/.venv .
-date; echo "copy venv done"
+export UV_PROJECT_ENVIRONMENT="~/clinical-data-explorer/.venv"
 
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
@@ -40,7 +37,7 @@ date; echo "copy venv done"
 # Start MCP Server
 date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
-uv run --locked --no-sync python data_analysis_mcp.py &
+./.venv/bin/python python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
@@ -55,7 +52,7 @@ fi
 
 # Start Flask App
 FLASK_PORT=${MAIN_APP_PORT:-8888}
-echo "Starting Flask App on port $FLASK_PORT..."
+date; echo "Starting Flask App on port $FLASK_PORT..."
 uv run --locked --no-sync python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
