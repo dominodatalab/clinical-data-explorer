@@ -1,8 +1,10 @@
 import pandas as pd
 import pytest
+from cachetools import LRUCache
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
+import mcp_server.dataframe_cache as dataframe_cache
 import mcp_server.session as session_module
 
 
@@ -132,3 +134,22 @@ def test_session_middleware_defaults_session_id_when_header_is_missing():
 
     assert response.status_code == 200
     assert response.json() == {"session_id": "default"}
+
+
+def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, monkeypatch, tmp_path):
+    dataset = tmp_path / "too_big.csv"
+    dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
+    tiny_cache = LRUCache(maxsize=1, getsizeof=lambda value: 2)
+    monkeypatch.setattr(dataframe_cache, "get_cache", lambda: tiny_cache)
+
+    client = TestClient(_mcp_app, raise_server_exceptions=False)
+
+    response = client.post("/dataset/load", params={"file_snapshot_path": str(dataset)})
+
+    assert response.status_code == 413
+    assert response.json() == {
+        "detail": (
+            f"Dataset '{dataset}' is too large to load right now. "
+            "Try a smaller file or ask your administrator to increase the amount of memory available."
+        )
+    }

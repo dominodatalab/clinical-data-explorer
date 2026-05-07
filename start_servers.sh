@@ -8,6 +8,15 @@ echo "Starting Data Explorer Servers"
 echo "=========================================="
 echo ""
 
+# In production, this will refer to the pre-installed deps
+prod_venv_dir="$HOME/clinical-data-explorer/.venv"
+if [ -d $prod_venv_dir ]
+then
+    export UV_PROJECT_ENVIRONMENT=$prod_venv_dir
+else
+    echo "prod venv directory doesn't exist"
+fi
+
 # Check if datasets folder exists
 # # TODO is this folder made in the right place in order to use a domino dataset?
 # is it just a random folder on the file system?
@@ -29,15 +38,13 @@ cleanup() {
 
 trap cleanup INT TERM
 
-# copy the preinstalled packages to the local app directory
-cp -r ~/clinical-data-explorer/.venv .
-
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
 # Start MCP Server
+date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
-uv run --locked --no-sync python data_analysis_mcp.py > mcp_server.log 2>&1 &
+uv run python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
@@ -46,15 +53,14 @@ sleep 2
 
 # Check if MCP server is running
 if ! ps -p $MCP_PID > /dev/null; then
-    echo "❌ MCP Server failed to start. Check mcp_server.log for details."
-    cat mcp_server.log
+    echo "❌ MCP Server failed to start."
     exit 1
 fi
 
 # Start Flask App
 FLASK_PORT=${MAIN_APP_PORT:-8888}
-echo "Starting Flask App on port $FLASK_PORT..."
-uv run --locked --no-sync python app.py "$FLASK_PORT" &
+date; echo "Starting Flask App on port $FLASK_PORT..."
+uv run python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
 

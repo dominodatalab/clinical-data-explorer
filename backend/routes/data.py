@@ -27,22 +27,14 @@ and `data` tracks the plan's target layout, not the URL pluralization.
 import logging
 
 import requests
+import backend.services.dataset_load_request_queue as dataset_load_request_queue
+import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
-from werkzeug.exceptions import TooManyRequests
-
-from chat_agent import clear_history
+from werkzeug.exceptions import RequestEntityTooLarge, TooManyRequests
 
 from backend.services.column_labels import load_column_labels
 from backend.services.datasets import (
-    load_dataset_file_by_id,
-    load_dataset_file_from_snapshot,
-    load_dataset_via_api,
-    load_netapp_volume_file,
-)
-from backend.services.dataset_load_request_queue import (
-    DatasetLoadRequest,
-    DatasetLoadRequestQueueFullError,
-    get_dataset_load_request_queue,
+    process_dataset_load_request,
 )
 from backend.session import get_session_id, mcp_get, mcp_post
 
@@ -66,8 +58,10 @@ def load_dataset():
         return jsonify({'error': 'No dataset name provided'}), 400
 
     try:
-        get_dataset_load_request_queue().put(
-            DatasetLoadRequest(
+        # TODO this could wait for a while. can we have a multi minute timeout on requests?
+        # should we have an expiration on requests?
+        return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
+            dataset_load_request_queue.DatasetLoadRequest(
                 dataset=dataset_name,
                 session_id=get_session_id(),
                 authorization_header=request.headers.get('Authorization'),
@@ -77,40 +71,18 @@ def load_dataset():
                 source_type=source_type,
                 volume_key=volume_key,
                 snapshot_version=snapshot_version,
-            )
+            ),
+            process_dataset_load_request,
         )
-    except DatasetLoadRequestQueueFullError as exc:
+    except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
         raise TooManyRequests(
             description="Sorry, we can't process your dataset, this server is at capacity."
         ) from exc
 
-    # NetApp volume file: load using volume SDK
-    if source_type == 'netapp' and volume_key:
-        return load_netapp_volume_file(dataset_name, volume_key, snapshot_version, snapshot_id)
-
-    # Snapshot-specific download: use raw file API instead of SDK
-    if dataset_id and snapshot_id:
-        return load_dataset_file_from_snapshot(dataset_name, dataset_id, snapshot_id)
-
-    # Dataset file context mode: load using dataset ID directly
-    if dataset_id:
-        return load_dataset_file_by_id(dataset_name, dataset_id)
-
-    # Extension mode: download from Domino API, then load
-    if project_id:
-        return load_dataset_via_api(dataset_name, project_id)
-
-    # Normal mode: load from filesystem via MCP server
-    try:
-        response = mcp_post("/dataset/load", params={'file_snapshot_path': dataset_name})
-        if response.status_code == 200:
-            clear_history(session_id=get_session_id())
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to load dataset')}), response.status_code
-    except Exception as e:
-        print(f"Error loading dataset: {e}")
-        return jsonify({'error': 'Could not connect to MCP server'}), 500
+    except file_size_limits.DataFileTooLarge as exc:
+        raise RequestEntityTooLarge(
+            description=str(exc),
+        ) from exc
 
 
 @bp.route('/dataset/data', methods=['GET'])
