@@ -318,6 +318,10 @@ uv sync --locked
 uv run --locked playwright install chromium     # only needed for make test-e2e
 ```
 
+### Run the load tests
+- install for dev `uv sync --dev`
+- review the `perf_test/load_cde_other_dataset.py` for how to run
+
 ### When you add a feature
 
 - Add one step to `tests/e2e/test_smoke.py` that exercises the UI path. This is the primary safety net.
