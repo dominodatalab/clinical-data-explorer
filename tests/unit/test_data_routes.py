@@ -4,8 +4,18 @@ import time
 
 import backend.routes.data as data_routes
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
+import backend.services.datasets as datasets_service
 
 from backend.services.dataset_load_request_queue import get_dataset_load_request_queue
+
+
+class _FakeMcpResponse:
+    def __init__(self, status_code, payload):
+        self.status_code = status_code
+        self._payload = payload
+
+    def json(self):
+        return self._payload
 
 
 def _create_test_app(testing=False):
@@ -137,6 +147,39 @@ def test_load_dataset_returns_413_when_processor_rejects_large_file(monkeypatch)
 
     assert response.status_code == 413
     assert "too-big.csv must be less than or equal to 10 bytes to be processable" in response.get_data(as_text=True)
+
+
+def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+    mcp_calls = []
+    mcp_error = (
+        "Dataset 'datasets/too-big.csv' is too large to load right now. "
+        "Try a smaller file or ask your administrator to increase the amount of memory available."
+    )
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-mcp-failure")
+
+    def fake_mcp_post(path, params, session_id=None):
+        mcp_calls.append((path, params, session_id))
+        return _FakeMcpResponse(413, {"detail": mcp_error})
+
+    monkeypatch.setattr(datasets_service, "mcp_post", fake_mcp_post)
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={"dataset": "datasets/too-big.csv"})
+
+    assert response.status_code == 413
+    assert response.get_json() == {"error": mcp_error}
+    assert mcp_calls == [
+        (
+            "/dataset/load",
+            {"file_snapshot_path": "datasets/too-big.csv"},
+            "sid-mcp-failure",
+        )
+    ]
+    assert queue.peek_all() == []
 
 
 def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
