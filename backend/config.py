@@ -14,4 +14,4 @@ host or port.
 import os
 
 MCP_SERVER_URL = os.environ.get("MCP_SERVER_URL", "http://localhost:3333")
-MCP_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("MCP_REQUEST_TIMEOUT_SECONDS", "300"))
+MCP_REQUEST_TIMEOUT_SECONDS = float(os.environ.get("MCP_REQUEST_TIMEOUT_SECONDS", "120"))
