@@ -53,6 +53,9 @@ run_local.sh
 # OpenAI
 openai_api_key.txt
 
+# Local perf test credentials
+perf_test/test_user_creds.txt
+
 # Jupyter Notebook
 .ipynb_checkpoints
 
@@ -66,4 +69,3 @@ example_domino_frontend_code/
 # Data (uncomment if you want to ignore datasets)
 # datasets/*.csv
 # !datasets/.gitkeep
-
