@@ -32,6 +32,8 @@ def enforce(file_name: str, file_size: int):
     # this is the estimated size that the dataframe will be when it's created
     estimated_df_size_b = file_size * DATA_TO_DATAFRAME_SIZE_MULTIPLIER
 
+    # There is a danger with these memory estimators that k8s may change its implementation of
+    # how memory limits are implemented. This currently works. These will return None if run locally
     used_b = _get_container_memory_usage_bytes()
     limit_b = _get_container_memory_limit_bytes()
     if used_b is None:
