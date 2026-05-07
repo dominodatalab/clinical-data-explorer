@@ -7,7 +7,6 @@ ONE_MB = 1024 * 1024
 DATA_TO_DATAFRAME_SIZE_MULTIPLIER = 5
 
 DATA_FILE_SIZE_LIMIT = int(os.environ.get('DATA_FILE_SIZE_LIMIT_B', 500 * ONE_MB))
-RAM_BUFFER = int(os.environ.get('SERVICE_RAM_BUFFER_B', 5 * ONE_MB))
 
 
 class DataFileTooLarge(RuntimeError):
@@ -45,15 +44,14 @@ def enforce(file_name: str, file_size: int):
     if used_b is None or limit_b is None:
         return
 
-    remaining_bytes = limit_b - used_b - RAM_BUFFER
+    remaining_bytes = limit_b - used_b
     if remaining_bytes < estimated_df_size_b:
         used_mb = used_b / ONE_MB
         limit_mb = limit_b / ONE_MB
-        buffer_mb = RAM_BUFFER / ONE_MB
         remaining_mb = remaining_bytes / ONE_MB
 
         logger.debug(
-            f"There's not enough space to process {file_name}. used mb: {used_mb}, limit mb: {limit_mb}, buffer for other processes: {buffer_mb}. Total remaining mb: {remaining_mb}"
+            f"There's not enough space to process {file_name}. used mb: {used_mb}, limit mb: {limit_mb}. Total remaining mb: {remaining_mb}"
         )
         raise DataFileTooLarge(f"There's not enough space to process {file_name}. There's only {remaining_mb} MB remaining.")
 

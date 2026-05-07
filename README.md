@@ -98,7 +98,6 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
 | `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
 | `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
-| `SERVICE_RAM_BUFFER_B` | `5242880` | Maximum size in bytes of buffer included when determining if another file can be downloaded into the server. This should map to the likely variation in RAM used by other processes. |
 
 #### Optional: AI Chat Feature
 
