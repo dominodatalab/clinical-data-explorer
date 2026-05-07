@@ -29,7 +29,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
-from mcp_server.dataframe_cache import get_cache
+from mcp_server.dataframe_cache import DataFrameCacheValueTooLarge, get_cache, save_to_cache
 from mcp_server.services.data_loading import load_dataset
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ class LoadedDataEntry:
     last_accessed: float = 0
 
 _sessions: Dict[str, LoadedDataEntry] = {}
+
 
 @lru_cache(maxsize=1)
 def _get_sessions():
@@ -88,8 +89,10 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
     session_id = _current_session_id.get()
     sessions = _get_sessions()
 
-    df_cache = get_cache()
-    df_cache[file_snapshot_path] = df
+    try:
+        save_to_cache(file_snapshot_path, df)
+    except DataFrameCacheValueTooLarge as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
 
     sessions[session_id] = LoadedDataEntry(
         file_snapshot_path=file_snapshot_path,
