@@ -85,7 +85,7 @@ def _get_container_memory_limit_bytes():
             with open(v1_path, "r") as f:
                 limit = f.read().strip()
         else:
-            print("Limit file not found")
+            logger.warning("Limit file not found")
             return None
 
         # "max" indicates no limit is set
@@ -94,5 +94,5 @@ def _get_container_memory_limit_bytes():
 
         return int(limit)
     except Exception as e:
-        print(f"Error: {e}")
+        logger.error(f"Error: {e}")
         return None
