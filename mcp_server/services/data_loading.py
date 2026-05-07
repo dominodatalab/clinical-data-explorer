@@ -301,14 +301,6 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
 
         # Log column types for debugging
         logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")
-        logger.info(f"Column types after conversion:")
-        for col in df.columns:
-            logger.info(f"  {col}: {df[col].dtype}")
-
-        numeric_cols = _get_numeric_columns(df)
-        categorical_cols = _get_categorical_columns(df, numeric_cols)
-        logger.info(f"Detected numeric columns: {numeric_cols}")
-        logger.info(f"Detected categorical columns: {categorical_cols}")
 
         return df
     except HTTPException:
