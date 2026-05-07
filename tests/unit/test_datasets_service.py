@@ -658,11 +658,12 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
         ]
     }
 
-    monkeypatch.setattr(
-        services,
-        "mcp_post",
-        lambda path, params: _FakeResponse(200, {"loaded": True}),
-    )
+    def fake_mcp_post(path, params, session_id=None):
+        assert path == "/dataset/load"
+        assert session_id == "sid-netapp"
+        return _FakeResponse(200, {"loaded": True})
+
+    monkeypatch.setattr(services, "mcp_post", fake_mcp_post)
 
     response = _call_service(
         app,

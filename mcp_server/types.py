@@ -18,6 +18,8 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel
 
+CHART_BUCKETS_LIMIT = 50
+XY_CHART_MAX_POINTS_LIMIT = 1000
 
 # ===== Dataset / analytics models =====
 
@@ -96,14 +98,23 @@ class BarChartRequest(BaseModel):
     filter: Optional[ChartFilterCondition] = None
     limit: int = 20
 
+    def get_limit(self):
+        return min(self.limit, CHART_BUCKETS_LIMIT)
+
 
 class XYChartRequest(BaseModel):
     x_column: str
     y_column: str
     aggregation: str = "none"  # 'none', 'mean', 'sum', 'min', 'max'
     filter: Optional[ChartFilterCondition] = None
-    max_points: int = 1000  # Limit points for scatter plots
-    num_buckets: int = 50   # For bucketed aggregation
+    max_points: int = XY_CHART_MAX_POINTS_LIMIT  # Limit points for scatter plots
+    num_buckets: int = CHART_BUCKETS_LIMIT   # For bucketed aggregation
+
+    def get_max_points(self):
+        return min(self.max_points, XY_CHART_MAX_POINTS_LIMIT)
+
+    def get_num_buckets(self):
+        return min(self.num_buckets, CHART_BUCKETS_LIMIT)
 
 
 class TimeSeriesRequest(BaseModel):
@@ -111,10 +122,15 @@ class TimeSeriesRequest(BaseModel):
     value_column: str
     aggregation: str = "mean"  # 'mean', 'sum', 'min', 'max', 'count'
     filter: Optional[ChartFilterCondition] = None
-    num_buckets: int = 50
+    num_buckets: int = CHART_BUCKETS_LIMIT
 
+    def get_num_buckets(self):
+        return min(self.num_buckets, CHART_BUCKETS_LIMIT)
 
 class HistogramRequest(BaseModel):
     column: str
     bins: int = 30
     filter: Optional[ChartFilterCondition] = None
+
+    def get_bins(self):
+        return min(self.bins, CHART_BUCKETS_LIMIT)
