@@ -116,6 +116,12 @@ To enable the natural language chat feature, configure an LLM provider:
 - **Azure OpenAI**: Set `LLM_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/your-deployment` and `LLM_API_KEY`
 - **Together AI**: Set `LLM_BASE_URL=https://api.together.xyz/v1`, `LLM_API_KEY`, and `LLM_MODEL=meta-llama/Llama-3-70b-chat-hf`
 
+#### Logging
+
+| Variable | Description |
+|----------|-------------|
+| `LOG_LEVEL` | Change the log level for either server by setting to "DEBUG", "TRACE", etc. |
+
 ## Use the Table View
 
 The Table View provides an interactive data table for browsing and filtering your datasets.
