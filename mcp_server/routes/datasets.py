@@ -28,12 +28,12 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
 
-from mcp_server.session import _get_session_dataset_name, get_current_df
+from mcp_server.session import _get_session_dataset_name, get_current_df, load_current_df
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
 )
-from mcp_server.services.data_loading import find_data_files, load_dataset
+from mcp_server.services.data_loading import find_data_files
 from mcp_server.types import DatasetInfo, DatasetList
 
 logger = logging.getLogger(__name__)
@@ -51,14 +51,16 @@ async def list_datasets():
 
 
 @router.post("/dataset/load", operation_id="load_dataset")
-async def load_dataset_endpoint(dataset_name: str = Query(..., description="Name of the CSV file to load")):
-    """Load a specific dataset from the datasets folder and return column metadata"""
-    df = load_dataset(dataset_name)
-    
+async def load_dataset_endpoint(
+    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
+):
+    """Load a specific dataset file and return column metadata."""
+    df = load_current_df(file_snapshot_path)
+
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)
     categorical_cols = _get_categorical_columns(df, numeric_cols)
-    
+
     # Detect date columns
     date_cols = []
     for col in df.columns:
@@ -74,12 +76,12 @@ async def load_dataset_endpoint(dataset_name: str = Query(..., description="Name
                     date_cols.append(col)
                 except:
                     pass
-    
+
     column_types = {col: str(df[col].dtype) for col in df.columns}
-    
+
     return {
-        "message": f"Successfully loaded dataset: {dataset_name}",
-        "dataset": dataset_name,
+        "message": f"Successfully loaded dataset: {file_snapshot_path}",
+        "dataset": file_snapshot_path,
         "columns": df.columns.tolist(),
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols,
@@ -93,14 +95,14 @@ async def load_dataset_endpoint(dataset_name: str = Query(..., description="Name
 def get_dataset_info():
     """Get basic information about the current dataset"""
     df = get_current_df()
-    
+
     # Identify numeric and categorical columns using robust detection
     numeric_cols = _get_numeric_columns(df)
     categorical_cols = _get_categorical_columns(df, numeric_cols)
-    
+
     # Get column types
     column_types = {col: str(df[col].dtype) for col in df.columns}
-    
+
     return {
         "columns": df.columns.tolist(),
         "num_rows": len(df),
@@ -115,10 +117,10 @@ def get_dataset_info():
 async def get_dataset_head(rows: int = Query(5, description="Number of rows to return")):
     """Get the first n rows of the dataset"""
     df = get_current_df()
-    
+
     if rows <= 0:
         raise HTTPException(status_code=400, detail="Rows parameter must be positive")
-    
+
     return df.head(rows).to_dict(orient="records")
 
 
@@ -132,16 +134,16 @@ async def get_dataset_description():
 @router.get("/dataset/data")
 async def get_dataset_data():
     """Get full dataset data with metadata for visualization.
-    
+
     NOTE: This endpoint transfers ALL data to the client. For large datasets,
     prefer using the server-side chart endpoints (/chart/*) instead.
     """
     df = get_current_df()
-    
+
     # Identify numeric and categorical columns using robust detection
     numeric_cols = _get_numeric_columns(df)
     categorical_cols = _get_categorical_columns(df, numeric_cols)
-    
+
     # Detect date columns - check both datetime dtypes and string columns that look like dates
     date_cols = []
     for col in df.columns:
@@ -156,16 +158,16 @@ async def get_dataset_data():
                 date_cols.append(col)
             except:
                 pass
-    
+
     # Convert dataframe to records with proper JSON serialization
     # Handle NaN, datetime, and numpy types that aren't directly JSON serializable
     try:
         # Create a copy and convert problematic types
         df_serializable = df.copy()
-        
+
         for col in df_serializable.columns:
             dtype_str = str(df_serializable[col].dtype).lower()
-            
+
             # Convert datetime columns to ISO string format
             if 'datetime' in dtype_str or 'timestamp' in dtype_str:
                 df_serializable[col] = df_serializable[col].astype(str).replace('NaT', None)
@@ -176,10 +178,10 @@ async def get_dataset_data():
             elif pd.api.types.is_numeric_dtype(df_serializable[col]):
                 # Replace inf values with None
                 df_serializable[col] = df_serializable[col].replace([np.inf, -np.inf], np.nan)
-        
+
         # Convert to dict, replacing NaN with None for JSON compatibility
         data = json.loads(df_serializable.to_json(orient='records', date_format='iso', default_handler=str))
-        
+
     except Exception as e:
         logger.error(f"Error converting dataframe to JSON: {e}")
         # Fallback: convert each record manually with error handling
@@ -200,10 +202,10 @@ async def get_dataset_data():
                 else:
                     record[col] = val
             data.append(record)
-    
+
     # Get column types
     column_types = {col: str(df[col].dtype) for col in df.columns}
-    
+
     return {
         "data": data,
         "columns": df.columns.tolist(),

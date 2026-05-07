@@ -3,6 +3,7 @@
 The real implementation now lives in `backend/`. This file is kept so existing
 invocations (`python app.py [PORT]`, `start_servers.sh`) keep working.
 """
+import logging
 import os
 import sys
 
@@ -10,6 +11,7 @@ from backend.app import create_app
 
 app = create_app()
 
+logging.basicConfig(level=os.environ.get('LOG_LEVEL', logging.INFO))
 
 if __name__ == '__main__':
     # Ensure the chat_ui directory exists

@@ -14,14 +14,14 @@ MAX_ITEM_COUNT = int(os.environ.get('DATA_FILE_CACHE_MAX_ITEM_COUNT', 100))
 
 
 """
-This stores file metadata references for downloaded files
+This stores metadata references for downloaded files.
 This is here to cleanup files in the case that they have not already been
-cleaned up after use
+cleaned up after use.
 
-in the case of netapp volumes, the dataset_id is actually the volume key, and the snapshot_id is the
-snapshot version
+In the case of NetApp volumes, the dataset_id is actually the volume key, and
+the snapshot_id is the snapshot version.
 """
-class DataFileCache(TTLCache):
+class DownloadFileMetadataCache(TTLCache):
     def __init__(self, temp_root: Optional[str] = None, *args, **kwargs):
         super().__init__(*args, **kwargs)
         # for testing
@@ -61,7 +61,7 @@ class DataFileCache(TTLCache):
             current = os.path.abspath(os.path.dirname(current))
 
     def set(self, source_type: str, dataset_id: str, snapshot_id: str, file_name: str) -> Path:
-        key = DataFileCache.create_key(dataset_id, file_name, source_type, snapshot_id)
+        key = DownloadFileMetadataCache.create_key(dataset_id, file_name, source_type, snapshot_id)
         value = self.create_file_path(dataset_id, file_name, source_type, snapshot_id)
 
         os.makedirs(os.path.dirname(value), exist_ok=True)
@@ -71,7 +71,7 @@ class DataFileCache(TTLCache):
         return value
 
     def remove(self, source_type: str, dataset_id: str, snapshot_id: str, file_name: str):
-        key = DataFileCache.create_key(dataset_id, file_name, source_type, snapshot_id)
+        key = DownloadFileMetadataCache.create_key(dataset_id, file_name, source_type, snapshot_id)
         if key in self:
             del self[key]
 
@@ -96,4 +96,4 @@ def get_file_cache():
     """
     Returns singleton metadata file cache
     """
-    return DataFileCache(maxsize=MAX_ITEM_COUNT, ttl=EXPIRATION_SECONDS)
+    return DownloadFileMetadataCache(maxsize=MAX_ITEM_COUNT, ttl=EXPIRATION_SECONDS)

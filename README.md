@@ -85,6 +85,20 @@ Configure the following environment variables in your Domino project settings:
 |----------|-------------|
 | `DOMINO_API_HOST_OVERD` | Your Domino deployment URL (e.g., `https://your-domino-deployment.com`). This overrides the auto-detected `DOMINO_API_HOST` when set. |
 
+#### Optional: Cache and Session Tuning
+
+These settings control how downloaded files, MCP server DataFrames, and session metadata are cached:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `DATA_FILE_CACHE_EXPIRATION_SECONDS` | `60` | How long backend download-file metadata entries are kept before cleanup runs. Applies to temporary files downloaded before handing them to the MCP server. |
+| `DATA_FILE_CACHE_MAX_ITEM_COUNT` | `100` | Maximum number of backend download-file metadata entries to retain before older entries are evicted and cleaned up. |
+| `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. |
+| `MCP_SESSION_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
+| `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
+| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
+| `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
+
 #### Optional: AI Chat Feature
 
 To enable the natural language chat feature, configure an LLM provider:
@@ -101,6 +115,12 @@ To enable the natural language chat feature, configure an LLM provider:
 - **Local Ollama**: Set `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=llama3`
 - **Azure OpenAI**: Set `LLM_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/your-deployment` and `LLM_API_KEY`
 - **Together AI**: Set `LLM_BASE_URL=https://api.together.xyz/v1`, `LLM_API_KEY`, and `LLM_MODEL=meta-llama/Llama-3-70b-chat-hf`
+
+#### Logging
+
+| Variable | Description |
+|----------|-------------|
+| `LOG_LEVEL` | Change the log level for either server by setting to "DEBUG", "TRACE", etc. |
 
 ## Use the Table View
 

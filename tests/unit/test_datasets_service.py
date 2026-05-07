@@ -7,9 +7,10 @@ import types
 from pathlib import Path
 
 import pytest
-from flask import Flask
+from flask import Flask, jsonify
 
-from backend.services.data_file_cache import DataFileCache
+from backend.services.dataset_load_request_queue import DatasetLoadRequest
+from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
 from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
 
@@ -225,7 +226,7 @@ def test_data_file_path_removes_clashing_file_without_touching_other_files(monke
 
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
 
-    file_cache = DataFileCache(temp_root=tmp_path, maxsize=10, ttl=1)
+    file_cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=10, ttl=1)
 
     temp_root = tmp_path / "domino_api_datasets" / "netapp" / "ds-2" / "snap-2"
 
@@ -272,18 +273,112 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
     assert not expected_root.exists()
 
 
-def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeypatch, tmp_path):
+@pytest.mark.parametrize(
+    ("load_request", "handler_name", "expected_args", "expected_kwargs"),
+    [
+        (
+            DatasetLoadRequest(dataset="datasets/adsl.csv", session_id="sid-local", authorization_header="Bearer token-123"),
+            "load_local_dataset_file",
+            ("datasets/adsl.csv",),
+            {"session_id": "sid-local"},
+        ),
+        (
+            DatasetLoadRequest(dataset="AE/adsl.csv", session_id="sid-proj", authorization_header="Bearer token-123", project_id="proj-1"),
+            "load_dataset_via_api",
+            ("AE/adsl.csv", "proj-1"),
+            {"token": "token-123", "session_id": "sid-proj"},
+        ),
+        (
+            DatasetLoadRequest(dataset="Study/adsl.csv", session_id="sid-ds", authorization_header="Bearer token-123", dataset_id="ds-1"),
+            "load_dataset_file_by_id",
+            ("Study/adsl.csv", "ds-1"),
+            {"token": "token-123", "session_id": "sid-ds"},
+        ),
+        (
+            DatasetLoadRequest(
+                dataset="Study/reports/adsl.csv",
+                session_id="sid-snap",
+                authorization_header="Bearer token-123",
+                dataset_id="ds-1",
+                snapshot_id="snap-1",
+            ),
+            "load_dataset_file_from_snapshot",
+            ("Study/reports/adsl.csv", "ds-1", "snap-1"),
+            {"token": "token-123", "session_id": "sid-snap"},
+        ),
+        (
+            DatasetLoadRequest(
+                dataset="Safety Volume/reports/adlb.csv",
+                session_id="sid-netapp",
+                authorization_header="Bearer token-123",
+                source_type="netapp",
+                volume_key="vol-1",
+                snapshot_version=7,
+                snapshot_id="snap-7",
+            ),
+            "load_netapp_volume_file",
+            ("Safety Volume/reports/adlb.csv", "vol-1", 7, "snap-7"),
+            {"token": "token-123", "session_id": "sid-netapp"},
+        ),
+    ],
+)
+def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, load_request, handler_name, expected_args, expected_kwargs):
+    services = _load_datasets_service(monkeypatch)
+
+    captured = []
+
+    def fake_handler(*args, **kwargs):
+        captured.append((args, kwargs))
+        return "ok"
+
+    monkeypatch.setattr(services, handler_name, fake_handler)
+
+    result = services.process_dataset_load_request(load_request)
+
+    assert result == "ok"
+    assert captured == [(expected_args, expected_kwargs)]
+
+
+def test_validate_dataset_file_size_fetches_metadata_and_enforces_limit(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+
+    http_calls = []
+
+    def fake_httpclient_get(url, params=None, headers=None):
+        http_calls.append((url, params, headers))
+        return {"fileSize": 1234}
+
+    monkeypatch.setattr(services.httpclient, "get", fake_httpclient_get)
+
+    enforce_calls = []
+    monkeypatch.setattr(
+        services.file_size_limits,
+        "enforce",
+        lambda file_name, file_size: enforce_calls.append((file_name, file_size)),
+    )
+
+    services.validate_dataset_file_size("snap-1", "reports/adsl.csv")
+
+    assert http_calls == [
+        (
+            "https://domino.example/v4/datasetrw/snapshot/snap-1/file/meta",
+            {"path": "reports/adsl.csv"},
+            {"Authorization": "Bearer test-token"},
+        )
+    ]
+    assert enforce_calls == [("reports/adsl.csv", 1234)]
+
+
+def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
 
     monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
-    monkeypatch.setattr(services, "_get_active_dataset_snapshot_id", lambda api_host, dataset_id, token: "snap-active")
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-123")
-
-    clear_history_calls = []
-    monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
 
     request_calls = []
 
@@ -300,37 +395,18 @@ def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeyp
 
     monkeypatch.setattr(services.requests, "get", fake_requests_get)
 
-    dataset_client = install_fake_dataset_client(
-        monkeypatch,
-        {"dataset-AE-ds-1": ["reports/visit.csv"]},
-    )
-    monkeypatch.setattr(services, "_download_dataset_file", lambda dataset, file_name, token: b"visit,data\n1,ok\n")
+    delegated_calls = []
 
-    expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-1" / "unset_snapshot_id" / "reports" / "visit.csv"
-    mcp_paths = []
+    def fake_load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None):
+        delegated_calls.append((dataset_display_name, dataset_id, token, session_id))
+        return jsonify({"loaded": True, "dataset": dataset_display_name})
 
-    def fake_mcp_post(path, params):
-        assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
-        mcp_paths.append(temp_path)
-        assert temp_path == expected_path
-        assert temp_path.exists()
-        assert temp_path.read_bytes() == b"visit,data\n1,ok\n"
-        return _FakeResponse(200, {"loaded": True})
-
-    monkeypatch.setattr(services, "mcp_post", fake_mcp_post)
+    monkeypatch.setattr(services, "load_dataset_file_by_id", fake_load_dataset_file_by_id)
 
     response = _call_service(app, services.load_dataset_via_api, "AE/reports/visit.csv", "proj-1")
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "loaded": True,
-        "dataset": "AE/reports/visit.csv",
-        "sourceType": "dataset",
-        "datasetId": "ds-1",
-        "snapshotId": "snap-active",
-        "governanceFilename": "reports/visit.csv",
-    }
+    assert response.get_json() == {"loaded": True, "dataset": "AE/reports/visit.csv"}
     assert request_calls == [
         (
             "https://domino.example/api/datasetrw/v2/datasets?projectId=proj-1&limit=100",
@@ -338,68 +414,47 @@ def test_load_dataset_via_api_uses_data_file_path_without_runtime_errors(monkeyp
             30,
         )
     ]
-    assert dataset_client == {
-        "token": "test-token",
-        "dataset_keys": ["dataset-AE-ds-1"],
-    }
-    assert clear_history_calls == ["sid-123"]
-    assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert delegated_calls == [("AE/reports/visit.csv", "ds-1", "test-token", "sid-123")]
 
 
-def test_load_dataset_file_by_id_uses_data_file_path_without_dataset_object_id(monkeypatch, tmp_path):
+def test_load_dataset_file_by_id_uses_snapshot_api_and_delegates_to_snapshot_loader(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
 
     monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
-    monkeypatch.setattr(services, "_get_active_dataset_snapshot_id", lambda api_host, dataset_id, token: "snap-rw")
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-456")
 
-    clear_history_calls = []
-    monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
+    snapshot_calls = []
 
-    dataset_client = install_fake_dataset_client(
-        monkeypatch,
-        {"dataset-Clinical Study-ds-123": ["adsl.csv"]},
-    )
-    monkeypatch.setattr(services, "_download_dataset_file", lambda dataset, file_name, token: b"USUBJID\n01\n")
+    def fake_httpclient_get(url, params=None, headers=None):
+        snapshot_calls.append((url, params, headers))
+        return {"snapshots": [{"id": "snap-rw"}]}
 
-    expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-123" / "unset_snapshot_id" / "adsl.csv"
-    mcp_paths = []
+    monkeypatch.setattr(services.httpclient, "get", fake_httpclient_get)
 
-    def fake_mcp_post(path, params):
-        assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
-        mcp_paths.append(temp_path)
-        assert temp_path == expected_path
-        assert temp_path.exists()
-        assert temp_path.read_bytes() == b"USUBJID\n01\n"
-        return _FakeResponse(200, {"loaded": True})
+    delegated_calls = []
 
-    monkeypatch.setattr(services, "mcp_post", fake_mcp_post)
+    def fake_load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id, token=None, session_id=None):
+        delegated_calls.append((dataset_display_name, dataset_id, snapshot_id, token, session_id))
+        return jsonify({"loaded": True, "dataset": dataset_display_name})
+
+    monkeypatch.setattr(services, "load_dataset_file_from_snapshot", fake_load_dataset_file_from_snapshot)
 
     response = _call_service(app, services.load_dataset_file_by_id, "Clinical Study/adsl.csv", "ds-123")
 
     assert response.status_code == 200
-    assert response.get_json() == {
-        "loaded": True,
-        "dataset": "Clinical Study/adsl.csv",
-        "sourceType": "dataset",
-        "datasetId": "ds-123",
-        "snapshotId": "snap-rw",
-        "governanceFilename": "adsl.csv",
-    }
-    assert dataset_client == {
-        "token": "test-token",
-        "dataset_keys": ["dataset-Clinical Study-ds-123"],
-    }
-    assert clear_history_calls == ["sid-456"]
-    assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert response.get_json() == {"loaded": True, "dataset": "Clinical Study/adsl.csv"}
+    assert snapshot_calls == [
+        (
+            "https://domino.example/api/datasetrw/v1/datasets/ds-123/snapshots",
+            {"limit": 1},
+            {"Authorization": "Bearer test-token"},
+        )
+    ]
+    assert delegated_calls == [
+        ("Clinical Study/adsl.csv", "ds-123", "snap-rw", "test-token", "sid-456")
+    ]
 
 
 def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_errors(monkeypatch, tmp_path):
@@ -410,6 +465,12 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-789")
+    validate_calls = []
+    monkeypatch.setattr(
+        services,
+        "validate_dataset_file_size",
+        lambda snapshot_id, file_path, token=None, api_host=None: validate_calls.append((snapshot_id, file_path, token, api_host)),
+    )
 
     clear_history_calls = []
     monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
@@ -425,9 +486,10 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-9" / "snap-9" / "adsl.csv"
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        assert session_id == "sid-789"
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()
@@ -462,6 +524,7 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
             True,
         )
     ]
+    assert validate_calls == [("snap-9", "reports/adsl.csv", "test-token", "https://domino.example")]
     assert clear_history_calls == ["sid-789"]
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
@@ -489,6 +552,12 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    enforce_calls = []
+    monkeypatch.setattr(
+        services.file_size_limits,
+        "enforce",
+        lambda file_name, file_size: enforce_calls.append((file_name, file_size)),
+    )
 
     clear_history_calls = []
     monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
@@ -510,9 +579,10 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     )
     mcp_paths = []
 
-    def fake_mcp_post(path, params):
+    def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
-        temp_path = Path(params["dataset_name"])
+        assert session_id == "sid-netapp"
+        temp_path = Path(params["file_snapshot_path"])
         mcp_paths.append(temp_path)
         assert temp_path == expected_path
         assert temp_path.exists()
@@ -552,6 +622,7 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
         "downloaded_files": ["reports/visit.csv"],
     }
     assert clear_history_calls == ["sid-netapp"]
+    assert enforce_calls == [("reports/visit.csv", services.file_size_limits.DATA_FILE_SIZE_LIMIT)]
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
     assert not expected_path.parent.exists()

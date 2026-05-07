@@ -7,9 +7,9 @@ What lives here:
 - `find_data_files()` — recursive search for supported files across the
   five known data roots (`datasets/`, `/mnt/data`, `/mnt/netapp-volumes`,
   `/domino/datasets`, `/domino/netapp-volumes`).
-- `load_dataset(name)` — resolves a dataset name to a path, reads it
-  (CSV / parquet / SAS7BDAT / XPT), normalizes types, and stores the
-  resulting DataFrame for the current session.
+- `load_dataset(file_snapshot_path)` — resolves a dataset path reference,
+  reads it
+  (CSV / parquet / SAS7BDAT / XPT), and normalizes types.
 - `_convert_arrow_types(df)` — defensive type coercion for parquet files
   that come back with PyArrow-backed dtypes or string-typed numeric
   columns (very common for upstream-exported clinical data).
@@ -43,7 +43,6 @@ from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
 )
-from mcp_server.session import _set_current_df
 
 logger = logging.getLogger(__name__)
 
@@ -71,25 +70,25 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
     """
     Convert PyArrow-backed types to standard pandas/numpy types.
     This ensures compatibility with pandas type detection functions like select_dtypes.
-    
+
     Uses aggressive numeric conversion to properly detect numeric columns that may
     be stored as strings or Arrow types in parquet files.
-    
+
     Handles common missing value representations in clinical/scientific data:
     - Empty strings ''
     - Whitespace-only strings
     - Common missing value indicators like '.', 'NA', 'N/A', 'NaN', 'null'
-    
+
     Performance: Uses vectorized pandas operations instead of row-by-row apply()
     for efficient processing of large datasets (1M+ rows).
     """
     # Common missing value indicators in clinical data (SAS exports often use '.')
     MISSING_VALUES = {'', '.', 'NA', 'N/A', 'NaN', 'nan', 'null', 'NULL', 'None', 'NONE'}
-    
+
     for col in df.columns:
         dtype = df[col].dtype
         dtype_str = str(dtype).lower()
-        
+
         # First, handle Arrow-backed types by converting to Python objects
         if 'pyarrow' in dtype_str or 'arrow' in dtype_str:
             try:
@@ -97,7 +96,7 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
                 df[col] = df[col].astype(object)
             except Exception:
                 pass
-        
+
         # Now try to infer the best type for each column
         # Try numeric conversion first (this catches numeric columns stored as strings/objects)
         if not pd.api.types.is_numeric_dtype(df[col]):
@@ -106,35 +105,35 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
                 # This handles empty strings, '.', 'NA', etc. common in clinical data
                 col_series = df[col]
                 col_dtype_str = str(col_series.dtype).lower()
-                
+
                 if col_series.dtype == 'object' or 'string' in col_dtype_str:
                     # VECTORIZED missing value detection (much faster than apply() with lambda)
                     # Start with pandas NA check
                     is_missing = col_series.isna()
-                    
+
                     # For string values, use vectorized string operations
                     # fillna('') ensures .str accessor works on all values
                     str_values = col_series.fillna('').astype(str).str.strip()
                     is_missing_str = str_values.isin(MISSING_VALUES)
-                    
+
                     # Combine the masks
                     is_missing = is_missing | is_missing_str
-                    
+
                     # Replace missing indicators with NaN for proper counting
                     # Use numpy where for efficiency (avoids copy in .where())
                     col_values = np.where(is_missing, np.nan, col_series)
                     col_values = pd.Series(col_values, index=df.index)
                 else:
                     col_values = col_series
-                
+
                 # Try to convert to numeric
                 numeric_col = pd.to_numeric(col_values, errors='coerce')
-                
+
                 # Count "real" non-null values (excluding missing value indicators)
                 # For numeric check, we care about values that were actual data, not missing indicators
                 non_null_before = col_values.notna().sum()
                 non_null_after = numeric_col.notna().sum()
-                
+
                 if non_null_after > 0:
                     # Check if values look numeric:
                     # - If there were real values and most converted successfully, it's numeric
@@ -158,7 +157,7 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
             except Exception as e:
                 logger.debug(f"Could not convert column '{col}' to numeric: {e}")
                 pass
-        
+
         # Handle nullable integer types (Int64, Int32, etc.) - convert to standard types
         dtype_str = str(df[col].dtype)
         if dtype_str in ('Int8', 'Int16', 'Int32', 'Int64', 'UInt8', 'UInt16', 'UInt32', 'UInt64'):
@@ -169,21 +168,21 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
                     df[col] = df[col].astype('int64')
             except Exception:
                 pass
-        
+
         # Handle nullable float types (Float32, Float64)
         elif dtype_str in ('Float32', 'Float64'):
             try:
                 df[col] = df[col].astype('float64')
             except Exception:
                 pass
-        
+
         # Handle string types - keep as object for compatibility
         elif dtype_str in ('string', 'string[python]', 'string[pyarrow]'):
             try:
                 df[col] = df[col].astype('object')
             except Exception:
                 pass
-    
+
     return df
 
 
@@ -193,11 +192,11 @@ def find_data_files() -> List[Dict[str, str]]:
     1. datasets/ folder (flat)
     2. /mnt/data/ folder (recursive)
     3. /domino/datasets/ folder (recursive)
-    
+
     Returns a list of dicts with 'name' (display name) and 'path' (full path)
     """
     data_files = []
-    
+
     # Search in datasets/ folder (flat search)
     if datasets_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -206,7 +205,7 @@ def find_data_files() -> List[Dict[str, str]]:
                     'name': f.name,
                     'path': str(f.resolve())
                 })
-    
+
     # Search in /mnt/data/ folder recursively
     if mnt_data_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -218,7 +217,7 @@ def find_data_files() -> List[Dict[str, str]]:
                     'name': f"/mnt/data/{relative_path}",
                     'path': str(f.resolve())
                 })
-    
+
     # Search in /mnt/netapp-volumes/ folder recursively
     if mnt_netapp_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -230,7 +229,7 @@ def find_data_files() -> List[Dict[str, str]]:
                     'name': f"/mnt/netapp-volumes/{relative_path}",
                     'path': str(f.resolve())
                 })
-    
+
     # Search in /domino/datasets/ folder recursively
     if domino_datasets_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -242,7 +241,7 @@ def find_data_files() -> List[Dict[str, str]]:
                     'name': f"/domino/datasets/{relative_path}",
                     'path': str(f.resolve())
                 })
-    
+
     # Search in /domino/netapp-volumes/ folder recursively
     if domino_netapp_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -254,63 +253,17 @@ def find_data_files() -> List[Dict[str, str]]:
                     'name': f"/domino/netapp-volumes/{relative_path}",
                     'path': str(f.resolve())
                 })
-    
+
     return data_files
 
 
-def load_dataset(dataset_name: str) -> pd.DataFrame:
-    """Load a dataset from the datasets folder or /mnt/data"""
-    
-    # Find the dataset path - it could be a direct filename or a full path
-    dataset_path = None
-    
-    # First check if it's a path starting with /mnt/data
-    if dataset_name.startswith('/mnt/data/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-    
-    # Check if it's a path starting with /mnt/netapp-volumes
-    if dataset_path is None and dataset_name.startswith('/mnt/netapp-volumes/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-    
-    # Check if it's a path starting with /domino/datasets
-    if dataset_path is None and dataset_name.startswith('/domino/datasets/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
-    
-    # Check if it's a path starting with /domino/netapp-volumes
-    if dataset_path is None and dataset_name.startswith('/domino/netapp-volumes/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists():
-            dataset_path = candidate_path
+def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
+    """Load a dataset file from disk and return the DataFrame."""
+    dataset_path = Path(file_snapshot_path)
 
-    # Handle any other absolute path (e.g. temp files from API downloads)
-    if dataset_path is None and dataset_name.startswith('/'):
-        candidate_path = Path(dataset_name)
-        if candidate_path.exists() and candidate_path.is_file():
-            dataset_path = candidate_path
+    if not dataset_path.exists():
+        raise HTTPException(status_code=404, detail=f"Dataset '{file_snapshot_path}' not found")
 
-    # Then check the datasets folder
-    if dataset_path is None:
-        candidate_path = datasets_folder / dataset_name
-        if candidate_path.exists():
-            dataset_path = candidate_path
-    
-    # If still not found, search all data files
-    if dataset_path is None:
-        data_files = find_data_files()
-        for df_info in data_files:
-            if df_info['name'] == dataset_name or df_info['path'] == dataset_name:
-                dataset_path = Path(df_info['path'])
-                break
-    
-    if dataset_path is None or not dataset_path.exists():
-        raise HTTPException(status_code=404, detail=f"Dataset '{dataset_name}' not found")
-    
     try:
         # Load based on file extension
         file_ext = dataset_path.suffix.lower()
@@ -325,7 +278,7 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             # Read SAS dataset format
             if not PYREADSTAT_AVAILABLE:
                 raise HTTPException(
-                    status_code=500, 
+                    status_code=500,
                     detail="SAS file support requires pyreadstat. Run `uv sync --locked` to install project dependencies."
                 )
             df, meta = pyreadstat.read_sas7bdat(str(dataset_path))
@@ -336,7 +289,7 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             # Read SAS Transport format (XPT)
             if not PYREADSTAT_AVAILABLE:
                 raise HTTPException(
-                    status_code=500, 
+                    status_code=500,
                     detail="SAS Transport file support requires pyreadstat. Run `uv sync --locked` to install project dependencies."
                 )
             df, meta = pyreadstat.read_xport(str(dataset_path))
@@ -345,20 +298,18 @@ def load_dataset(dataset_name: str) -> pd.DataFrame:
             df = _convert_arrow_types(df)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file format: {file_ext}")
-        
-        _set_current_df(df, dataset_name)
 
         # Log column types for debugging
-        logger.info(f"Loaded dataset: {dataset_name} (format: {file_ext})")
+        logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")
         logger.info(f"Column types after conversion:")
         for col in df.columns:
             logger.info(f"  {col}: {df[col].dtype}")
-        
+
         numeric_cols = _get_numeric_columns(df)
         categorical_cols = _get_categorical_columns(df, numeric_cols)
         logger.info(f"Detected numeric columns: {numeric_cols}")
         logger.info(f"Detected categorical columns: {categorical_cols}")
-        
+
         return df
     except HTTPException:
         raise
