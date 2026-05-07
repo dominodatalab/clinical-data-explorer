@@ -1,4 +1,5 @@
-"""Small HTTP helpers for backend service calls."""
+"""HTTP helpers. Just forwards arguments to the python requests library
+with some overrides"""
 
 import requests
 
