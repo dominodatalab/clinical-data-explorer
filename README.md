@@ -114,6 +114,8 @@ To enable the natural language chat feature, configure an LLM provider:
 | `LLM_API_KEY` | API key for your LLM provider (not required for local Ollama) |
 | `LLM_BASE_URL` | Base URL for OpenAI-compatible API (default: `https://api.openai.com/v1`) |
 | `LLM_MODEL` | Model name to use (default: `gpt-4o-mini`) |
+| `CHAT_AGENT_MESSAGE_HISTORY_CACHE_SIZE_B` | Maximum size, in bytes, of the in-memory chat message history cache (default: `524288000`, or 500 MiB) |
+| `CHAT_AGENT_MESSAGE_HISTORY_CAP` | Maximum number of messages to retain per chat session (default: `100`) |
 
 **Example configurations:**
 

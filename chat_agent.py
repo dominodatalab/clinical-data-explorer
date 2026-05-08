@@ -7,7 +7,7 @@ from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from pydantic_ai.mcp import MCPServerSSE
-from pydantic_ai.messages import ModelMessage
+import chat_agent_message_cache
 import asyncio
 import json
 import re
@@ -16,6 +16,8 @@ import logging
 import traceback
 import sys
 from pathlib import Path
+
+import config as chat_agent_config
 
 MCP_SERVER_URL = 'http://localhost:3333/mcp'
 
@@ -87,8 +89,8 @@ def get_chat_status():
         )
     }
 
-# Per-session message history: {session_id: list[ModelMessage]}
-_message_histories: dict[str, list[ModelMessage]] = {}
+
+get_message_histories = chat_agent_message_cache.get_cache
 
 # System prompt is loaded from backend/prompts/chat_system_prompt.md so that
 # editing the chart-spec instructions does not require a Python diff. The
@@ -155,8 +157,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
     if current_agent is None:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
-    # TODO are the message histories capped?
-    message_history = _message_histories.get(session_id, [])
+    message_history = chat_agent_message_cache.get_messages(session_id)
 
     logger.info(f"Starting agent response for session {session_id[:8]}...")
 
@@ -174,8 +175,8 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         logger.debug("Agent run completed successfully")
 
         # Update this session's history
-        message_history.extend(result.new_messages())
-        _message_histories[session_id] = message_history
+        message_history = chat_agent_message_cache.add_messages(session_id, result.new_messages())
+
         logger.debug(f"Session {session_id[:8]} history now has {len(message_history)} messages")
 
         response_text = result.output
@@ -221,7 +222,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 
 def clear_history(session_id: str = 'default'):
     """Clear the conversation history for a session."""
-    _message_histories.pop(session_id, None)
+    chat_agent_message_cache.clear_messages(session_id)
     logger.info(f"Chat history cleared for session {session_id[:8]}...")
 
 async def main():
