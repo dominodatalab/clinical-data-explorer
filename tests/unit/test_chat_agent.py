@@ -5,6 +5,7 @@ import importlib
 
 from cachetools import LRUCache
 import pytest
+from pydantic_ai.messages import ModelResponse, TextPart
 
 import chat_agent
 
@@ -77,6 +78,14 @@ class RecordingLock:
 
     def __exit__(self, exc_type, exc, tb):
         return None
+
+
+def _message(text):
+    return ModelResponse(parts=[TextPart(content=text)])
+
+
+def _message_text(message):
+    return message.parts[0].content
 
 
 def test_get_llm_config_uses_defaults_and_openai_key_fallback(monkeypatch):
@@ -258,6 +267,71 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     ]
 
 
+def test_extract_response_payload_warns_when_chart_json_is_malformed():
+    valid_chart = {
+        "type": "bar",
+        "title": "Counts",
+        "data": {"categories": ["A"], "values": [1]},
+    }
+    response_text = """
+Summary before the charts.
+[CHART_DATA]
+{"type": "bar", "title": "Counts", "data": {"categories": ["A"], "values": [1]}}
+[/CHART_DATA]
+Another note.
+[CHART_DATA]
+{"type": "bar", "data":
+[/CHART_DATA]
+"""
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert payload["charts"] == [valid_chart]
+    assert "Summary before the charts." in payload["text"]
+    assert "Another note." in payload["text"]
+    assert chat_agent.MALFORMED_CHART_WARNING in payload["text"]
+    assert "[CHART_DATA]" not in payload["text"]
+
+
+def test_get_agent_response_strips_chart_payloads_before_storing_history(monkeypatch):
+    output = (
+        "Here is the distribution.\n"
+        "[CHART_DATA]"
+        '{"type":"bar","title":"Counts","data":{"categories":["A"],"values":[1]}}'
+        "[/CHART_DATA]"
+    )
+    result = FakeResult(output, [_message(output)])
+    agent = FakeAgent(result)
+
+    monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+
+    response = asyncio.run(
+        chat_agent.get_agent_response("show a chart", session_id="session-chart")
+    )
+
+    assert response["charts"][0]["type"] == "bar"
+    assert response["text"] == "Here is the distribution."
+    stored_text = _message_text(chat_agent.get_message_histories()["session-chart"][0])
+    assert "[CHART_DATA]" not in stored_text
+    assert "categories" not in stored_text
+    assert chat_agent.CHART_HISTORY_REPLACEMENT in stored_text
+
+
+def test_prepare_message_history_preserves_all_messages_after_sanitizing():
+    history = chat_agent._prepare_message_history_for_storage([
+        _message("old"),
+        _message("middle [CHART_DATA]{\"type\":\"bar\"}[/CHART_DATA]"),
+        _message("new"),
+    ])
+
+    assert [_message_text(message) for message in history] == [
+        "old",
+        f"middle {chat_agent.CHART_HISTORY_REPLACEMENT}",
+        "new",
+    ]
+
+
 def test_get_agent_response_caps_message_history(monkeypatch):
     existing_history = chat_agent.chat_agent_message_cache.add_messages(
         "session-1", ["old-0", "old-1", "old-2", "old-3"]
@@ -290,17 +364,20 @@ def test_get_agent_response_caps_message_history(monkeypatch):
 
 def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
     result = FakeResult("plain response", ["new-message"])
-    agent = FakeAgent(result, enter_error=RuntimeError("mcp unavailable"))
+    mcp_agent = FakeAgent(result, enter_error=RuntimeError("mcp unavailable"))
+    fallback_agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: mcp_agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda: fallback_agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("hello", session_id="session-1")
     )
 
     assert response == {"text": "plain response", "charts": []}
-    assert agent.run_calls == [
+    assert mcp_agent.run_calls == []
+    assert fallback_agent.run_calls == [
         {
             "message": "hello",
             "message_history": ["new-message"],
