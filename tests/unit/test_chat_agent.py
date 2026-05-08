@@ -12,6 +12,7 @@ import chat_agent
 def reset_chat_agent_state(monkeypatch):
     for env_var in (
         "CHAT_AGENT_MESSAGE_HISTORY_CAP",
+        "CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS",
         "LLM_BASE_URL",
         "LLM_API_KEY",
         "OPENAI_API_KEY",
@@ -20,11 +21,15 @@ def reset_chat_agent_state(monkeypatch):
         monkeypatch.delenv(env_var, raising=False)
 
     chat_agent.get_message_histories.cache_clear()
+    chat_agent.chat_agent_message_cache.get_cache_last_touched.cache_clear()
     chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP = 100
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS = 24 * 60 * 60
     chat_agent._llm_model = None
     yield
     chat_agent.get_message_histories.cache_clear()
+    chat_agent.chat_agent_message_cache.get_cache_last_touched.cache_clear()
     chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP = 100
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS = 24 * 60 * 60
     chat_agent._llm_model = None
 
 
@@ -133,6 +138,22 @@ def test_message_history_cap_can_be_set_from_environment(monkeypatch):
     assert chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP == 7
 
 
+def test_message_history_ttl_defaults_to_one_day(monkeypatch):
+    monkeypatch.delenv("CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS", raising=False)
+
+    importlib.reload(chat_agent.chat_agent_config)
+
+    assert chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS == 86400
+
+
+def test_message_history_ttl_can_be_set_from_environment(monkeypatch):
+    monkeypatch.setenv("CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS", "30")
+
+    importlib.reload(chat_agent.chat_agent_config)
+
+    assert chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS == 30
+
+
 def test_get_message_histories_returns_singleton():
     chat_agent.get_message_histories.cache_clear()
     try:
@@ -224,6 +245,56 @@ def test_get_agent_response_caps_message_history(monkeypatch):
         "new-1",
         "new-2",
     ]
+
+
+def test_message_history_expires_after_configured_ttl(monkeypatch):
+    now = [100.0]
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS = 10
+    monkeypatch.setattr(
+        chat_agent.chat_agent_message_cache.time,
+        "monotonic",
+        lambda: now[0],
+    )
+
+    chat_agent.chat_agent_message_cache.add_messages("session-1", ["old-message"])
+
+    now[0] = 109.0
+    assert chat_agent.chat_agent_message_cache.get_messages("session-1") == ["old-message"]
+
+    now[0] = 119.0
+    assert chat_agent.chat_agent_message_cache.get_messages("session-1") == []
+
+
+def test_get_agent_response_does_not_send_expired_message_history(monkeypatch):
+    now = [100.0]
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_TTL_SECONDS = 10
+    monkeypatch.setattr(
+        chat_agent.chat_agent_message_cache.time,
+        "monotonic",
+        lambda: now[0],
+    )
+    chat_agent.chat_agent_message_cache.add_messages("session-1", ["old-message"])
+
+    now[0] = 111.0
+    result = FakeResult("plain response", ["new-message"])
+    agent = FakeAgent(result)
+
+    monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+
+    response = asyncio.run(
+        chat_agent.get_agent_response("hello", session_id="session-1")
+    )
+
+    assert response == {"text": "plain response", "charts": []}
+    assert agent.run_calls == [
+        {
+            "message": "hello",
+            "message_history": ["new-message"],
+            "message_history_snapshot": [],
+        }
+    ]
+    assert chat_agent.get_message_histories()["session-1"] == ["new-message"]
 
 
 def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
