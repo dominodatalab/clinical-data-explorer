@@ -28,6 +28,9 @@
 // No state-, api-, or DOM-helper imports — each renderer is a pure
 // Highcharts.chart() invocation against its container.
 
+const MAX_HEATMAP_FEATURES = 30;
+const HEATMAP_DATA_LABEL_FEATURE_LIMIT = 12;
+
 export function renderBarChart(containerId, title, data) {
     Highcharts.chart(containerId, {
         chart: { type: 'column' },
@@ -163,9 +166,10 @@ export function renderBoxplot(containerId, title, data) {
 }
 
 export function renderHeatmap(containerId, title, data) {
+    const featureCount = validateHeatmapData(data);
     const heatmapData = [];
-    for (let i = 0; i < data.features.length; i++) {
-        for (let j = 0; j < data.features.length; j++) {
+    for (let i = 0; i < featureCount; i++) {
+        for (let j = 0; j < featureCount; j++) {
             heatmapData.push([j, i, data.matrix[i][j]]);
         }
     }
@@ -204,13 +208,42 @@ export function renderHeatmap(containerId, title, data) {
             borderWidth: 1,
             data: heatmapData,
             dataLabels: {
-                enabled: true,
+                enabled: featureCount <= HEATMAP_DATA_LABEL_FEATURE_LIMIT,
                 color: '#000000',
                 format: '{point.value:.2f}'
             }
         }],
         credits: { enabled: false }
     });
+}
+
+function validateHeatmapData(data) {
+    if (!data || !Array.isArray(data.features) || data.features.length === 0) {
+        throw new Error('Heatmap data must include a non-empty features list.');
+    }
+
+    const featureCount = data.features.length;
+    if (featureCount > MAX_HEATMAP_FEATURES) {
+        throw new Error(`Heatmap has too many features to render safely. Maximum: ${MAX_HEATMAP_FEATURES}.`);
+    }
+
+    if (!Array.isArray(data.matrix) || data.matrix.length !== featureCount) {
+        throw new Error('Heatmap matrix must match the feature count.');
+    }
+
+    for (const row of data.matrix) {
+        if (!Array.isArray(row) || row.length !== featureCount) {
+            throw new Error('Heatmap matrix must be square.');
+        }
+
+        for (const value of row) {
+            if (typeof value !== 'number' || !Number.isFinite(value)) {
+                throw new Error('Heatmap matrix values must be finite numbers.');
+            }
+        }
+    }
+
+    return featureCount;
 }
 
 export function renderGroupedBarChart(containerId, title, data) {

@@ -9,8 +9,6 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.mcp import MCPServerSSE
 import chat_agent_message_cache
 import asyncio
-import json
-import re
 import os
 import logging
 import traceback
@@ -18,6 +16,7 @@ import sys
 from pathlib import Path
 
 import config as chat_agent_config
+from backend.services.chat_chart_specs import parse_chart_response
 
 MCP_SERVER_URL = 'http://localhost:3333/mcp'
 
@@ -182,22 +181,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         response_text = result.output
         logger.debug(f"Got response text of length {len(response_text)}")
 
-        # Parse out any chart specifications
-        charts = []
-        chart_pattern = r'\[CHART_DATA\](.*?)\[/CHART_DATA\]'
-        matches = re.finditer(chart_pattern, response_text, re.DOTALL)
-
-        for match in matches:
-            try:
-                chart_json = match.group(1).strip()
-                chart_data = json.loads(chart_json)
-                charts.append(chart_data)
-                logger.debug(f"Successfully parsed chart: {chart_data.get('type', 'unknown')}")
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse chart data: {e}")
-
-        # Remove chart data blocks from the text
-        clean_text = re.sub(chart_pattern, '', response_text, flags=re.DOTALL).strip()
+        clean_text, charts = parse_chart_response(response_text)
 
         logger.info(f"Successfully generated response with {len(charts)} charts")
         return {

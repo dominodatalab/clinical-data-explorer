@@ -56,6 +56,7 @@ Available chart types and their data formats:
 
 7. HEATMAP (type: "heatmap")
    - Use for: correlation matrices, showing relationships between multiple variables
+   - Limit to 30 or fewer features; if there are more variables, summarize or chart only the strongest relationships
    - Data format: {"features": ["A", "B", "C"], "matrix": [[1.0, 0.5, 0.3], [0.5, 1.0, 0.7], [0.3, 0.7, 1.0]]}
 
 8. GROUPED BAR CHART (type: "grouped_bar")
@@ -67,6 +68,7 @@ Guidelines:
 - Choose the most appropriate chart type for the data
 - Keep chart titles clear and descriptive
 - Always provide a text explanation before the chart
+- Include no more than 4 charts in one response
 - For correlation matrices, use heatmap type
 - For comparing two numeric features, use scatter plot
 - For categorical data distributions, use bar or pie charts

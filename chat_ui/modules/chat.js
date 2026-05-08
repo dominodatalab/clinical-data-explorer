@@ -269,6 +269,12 @@ export function displayMessage(text, sender, charts = null) {
 function renderChart(containerId, chartSpec) {
     console.log('Rendering chart with spec:', chartSpec);
 
+    if (!chartSpec || typeof chartSpec !== 'object') {
+        console.error('Chart spec is invalid:', chartSpec);
+        renderChartError(containerId, 'Invalid chart: malformed specification');
+        return;
+    }
+
     const { type, title, data } = chartSpec;
 
     if (!type) {
