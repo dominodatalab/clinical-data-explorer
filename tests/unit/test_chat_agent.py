@@ -1,6 +1,7 @@
 """Unit tests for chat agent helpers."""
 
 import asyncio
+import importlib
 
 import pytest
 
@@ -9,13 +10,21 @@ import chat_agent
 
 @pytest.fixture(autouse=True)
 def reset_chat_agent_state(monkeypatch):
-    for env_var in ("LLM_BASE_URL", "LLM_API_KEY", "OPENAI_API_KEY", "LLM_MODEL"):
+    for env_var in (
+        "CHAT_AGENT_MESSAGE_HISTORY_CAP",
+        "LLM_BASE_URL",
+        "LLM_API_KEY",
+        "OPENAI_API_KEY",
+        "LLM_MODEL",
+    ):
         monkeypatch.delenv(env_var, raising=False)
 
     chat_agent.get_message_histories.cache_clear()
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP = 100
     chat_agent._llm_model = None
     yield
     chat_agent.get_message_histories.cache_clear()
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP = 100
     chat_agent._llm_model = None
 
 
@@ -108,6 +117,22 @@ def test_get_chat_status_hides_remote_config_when_api_key_missing(monkeypatch):
     }
 
 
+def test_message_history_cap_defaults_to_100(monkeypatch):
+    monkeypatch.delenv("CHAT_AGENT_MESSAGE_HISTORY_CAP", raising=False)
+
+    importlib.reload(chat_agent.chat_agent_config)
+
+    assert chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP == 100
+
+
+def test_message_history_cap_can_be_set_from_environment(monkeypatch):
+    monkeypatch.setenv("CHAT_AGENT_MESSAGE_HISTORY_CAP", "7")
+
+    importlib.reload(chat_agent.chat_agent_config)
+
+    assert chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP == 7
+
+
 def test_get_message_histories_returns_singleton():
     chat_agent.get_message_histories.cache_clear()
     try:
@@ -169,6 +194,35 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     assert chat_agent.get_message_histories()["session-1"] == [
         "old-message",
         "new-message",
+    ]
+
+
+def test_get_agent_response_caps_message_history(monkeypatch):
+    chat_agent.chat_agent_config.CHAT_AGENT_MESSAGE_HISTORY_CAP = 3
+    existing_history = ["old-0", "old-1", "old-2", "old-3"]
+    chat_agent.get_message_histories()["session-1"] = existing_history
+    result = FakeResult("plain response", ["new-1", "new-2"])
+    agent = FakeAgent(result)
+
+    monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+
+    response = asyncio.run(
+        chat_agent.get_agent_response("hello", session_id="session-1")
+    )
+
+    assert response == {"text": "plain response", "charts": []}
+    assert agent.run_calls == [
+        {
+            "message": "hello",
+            "message_history": existing_history,
+            "message_history_snapshot": ["old-1", "old-2", "old-3"],
+        }
+    ]
+    assert chat_agent.get_message_histories()["session-1"] == [
+        "old-3",
+        "new-1",
+        "new-2",
     ]
 
 
