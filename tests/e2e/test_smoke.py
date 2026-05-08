@@ -16,7 +16,11 @@ when moving DOM around:
 
 The fixture `_e2e_sample.csv` is copied into datasets/ by the session fixture.
 """
+import functools
+from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
+from pathlib import Path
 import re
+import threading
 
 import pytest
 
@@ -32,7 +36,25 @@ from playwright.sync_api import expect  # noqa: E402
 # below fail in 2s and point straight at the wiring bug).
 _VISIBLE_CLASS_RE = re.compile(r"\bvisible\b")
 
+REPO_ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_NAME = "_e2e_sample.csv"
+
+
+@pytest.fixture
+def chat_ui_static_url(free_tcp_port):
+    handler = functools.partial(
+        SimpleHTTPRequestHandler,
+        directory=str(REPO_ROOT / "chat_ui"),
+    )
+    server = ThreadingHTTPServer(("127.0.0.1", free_tcp_port), handler)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        yield f"http://127.0.0.1:{free_tcp_port}"
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join(timeout=5)
 
 
 def _pick_file(page, name):
@@ -173,3 +195,45 @@ def test_modal_wiring(live_servers, page):
         expect(page.locator(f'#{modal_id}')).not_to_have_class(
             _VISIBLE_CLASS_RE, timeout=2_000
         )
+
+
+def test_chat_text_and_chart_errors_are_not_rendered_as_html(page, chat_ui_static_url):
+    page.goto(chat_ui_static_url)
+    expect(page.locator("#chat-box")).to_be_attached(timeout=15_000)
+
+    result = page.evaluate(
+        """async () => {
+            const chatPayload = '<img src=x onerror="window.__chatXss = true">hello';
+            const chartTypePayload = '<svg onload="window.__chartXss = true"></svg>';
+
+            window.__chatXss = false;
+            window.__chartXss = false;
+
+            const { displayMessage } = await import('/modules/chat.js');
+            displayMessage(`${chatPayload}\\nline two`, 'agent', [{
+                type: chartTypePayload,
+                data: { values: [] },
+            }]);
+
+            const agentMessages = [...document.querySelectorAll('#chat-box .agent-message')];
+            const chartErrors = [...document.querySelectorAll('#chat-box .chart-container .error')];
+
+            return {
+                messageHtml: agentMessages.at(-1).innerHTML,
+                chartErrorHtml: chartErrors.at(-1).innerHTML,
+                chatImages: document.querySelectorAll('#chat-box img').length,
+                chartSvgs: document.querySelectorAll('#chat-box .chart-container svg').length,
+                chatXss: window.__chatXss,
+                chartXss: window.__chartXss,
+            };
+        }"""
+    )
+
+    assert "<img" not in result["messageHtml"]
+    assert "&lt;img" in result["messageHtml"]
+    assert "<svg" not in result["chartErrorHtml"]
+    assert "&lt;svg" in result["chartErrorHtml"]
+    assert result["chatImages"] == 0
+    assert result["chartSvgs"] == 0
+    assert result["chatXss"] is False
+    assert result["chartXss"] is False

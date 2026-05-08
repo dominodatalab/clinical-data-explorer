@@ -219,6 +219,26 @@ function removeThinkingAnimation(thinkingElement) {
     }
 }
 
+function appendTextWithLineBreaks(element, text) {
+    const lines = String(text ?? '').split(/\r?\n/);
+    lines.forEach((line, index) => {
+        if (index > 0) {
+            element.appendChild(document.createElement('br'));
+        }
+        element.appendChild(document.createTextNode(line));
+    });
+}
+
+function renderChartError(containerId, message) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+
+    const errorElement = document.createElement('p');
+    errorElement.classList.add('error');
+    errorElement.textContent = message;
+    container.replaceChildren(errorElement);
+}
+
 export function displayMessage(text, sender, charts = null) {
     // Lazy-resolve chatBox so callers that fire before initChat()
     // (e.g. very-early dataset-load error paths) still work.
@@ -229,7 +249,7 @@ export function displayMessage(text, sender, charts = null) {
 
     const messageElement = document.createElement('div');
     messageElement.classList.add('message', `${sender}-message`);
-    messageElement.innerHTML = text.replace(/\n/g, '<br>');
+    appendTextWithLineBreaks(messageElement, text);
     chatBox.appendChild(messageElement);
 
     if (charts && charts.length > 0) {
@@ -253,13 +273,13 @@ function renderChart(containerId, chartSpec) {
 
     if (!type) {
         console.error('Chart type is missing:', chartSpec);
-        document.getElementById(containerId).innerHTML = '<p class="error">Invalid chart: missing type</p>';
+        renderChartError(containerId, 'Invalid chart: missing type');
         return;
     }
 
     if (!data) {
         console.error('Chart data is missing:', chartSpec);
-        document.getElementById(containerId).innerHTML = '<p class="error">Invalid chart: missing data</p>';
+        renderChartError(containerId, 'Invalid chart: missing data');
         return;
     }
 
@@ -291,12 +311,12 @@ function renderChart(containerId, chartSpec) {
                 break;
             default:
                 console.error('Unknown chart type:', type);
-                document.getElementById(containerId).innerHTML = '<p class="error">Unknown chart type: ' + type + '</p>';
+                renderChartError(containerId, 'Unknown chart type: ' + String(type));
         }
     } catch (error) {
         console.error('Error rendering chart:', error);
         console.error('Chart spec was:', chartSpec);
-        document.getElementById(containerId).innerHTML = '<p class="error">Error rendering chart: ' + error.message + '</p>';
+        renderChartError(containerId, 'Error rendering chart: ' + String(error.message));
     }
 }
 
