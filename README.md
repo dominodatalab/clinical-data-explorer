@@ -85,6 +85,14 @@ Configure the following environment variables in your Domino project settings:
 |----------|-------------|
 | `DOMINO_API_HOST_OVERD` | Your Domino deployment URL (e.g., `https://your-domino-deployment.com`). This overrides the auto-detected `DOMINO_API_HOST` when set. |
 
+#### Optional: Backend Request and Load Limits
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MCP_REQUEST_TIMEOUT_SECONDS` | `120` | Maximum time, in seconds, for backend HTTP calls to the MCP server before timing out. |
+| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
+| `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
+
 #### Optional: Cache and Session Tuning
 
 These settings control how downloaded files, MCP server DataFrames, and session metadata are cached:
@@ -96,9 +104,6 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 | `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. |
 | `MCP_SESSION_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
-| `MCP_REQUEST_TIMEOUT_SECONDS` | `120` | Maximum time, in seconds, for backend HTTP calls to the MCP server before timing out. |
-| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
-| `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
 
 #### Optional: AI Chat Feature
 
