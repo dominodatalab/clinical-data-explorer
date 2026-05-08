@@ -16,6 +16,7 @@ import logging
 import traceback
 import sys
 from pathlib import Path
+from functools import lru_cache
 
 MCP_SERVER_URL = 'http://localhost:3333/mcp'
 
@@ -87,8 +88,10 @@ def get_chat_status():
         )
     }
 
-# Per-session message history: {session_id: list[ModelMessage]}
-_message_histories: dict[str, list[ModelMessage]] = {}
+@lru_cache(1)
+def get_message_histories() -> dict[str, list[ModelMessage]]:
+    """Get per-session message histories."""
+    return {}
 
 # System prompt is loaded from backend/prompts/chat_system_prompt.md so that
 # editing the chart-spec instructions does not require a Python diff. The
@@ -156,7 +159,8 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
     # TODO are the message histories capped?
-    message_history = _message_histories.get(session_id, [])
+    message_histories = get_message_histories()
+    message_history = message_histories.get(session_id, [])
 
     logger.info(f"Starting agent response for session {session_id[:8]}...")
 
@@ -175,7 +179,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 
         # Update this session's history
         message_history.extend(result.new_messages())
-        _message_histories[session_id] = message_history
+        message_histories[session_id] = message_history
         logger.debug(f"Session {session_id[:8]} history now has {len(message_history)} messages")
 
         response_text = result.output
@@ -221,7 +225,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 
 def clear_history(session_id: str = 'default'):
     """Clear the conversation history for a session."""
-    _message_histories.pop(session_id, None)
+    get_message_histories().pop(session_id, None)
     logger.info(f"Chat history cleared for session {session_id[:8]}...")
 
 async def main():
