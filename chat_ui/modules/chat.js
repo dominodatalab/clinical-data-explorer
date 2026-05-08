@@ -229,6 +229,8 @@ export function displayMessage(text, sender, charts = null) {
 
     const messageElement = document.createElement('div');
     messageElement.classList.add('message', `${sender}-message`);
+    // TODO xss vulnerability, should clean the input so it's free of HTML, javascript
+    // will this break the chart rendering functionality?
     messageElement.innerHTML = text.replace(/\n/g, '<br>');
     chatBox.appendChild(messageElement);
 
@@ -291,11 +293,13 @@ function renderChart(containerId, chartSpec) {
                 break;
             default:
                 console.error('Unknown chart type:', type);
+                // TODO also potential xss issue, where can type come from?
                 document.getElementById(containerId).innerHTML = '<p class="error">Unknown chart type: ' + type + '</p>';
         }
     } catch (error) {
         console.error('Error rendering chart:', error);
         console.error('Chart spec was:', chartSpec);
+        // TODO also potential xss issue
         document.getElementById(containerId).innerHTML = '<p class="error">Error rendering chart: ' + error.message + '</p>';
     }
 }

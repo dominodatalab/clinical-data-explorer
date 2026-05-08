@@ -57,10 +57,10 @@ def get_llm_config():
 def is_chat_configured():
     """Check if the chat feature is properly configured."""
     base_url, api_key, model = get_llm_config()
-    
+
     # For local Ollama, API key is optional
     is_local_ollama = base_url and ('localhost' in base_url or '127.0.0.1' in base_url)
-    
+
     if is_local_ollama:
         # Ollama just needs a base URL and model
         return bool(base_url and model)
@@ -73,16 +73,16 @@ def get_chat_status():
     """Get detailed chat configuration status for the UI."""
     base_url, api_key, model = get_llm_config()
     is_local = base_url and ('localhost' in base_url or '127.0.0.1' in base_url)
-    
+
     configured = is_chat_configured()
-    
+
     return {
         'configured': configured,
         'base_url': base_url if configured else None,
         'model': model if configured else None,
         'is_local': is_local,
         'missing': [] if configured else (
-            ['LLM_API_KEY'] if not api_key and not is_local else 
+            ['LLM_API_KEY'] if not api_key and not is_local else
             ['LLM_BASE_URL'] if not base_url else []
         )
     }
@@ -155,9 +155,10 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
     if current_agent is None:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
+    # TODO are the message histories capped?
     message_history = _message_histories.get(session_id, [])
 
-    logger.info(f"Starting agent response for session {session_id[:8]}..., message: {message[:100]}...")
+    logger.info(f"Starting agent response for session {session_id[:8]}...")
 
     try:
         logger.debug("Connecting to MCP servers...")
@@ -193,7 +194,6 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
                 logger.debug(f"Successfully parsed chart: {chart_data.get('type', 'unknown')}")
             except json.JSONDecodeError as e:
                 logger.warning(f"Failed to parse chart data: {e}")
-                logger.warning(f"Chart JSON that failed: {chart_json[:200]}")
 
         # Remove chart data blocks from the text
         clean_text = re.sub(chart_pattern, '', response_text, flags=re.DOTALL).strip()
