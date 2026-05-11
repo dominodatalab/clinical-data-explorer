@@ -33,13 +33,15 @@ def get_session_id():
 
 def mcp_get(path, session_id=None, **kwargs):
     """GET request to MCP server with session ID header."""
-    headers = kwargs.pop('headers', {})
+    headers = dict(kwargs.pop('headers', None) or {})
     headers['X-Session-Id'] = session_id or get_session_id()
+    kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
     return requests.get(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
 
 
 def mcp_post(path, session_id=None, **kwargs):
     """POST request to MCP server with session ID header."""
-    headers = kwargs.pop('headers', {})
+    headers = dict(kwargs.pop('headers', None) or {})
     headers['X-Session-Id'] = session_id or get_session_id()
+    kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
     return requests.post(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
