@@ -16,7 +16,7 @@ logging.basicConfig(level=os.environ.get('LOG_LEVEL', logging.INFO))
 if __name__ == '__main__':
     # Ensure the chat_ui directory exists
     if not os.path.exists('chat_ui'):
-        print("Error: 'chat_ui' directory not found. Please ensure the frontend files are in a 'chat_ui' subdirectory.")
+        app.logger.error("Error: 'chat_ui' directory not found. Please ensure the frontend files are in a 'chat_ui' subdirectory.")
     else:
         # Get port from command line argument or use default
         port = int(sys.argv[1]) if len(sys.argv) > 1 else 8888

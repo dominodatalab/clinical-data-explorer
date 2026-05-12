@@ -226,7 +226,7 @@ def clear_history(session_id: str = 'default'):
 
 async def main():
     if not is_chat_configured():
-        print("Chat not configured. Set LLM_API_KEY and optionally LLM_BASE_URL and LLM_MODEL.")
+        logger.error("Chat not configured. Set LLM_API_KEY and optionally LLM_BASE_URL and LLM_MODEL.")
         return
 
     current_agent = _create_agent_for_session('default')
@@ -235,7 +235,7 @@ async def main():
 
     async with current_agent:
         result = await current_agent.run('What attributes have the strongest correlation?')
-    print(result.output)
+    logger.info(result.output)
 
 if __name__ == "__main__":
     asyncio.run(main())
