@@ -1,12 +1,13 @@
-import os
 import sys
 from functools import lru_cache
 import pandas as pd
 
 from cachetools import LRUCache
 
-DEFAULT_MAX_CACHE_SIZE_BYTES = 1024 * 1024 * 1024
-MAX_CACHE_SIZE = int(os.environ.get('MCP_SERVER_DATAFRAME_CACHE_SIZE_B', DEFAULT_MAX_CACHE_SIZE_BYTES))
+from mcp_server import config
+
+DEFAULT_MAX_CACHE_SIZE_BYTES = config.DEFAULT_DATAFRAME_CACHE_SIZE_BYTES
+MAX_CACHE_SIZE = config.DATAFRAME_CACHE_SIZE_BYTES
 
 """
 This is for caching pandas dataframes

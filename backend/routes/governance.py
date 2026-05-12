@@ -11,11 +11,11 @@ and per ground rule #2 we preserve those exactly. `services/governance.py`
 keeps just the URL builder (`get_governance_api_url`).
 """
 import logging
-import os
 
 import requests
 from flask import Blueprint, jsonify, request
 
+from backend import config
 from backend.auth import get_domino_api_host, get_passthrough_token
 from backend.services.governance import get_governance_api_url
 
@@ -311,7 +311,7 @@ def get_current_user():
 def get_project_collaborators():
     """Get project collaborators for approver/assignee selection"""
     domino_api_host = get_domino_api_host()
-    project_id = os.environ.get('DOMINO_PROJECT_ID')
+    project_id = config.get_domino_project_id()
 
     if not domino_api_host:
         return jsonify({'error': 'DOMINO_API_HOST not configured', 'collaborators': []})

@@ -8,14 +8,15 @@ load/download path at a time.
 from collections import deque
 from dataclasses import dataclass, field
 from functools import lru_cache
-import os
 import threading
 import time
 from typing import Callable, Deque, Optional
 
+from backend import config
+
 # Hard cap for queued load requests. When the queue reaches this size, new
 # requests are rejected so the server does not accumulate unbounded work.
-MAX_QUEUE_LENGTH = int(os.environ.get("DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH", 10))
+MAX_QUEUE_LENGTH = config.DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH
 
 
 @dataclass(frozen=True)

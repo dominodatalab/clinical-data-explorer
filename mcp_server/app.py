@@ -31,13 +31,13 @@ Reference for the original FastAPI-MCP wiring:
 https://huggingface.co/blog/lynn-mikami/fastapi-mcp-server
 """
 import logging
-import os
 import sys
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi_mcp import FastApiMCP
 
+from mcp_server import config
 from mcp_server.session import (
     SessionMiddleware,
     _current_session_id,
@@ -60,7 +60,7 @@ from mcp_server.routes.tables import router as tables_router
 
 # Configure logging - write to stdout so logs appear in Domino app logs
 logging.basicConfig(
-    level=os.environ.get('LOG_LEVEL', logging.INFO),
+    level=config.LOG_LEVEL,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[logging.StreamHandler(sys.stdout)]
 )

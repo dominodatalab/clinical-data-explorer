@@ -27,6 +27,7 @@ from pathlib import Path
 import requests
 from flask import jsonify
 
+from backend import config
 from backend.auth import (
     get_domino_api_host,
     get_passthrough_token,
@@ -107,7 +108,7 @@ def discover_netapp_files_for_project(project_id, token):
         netAppVolumeId in the URL when the target file lives only in a
         non-current snapshot.
     """
-    remotefs_host = os.environ.get('DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT')
+    remotefs_host = config.get_domino_remote_file_system_hostport()
     if not remotefs_host:
         logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
         return [], []

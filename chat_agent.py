@@ -11,21 +11,19 @@ import chat_agent_message_cache
 import asyncio
 import json
 import re
-import os
 import logging
 import traceback
 import sys
 from pathlib import Path
 
 import config as chat_agent_config
+from backend import config as backend_config
 
-MCP_SERVER_URL = 'http://localhost:3333/mcp'
+MCP_SERVER_URL = backend_config.MCP_SERVER_MCP_URL
 
 # Configure logging - write to both file and stdout so logs appear in Domino app logs
-# Set VERBOSE_LOGGING=true to enable DEBUG for all libraries (mcp, openai, etc.)
-_verbose = os.environ.get('VERBOSE_LOGGING', 'false').lower() == 'true'
 logging.basicConfig(
-    level=logging.DEBUG if _verbose else logging.INFO,
+    level=logging.DEBUG if backend_config.VERBOSE_LOGGING else logging.INFO,
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('chat_agent.log'),
@@ -49,11 +47,8 @@ logger.setLevel(logging.DEBUG)
 #   Together:   LLM_BASE_URL=https://api.together.xyz/v1 LLM_API_KEY=xxx LLM_MODEL=meta-llama/Llama-3-70b-chat-hf
 
 def get_llm_config():
-    """Get LLM configuration from environment variables."""
-    base_url = os.environ.get('LLM_BASE_URL', 'https://api.openai.com/v1')
-    api_key = os.environ.get('LLM_API_KEY') or os.environ.get('OPENAI_API_KEY')
-    model = os.environ.get('LLM_MODEL', 'gpt-4o-mini')
-    return base_url, api_key, model
+    """Get LLM configuration."""
+    return backend_config.get_llm_config()
 
 
 def is_chat_configured():

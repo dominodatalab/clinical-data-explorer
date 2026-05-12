@@ -1,12 +1,14 @@
 import logging
 import os
 
+from backend import config
+
 logger = logging.getLogger(__name__)
 
 ONE_MB = 1024 * 1024
 DATA_TO_DATAFRAME_SIZE_MULTIPLIER = 5
 
-DATA_FILE_SIZE_LIMIT = int(os.environ.get('DATA_FILE_SIZE_LIMIT_B', 500 * ONE_MB))
+DATA_FILE_SIZE_LIMIT = config.DATA_FILE_SIZE_LIMIT
 
 
 class DataFileTooLarge(RuntimeError):

@@ -2,6 +2,7 @@ import importlib
 
 import pytest
 
+import backend.config as config_module
 import backend.services.file_size_limits as file_size_limits_module
 
 
@@ -36,9 +37,11 @@ def test_enforce_returns_when_memory_cgroup_values_are_unavailable(monkeypatch):
 def test_file_size_limit_module_uses_environment_configuration(monkeypatch):
     monkeypatch.setenv("DATA_FILE_SIZE_LIMIT_B", "7")
 
+    importlib.reload(config_module)
     reloaded_module = importlib.reload(file_size_limits_module)
 
     assert reloaded_module.DATA_FILE_SIZE_LIMIT == 7
 
     monkeypatch.delenv("DATA_FILE_SIZE_LIMIT_B", raising=False)
+    importlib.reload(config_module)
     importlib.reload(reloaded_module)
