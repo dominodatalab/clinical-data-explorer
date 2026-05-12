@@ -21,9 +21,11 @@ Data Explorer is designed to run as a Domino App. Dependencies are managed with 
 1. Navigate to your Domino project and select **Publish > App**
 2. Set the startup script to:
    ```
-   start_servers.sh
+   start_servers_prod.sh
    ```
 3. **Important**: Enable **"Deep linking and query parameters"** in the app settings to support shareable filter URLs
+
+`start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`; it keeps the legacy direct Python entry points for the MCP server and Flask app.
 
 ### Data Access
 
@@ -92,6 +94,20 @@ Configure the following environment variables in your Domino project settings:
 | `MCP_REQUEST_TIMEOUT_SECONDS` | `120` | Maximum time, in seconds, for backend HTTP calls to the MCP server before timing out. |
 | `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
 | `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
+
+#### Optional: Production Server Tuning
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `MAIN_APP_PORT` | `8888` | Port for the Flask/Gunicorn web app. |
+| `FLASK_HOST` | `0.0.0.0` | Host interface for the Flask/Gunicorn web app. |
+| `FLASK_WORKERS` | `1` | Gunicorn worker count. Keep this at `1` unless shared in-memory request state is removed or made external. |
+| `FLASK_THREADS` | `4` | Gunicorn thread count for handling concurrent web requests. |
+| `GUNICORN_TIMEOUT` | `120` | Gunicorn worker timeout in seconds. |
+| `MCP_PORT` | `3333` | Port for the MCP FastAPI/Uvicorn server. |
+| `MCP_HOST` | `0.0.0.0` | Host interface for the MCP FastAPI/Uvicorn server. |
+| `MCP_WORKERS` | `1` | Uvicorn worker count. Keep this at `1` because MCP sessions and loaded DataFrames are process-local. |
+| `MCP_SERVER_URL` | `http://127.0.0.1:3333` | URL used by the Flask backend when proxying requests to the MCP server. |
 
 #### Optional: Cache and Session Tuning
 
