@@ -25,7 +25,7 @@ Data Explorer is designed to run as a Domino App. Dependencies are managed with 
    ```
 3. **Important**: Enable **"Deep linking and query parameters"** in the app settings to support shareable filter URLs
 
-`start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`; it keeps the legacy direct Python entry points for the MCP server and Flask app.
+`start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`
 
 ### Data Access
 
