@@ -110,7 +110,8 @@ def browse_snapshot_files(snapshot_id):
         headers = {'Authorization': f'Bearer {token}'}
 
         url = f'{api_host}/v4/datasetrw/files/{snapshot_id}'
-        response = requests.get(url, params={'path': subpath}, headers=headers, timeout=30)
+        params = {'path': subpath} if subpath else None
+        response = requests.get(url, params=params, headers=headers, timeout=30)
 
         if response.status_code in (401, 403):
             return jsonify({'error': 'Access denied', 'entries': []}), response.status_code

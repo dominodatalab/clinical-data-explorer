@@ -518,6 +518,11 @@ function updateBreadcrumb(path) {
 }
 
 function navigateToPath(path) {
+    path = path || '';
+    if (path === (state.fileBrowserState.currentPath || '') && !state.fileBrowserState.isSearchResult) {
+        return;
+    }
+
     state.fileBrowserState.currentPath = path;
     state.fileBrowserState.selectedFile = null;
     state.fileBrowserState.isSearchResult = false;
