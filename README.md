@@ -116,6 +116,7 @@ To enable the natural language chat feature, configure an LLM provider:
 | `LLM_MODEL` | Model name to use (default: `gpt-4o-mini`) |
 | `CHAT_AGENT_MESSAGE_HISTORY_CACHE_SIZE_B` | Maximum size, in bytes, of the in-memory chat message history cache (default: `524288000`, or 500 MiB) |
 | `CHAT_AGENT_MESSAGE_HISTORY_CAP` | Maximum number of messages to retain per chat session (default: `100`) |
+| `CHAT_MAX_CHARTS_PER_RESPONSE` | Maximum number of chart blocks accepted from one chat response (default: `4`) |
 
 **Example configurations:**
 

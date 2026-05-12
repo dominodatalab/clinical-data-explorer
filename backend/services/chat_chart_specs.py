@@ -3,11 +3,12 @@
 import json
 import logging
 import math
+import os
 import re
 
 logger = logging.getLogger(__name__)
 
-MAX_CHARTS_PER_RESPONSE = 4
+MAX_CHARTS_PER_RESPONSE = int(os.environ.get("CHAT_MAX_CHARTS_PER_RESPONSE", "4"))
 MAX_HEATMAP_FEATURES = 30
 
 _CHART_PATTERN = re.compile(r"\[CHART_DATA\](.*?)\[/CHART_DATA\]", re.DOTALL)
