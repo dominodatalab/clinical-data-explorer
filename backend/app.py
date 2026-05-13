@@ -11,12 +11,12 @@ wired here because it is process-wide, not blueprint-scoped.
 """
 from flask import Flask, send_from_directory
 from werkzeug.middleware.proxy_fix import ProxyFix
-import os
 import uuid
 from pathlib import Path
 import logging
 import sys
 
+from backend import config
 from backend.routes.charts import bp as charts_bp
 from backend.routes.chat import bp as chat_bp
 from backend.routes.data import bp as data_bp
@@ -53,10 +53,8 @@ def _configure_logging():
     global _LOGGING_CONFIGURED
     if _LOGGING_CONFIGURED:
         return
-    # Set VERBOSE_LOGGING=true to enable DEBUG for all libraries (mcp, openai, etc.)
-    verbose = os.environ.get('VERBOSE_LOGGING', 'false').lower() == 'true'
     logging.basicConfig(
-        level=logging.DEBUG if verbose else logging.INFO,
+        level=logging.DEBUG if config.get_verbose_logging() else logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
         handlers=[
             logging.FileHandler('flask_app.log'),
@@ -85,7 +83,7 @@ def create_app():
 
     # Secret key for Flask sessions (used to sign session cookies).
     # Each app restart generates a new key — sessions reset, which is fine.
-    app.secret_key = os.environ.get('FLASK_SECRET_KEY', uuid.uuid4().hex)
+    app.secret_key = config.get_flask_secret_key() or uuid.uuid4().hex
 
     # Apply ProxyFix middleware to handle reverse proxy headers (nginx on Domino)
     # This ensures Flask correctly handles X-Forwarded-* headers from the proxy

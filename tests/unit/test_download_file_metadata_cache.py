@@ -2,6 +2,7 @@
 
 import importlib
 
+import backend.config as config_module
 import backend.services.download_file_metadata_cache as download_file_metadata_cache_module
 
 from pathlib import Path
@@ -62,8 +63,7 @@ def test_get_file_cache_uses_cache_config_environment_variables(monkeypatch):
     monkeypatch.setenv("DATA_FILE_CACHE_EXPIRATION_SECONDS", "7")
     monkeypatch.setenv("DATA_FILE_CACHE_MAX_ITEM_COUNT", "3")
 
-    # These settings are read when the module is imported, so reload it after
-    # changing the environment and then construct the singleton cache.
+    importlib.reload(config_module)
     reloaded_module = importlib.reload(download_file_metadata_cache_module)
     reloaded_module.get_file_cache.cache_clear()
 
@@ -77,4 +77,5 @@ def test_get_file_cache_uses_cache_config_environment_variables(monkeypatch):
     # cleanup
     monkeypatch.delenv("DATA_FILE_CACHE_EXPIRATION_SECONDS", raising=False)
     monkeypatch.delenv("DATA_FILE_CACHE_MAX_ITEM_COUNT", raising=False)
+    importlib.reload(config_module)
     importlib.reload(reloaded_module).get_file_cache.cache_clear()

@@ -1,11 +1,13 @@
 import importlib
 
+import mcp_server.config as config_module
 import mcp_server.dataframe_cache as dataframe_cache_module
 
 
 def test_dataframe_cache_size_environment_value_is_int(monkeypatch):
     monkeypatch.setenv("MCP_SERVER_DATAFRAME_CACHE_SIZE_B", "12345")
 
+    importlib.reload(config_module)
     reloaded_module = importlib.reload(dataframe_cache_module)
     reloaded_module.get_cache.cache_clear()
 
@@ -16,4 +18,5 @@ def test_dataframe_cache_size_environment_value_is_int(monkeypatch):
     assert cache.maxsize == 12345
 
     monkeypatch.delenv("MCP_SERVER_DATAFRAME_CACHE_SIZE_B", raising=False)
+    importlib.reload(config_module)
     importlib.reload(reloaded_module).get_cache.cache_clear()

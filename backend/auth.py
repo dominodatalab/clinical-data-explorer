@@ -15,8 +15,8 @@ These helpers all run inside a Flask request context (they read
 flask.request.headers); calling them outside one will raise.
 """
 import logging
-import os
 
+from backend import config
 from flask import request
 
 logger = logging.getLogger(__name__)
@@ -26,7 +26,7 @@ def get_passthrough_token_from_authorization_header(auth_header):
     """Extract a passthrough bearer token from an Authorization header value."""
     if auth_header and auth_header.startswith('Bearer '):
         return auth_header[7:]
-    return os.environ.get('DEV_ACCESS_TOKEN')
+    return config.get_dev_access_token()
 
 
 def get_passthrough_token():
@@ -45,13 +45,13 @@ def get_domino_api_host():
     This allows overriding the auto-set DOMINO_API_HOST in Domino environments.
     """
     # Check override first
-    domino_api_host = os.environ.get('DOMINO_API_HOST_OVERD')
+    domino_api_host = config.get_domino_api_host_override()
     if domino_api_host:
         logger.debug(f"Using DOMINO_API_HOST_OVERD: {domino_api_host}")
         return domino_api_host.rstrip('/')
 
     # Fall back to standard env var
-    domino_api_host = os.environ.get('DOMINO_API_HOST')
+    domino_api_host = config.get_domino_api_host()
     if domino_api_host:
         return domino_api_host.rstrip('/')
 
@@ -73,7 +73,7 @@ def get_domino_external_url():
          reverse proxy when the app is deployed as a Domino App or Extension)
       3. VSCODE_PROXY_URI env var (set in Domino workspaces/IDE sessions)
     """
-    override = os.environ.get('DOMINO_EXTERNAL_URL')
+    override = config.get_domino_external_url()
     if override:
         return override.rstrip('/')
 
@@ -91,7 +91,7 @@ def get_domino_external_url():
         logger.debug(f"Could not derive external URL from request headers: {e}")
 
     # Workspace/IDE fallback
-    proxy_uri = os.environ.get('VSCODE_PROXY_URI')
+    proxy_uri = config.get_vscode_proxy_uri()
     if proxy_uri:
         try:
             from urllib.parse import urlparse

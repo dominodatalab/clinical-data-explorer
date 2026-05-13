@@ -2,6 +2,7 @@ import importlib
 import threading
 import time
 
+import backend.config as config_module
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
 
 from backend.services.dataset_load_request_queue import (
@@ -280,6 +281,7 @@ def test_dataset_load_request_queue_clear_wakes_waiting_request_with_explicit_er
 def test_get_dataset_load_request_queue_uses_env_max_length(monkeypatch):
     monkeypatch.setenv("DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH", "7")
 
+    importlib.reload(config_module)
     reloaded_module = importlib.reload(dataset_load_request_queue_module)
     reloaded_module.get_dataset_load_request_queue.cache_clear()
 
@@ -289,4 +291,5 @@ def test_get_dataset_load_request_queue_uses_env_max_length(monkeypatch):
     assert queue.max_length == 7
 
     monkeypatch.delenv("DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH", raising=False)
+    importlib.reload(config_module)
     importlib.reload(reloaded_module).get_dataset_load_request_queue.cache_clear()
