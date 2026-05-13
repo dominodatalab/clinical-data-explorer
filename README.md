@@ -29,6 +29,10 @@ See the [INSTALL.md](./INSTALL.md) for an indepth overview of how to configure t
 
 `start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`
 
+### Quick Start
+
+See the [QUICKSTART.md](./QUICKSTART.md) for developer information on working on the App.
+
 ### Data Access
 
 Data Explorer reads data files from the `datasets` folder in your Domino project. Supported formats include:
