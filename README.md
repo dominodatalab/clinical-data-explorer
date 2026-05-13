@@ -14,9 +14,11 @@ Data Explorer provides three main capabilities:
 
 ### Prerequisites
 
-Data Explorer is designed to run as a Domino App. Dependencies are managed with `uv` via `pyproject.toml` and `uv.lock`.
+Data Explorer is designed to run as a Domino App.
 
 ### App Configuration
+
+See the [INSTALL.md](./INSTALL.md) for an indepth overview of how to configure the App manually for production and deploy as a Domino Extension.
 
 1. Navigate to your Domino project and select **Publish > App**
 2. Set the startup script to:
