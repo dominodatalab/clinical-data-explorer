@@ -140,22 +140,22 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
                     # - The threshold is 90% of actual (non-missing) values
                     if non_null_before == 0 or non_null_after >= non_null_before * 0.9:
                         df[col] = numeric_col
-                        logger.debug(f"Converted column '{col}' to numeric: {non_null_after}/{non_null_before} values converted")
+                        logger.debug(f"Converted a column to numeric: {non_null_after}/{non_null_before} values converted")
                     else:
                         # Column is not numeric, but still apply missing value normalization
                         # so that empty strings, '.', 'NA', etc. become NaN and are
                         # properly detected by isna() in stats and filters
                         if is_missing.any():
                             df[col] = col_values
-                            logger.debug(f"Normalized {is_missing.sum()} missing indicators in string column '{col}'")
+                            logger.debug(f"Normalized {is_missing.sum()} missing indicators in a string column")
                 else:
                     # No numeric values at all — still apply missing value normalization
                     # for string columns (e.g. all-empty or all-missing-indicator columns)
                     if is_missing.any():
                         df[col] = col_values
-                        logger.debug(f"Normalized {is_missing.sum()} missing indicators in string column '{col}'")
+                        logger.debug(f"Normalized {is_missing.sum()} missing indicators in a string column")
             except Exception as e:
-                logger.debug(f"Could not convert column '{col}' to numeric: {e}")
+                logger.debug(f"Could not convert a column to numeric: {e}")
                 pass
 
         # Handle nullable integer types (Int64, Int32, etc.) - convert to standard types
@@ -299,16 +299,11 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file format: {file_ext}")
 
-        # Log column types for debugging
-        logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")
-        logger.info(f"Column types after conversion:")
-        for col in df.columns:
-            logger.info(f"  {col}: {df[col].dtype}")
-
         numeric_cols = _get_numeric_columns(df)
         categorical_cols = _get_categorical_columns(df, numeric_cols)
-        logger.info(f"Detected numeric columns: {numeric_cols}")
-        logger.info(f"Detected categorical columns: {categorical_cols}")
+        logger.info(f"Loaded dataset: {file_snapshot_path} (format: {file_ext})")
+        logger.info(f"Loaded dataset with {len(df)} rows and {len(df.columns)} columns")
+        logger.info(f"Detected {len(numeric_cols)} numeric columns and {len(categorical_cols)} categorical columns")
 
         return df
     except HTTPException:

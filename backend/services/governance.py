@@ -34,15 +34,27 @@ def get_governance_api_url():
     if external_url:
         return f"{external_url}/api/governance/v1"
 
-    # Help diagnosis: log which forwarding headers the reverse proxy is actually sending
+    # Help diagnosis without writing request header values to non-error logs.
     try:
         from flask import has_request_context
         if has_request_context():
-            relevant = {k: v for k, v in request.headers.items()
-                        if k.lower() in ('host', 'x-forwarded-host', 'x-forwarded-proto',
-                                         'x-forwarded-for', 'x-forwarded-prefix',
-                                         'x-original-host', 'x-original-uri', 'referer')}
-            logger.warning(f"External Domino URL not available. Request headers for diagnosis: {relevant}")
+            relevant_header_count = sum(
+                1 for k in request.headers.keys()
+                if k.lower() in (
+                    'host',
+                    'x-forwarded-host',
+                    'x-forwarded-proto',
+                    'x-forwarded-for',
+                    'x-forwarded-prefix',
+                    'x-original-host',
+                    'x-original-uri',
+                    'referer',
+                )
+            )
+            logger.warning(
+                "External Domino URL not available; request carried %d relevant forwarding headers",
+                relevant_header_count,
+            )
         else:
             logger.warning("External Domino URL not available - governance features will not work")
     except Exception:

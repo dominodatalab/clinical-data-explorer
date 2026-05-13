@@ -231,7 +231,8 @@ async def main():
 
     async with current_agent:
         result = await current_agent.run('What attributes have the strongest correlation?')
-    logger.info(result.output)
+    response_length = len(result.output)
+    logger.info(f"Agent response generated with {response_length} characters")
 
 if __name__ == "__main__":
     asyncio.run(main())
