@@ -77,7 +77,3 @@ Then submit the modal and wait for the App to get to the `Running` state.
 
 Open the action menu in the `Apps & Agents` table and click the `Create Extension` button. The extension should appear
 in the Project Side Bar in the `Extensions` section.
-
-
-
-
