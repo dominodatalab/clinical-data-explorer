@@ -1,10 +1,10 @@
-# Data Explorer
+# Clinical Data Explorer
 
-Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.
+Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.
 
 ## Overview
 
-Data Explorer provides three main capabilities:
+Clinical Data Explorer provides three main capabilities:
 
 - **Table View**: Browse and filter datasets with an interactive data table
 - **Explore**: Create visualizations with configurable charts
@@ -14,7 +14,7 @@ Data Explorer provides three main capabilities:
 
 ### Prerequisites
 
-Data Explorer is designed to run as a Domino App.
+Clinical Data Explorer is designed to run as a Domino App.
 
 ### App Configuration
 
@@ -35,7 +35,7 @@ See the [QUICKSTART.md](./QUICKSTART.md) for developer information on working on
 
 ### Data Access
 
-Data Explorer reads data files from the `datasets` folder in your Domino project. Supported formats include:
+Clinical Data Explorer reads data files from the `datasets` folder in your Domino project. Supported formats include:
 
 - CSV (`.csv`)
 - Parquet (`.parquet`)
@@ -48,7 +48,7 @@ Add your data files to the project's `datasets` folder, and they will appear in 
 
 ### Column Labels (Friendly Names)
 
-Data Explorer supports human-readable labels for column names, useful for datasets with cryptic variable names (e.g., CDISC/ADaM clinical data). When enabled, column headers and dropdowns display friendly labels instead of raw column names.
+Clinical Data Explorer supports human-readable labels for column names, useful for datasets with cryptic variable names (e.g., CDISC/ADaM clinical data). When enabled, column headers and dropdowns display friendly labels instead of raw column names.
 
 #### Enable Friendly Names in the UI
 
@@ -271,7 +271,7 @@ Ask the chatbot about the columns in your dataset or request specific analyses:
 
 ## Use Domino Governance
 
-Data Explorer integrates with Domino Governance to help you create findings for governed datasets. When a dataset is attached to a governance bundle, you can submit findings directly from the app.
+Clinical Data Explorer integrates with Domino Governance to help you create findings for governed datasets. When a dataset is attached to a governance bundle, you can submit findings directly from the app.
 
 ### Governed Datasets
 

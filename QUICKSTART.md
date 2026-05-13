@@ -1,4 +1,4 @@
-# Data Explorer - Quick Start Guide
+# Clinical Data Explorer - Quick Start Guide
 
 ## Get Started in 4 Steps
 
