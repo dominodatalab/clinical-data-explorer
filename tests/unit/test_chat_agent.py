@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+import json
 
 from cachetools import LRUCache
 import pytest
@@ -228,8 +229,9 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     existing_history = chat_agent.chat_agent_message_cache.add_messages(
         "session-1", ["old-message"]
     )
+    chart = {"type": "bar", "data": {"categories": ["age"], "values": [1]}}
     result = FakeResult(
-        'Here is a chart [CHART_DATA]{"type": "bar", "x": "age"}[/CHART_DATA]',
+        f"Here is a chart [CHART_DATA]{json.dumps(chart)}[/CHART_DATA]",
         ["new-message"],
     )
     agent = FakeAgent(result)
@@ -243,7 +245,7 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
 
     assert response == {
         "text": "Here is a chart",
-        "charts": [{"type": "bar", "x": "age"}],
+        "charts": [chart],
     }
     assert agent.run_calls == [
         {
