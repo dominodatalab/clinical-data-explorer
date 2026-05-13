@@ -33,6 +33,36 @@ def test_expression_filter_reduces_row_count(mcp_client):
     assert body["total_rows"] > 0
 
 
+_EXPRESSION_SYNTAX_CASES = [
+    ("sas", "treatment NOT IN ('Placebo', 'DrugB')", 64),
+    ("sas", "notes LIKE '%headache%'", 23),
+    ("sas", "notes NOT LIKE '%headache%'", 77),
+    ("r", '!str_detect(notes, "headache")', 77),
+]
+
+
+@pytest.mark.parametrize(
+    ("syntax", "expression", "expected_rows"),
+    _EXPRESSION_SYNTAX_CASES,
+    ids=["sas-not-in", "sas-like", "sas-not-like", "r-not-str-detect"],
+)
+def test_expression_filter_supported_syntax_cases(mcp_client, syntax, expression, expected_rows):
+    resp = mcp_client.post(
+        "/table/expression_filter",
+        json={
+            "expression": expression,
+            "syntax": syntax,
+            "page": 1,
+            "page_size": 100,
+        },
+    )
+
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["unfiltered_rows"] == 100
+    assert body["total_rows"] == expected_rows
+
+
 def test_expression_filter_unknown_column_returns_validation_error(mcp_client):
     resp = mcp_client.post(
         "/table/expression_filter",

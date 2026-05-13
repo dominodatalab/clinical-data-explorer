@@ -73,6 +73,20 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
         flags=regex_module.IGNORECASE
     )
     
+    # Handle NOT IN operator
+    def replace_not_in(match):
+        col = match.group(1).strip()
+        values = match.group(2).strip()
+        values = values.replace("'", '"')
+        return f"~{col}.isin([{values}])"
+
+    result = regex_module.sub(
+        r'(\w+)\s+NOT\s+IN\s*\(([^)]+)\)',
+        replace_not_in,
+        result,
+        flags=regex_module.IGNORECASE
+    )
+
     # Handle IN operator: column IN ('val1', 'val2') or column IN (1, 2, 3)
     def replace_in(match):
         col = match.group(1).strip()
@@ -89,20 +103,47 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
         flags=regex_module.IGNORECASE
     )
     
-    # Handle NOT IN operator
-    def replace_not_in(match):
+    # Replace SAS comparison operators (word form) - case insensitive
+    # Must do these before = replacement to avoid conflicts
+    replacements = [
+        (r'\bEQ\b', '=='),
+        (r'\bNE\b', '!='),
+        (r'\bGE\b', '>='),
+        (r'\bLE\b', '<='),
+        (r'\bGT\b', '>'),
+        (r'\bLT\b', '<'),
+    ]
+
+    for pattern, replacement in replacements:
+        result = regex_module.sub(pattern, replacement, result, flags=regex_module.IGNORECASE)
+
+    # Replace single = with == (but not if already == or part of >=, <=, !=)
+    # Use negative lookbehind and lookahead
+    result = regex_module.sub(r'(?<![=!<>])=(?!=)', '==', result)
+
+    # Handle NOT LIKE
+    def replace_not_like(match):
         col = match.group(1).strip()
-        values = match.group(2).strip()
-        values = values.replace("'", '"')
-        return f"~{col}.isin([{values}])"
+        pattern = match.group(2).strip().strip("'\"")
+        if pattern.startswith('%') and pattern.endswith('%'):
+            pattern = pattern[1:-1]
+            return f"~{col}.str.contains('{pattern}', case=False, na=False)"
+        elif pattern.startswith('%'):
+            pattern = pattern[1:]
+            return f"~{col}.str.endswith('{pattern}', na=False)"
+        elif pattern.endswith('%'):
+            pattern = pattern[:-1]
+            return f"~{col}.str.startswith('{pattern}', na=False)"
+        else:
+            return f"{col} != '{pattern}'"
     
     result = regex_module.sub(
-        r'(\w+)\s+NOT\s+IN\s*\(([^)]+)\)',
-        replace_not_in,
+        r"(\w+)\s+NOT\s+LIKE\s+['\"]([^'\"]+)['\"]",
+        replace_not_like,
         result,
         flags=regex_module.IGNORECASE
     )
-    
+
     # Handle LIKE operator with wildcards
     # column LIKE '%pattern%' -> column.str.contains('pattern', case=False)
     def replace_like(match):
@@ -131,47 +172,6 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
         result,
         flags=regex_module.IGNORECASE
     )
-    
-    # Handle NOT LIKE
-    def replace_not_like(match):
-        col = match.group(1).strip()
-        pattern = match.group(2).strip().strip("'\"")
-        if pattern.startswith('%') and pattern.endswith('%'):
-            pattern = pattern[1:-1]
-            return f"~{col}.str.contains('{pattern}', case=False, na=False)"
-        elif pattern.startswith('%'):
-            pattern = pattern[1:]
-            return f"~{col}.str.endswith('{pattern}', na=False)"
-        elif pattern.endswith('%'):
-            pattern = pattern[:-1]
-            return f"~{col}.str.startswith('{pattern}', na=False)"
-        else:
-            return f"{col} != '{pattern}'"
-    
-    result = regex_module.sub(
-        r"(\w+)\s+NOT\s+LIKE\s+['\"]([^'\"]+)['\"]",
-        replace_not_like,
-        result,
-        flags=regex_module.IGNORECASE
-    )
-    
-    # Replace SAS comparison operators (word form) - case insensitive
-    # Must do these before = replacement to avoid conflicts
-    replacements = [
-        (r'\bEQ\b', '=='),
-        (r'\bNE\b', '!='),
-        (r'\bGE\b', '>='),
-        (r'\bLE\b', '<='),
-        (r'\bGT\b', '>'),
-        (r'\bLT\b', '<'),
-    ]
-    
-    for pattern, replacement in replacements:
-        result = regex_module.sub(pattern, replacement, result, flags=regex_module.IGNORECASE)
-    
-    # Replace single = with == (but not if already == or part of >=, <=, !=)
-    # Use negative lookbehind and lookahead
-    result = regex_module.sub(r'(?<![=!<>])=(?!=)', '==', result)
     
     # Replace logical operators - case insensitive
     result = regex_module.sub(r'\bAND\b', '&', result, flags=regex_module.IGNORECASE)
@@ -229,6 +229,13 @@ def translate_r_to_pandas(expression: str, df: pd.DataFrame) -> str:
         result
     )
     
+    # Handle negated str_detect
+    result = regex_module.sub(
+        r'!str_detect\((\w+),\s*([^)]+)\)',
+        lambda m: f"~{m.group(1)}.str.contains({m.group(2)}, case=False, na=False)",
+        result
+    )
+
     # Handle str_detect(column, "pattern") -> column.str.contains("pattern", na=False)
     def replace_str_detect(match):
         col = match.group(1).strip()
@@ -238,13 +245,6 @@ def translate_r_to_pandas(expression: str, df: pd.DataFrame) -> str:
     result = regex_module.sub(
         r'str_detect\((\w+),\s*([^)]+)\)',
         replace_str_detect,
-        result
-    )
-    
-    # Handle negated str_detect
-    result = regex_module.sub(
-        r'!str_detect\((\w+),\s*([^)]+)\)',
-        lambda m: f"~{m.group(1)}.str.contains({m.group(2)}, case=False, na=False)",
         result
     )
     
