@@ -15,7 +15,8 @@ com.cerebro.domino.apps.extendedIdentityPropagationToAppsEnabled=true
 
 ## Domino Environment Installation
 
-Create a Domino Environment using the [Dockerfile](./Dockerfile) named `Clinical Data Explorer`. Use the
+Create a Domino Environment using the [Dockerfile](./Dockerfile) named `Clinical Data Explorer`. Uncheck the `Automatically
+make compatible with Domino` checkbox. Use the
 "Required Domino Environment Base Image" in the comment in the top of the Dockerfile as the Domino Environment base
 docker image. Also, set the `ARG EXTENSION_VERSION` to be your desired version. Wait for the Environment to finish
 building.
