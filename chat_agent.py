@@ -1,25 +1,28 @@
-#from pydantic_ai import Agent,OpenAIChatModel,
-#import pydantic_ai
-from pydantic import BaseModel
-
 from pydantic_ai import Agent
 from pydantic_ai.models.openai import OpenAIChatModel
 from pydantic_ai.providers.openai import OpenAIProvider
 
 from pydantic_ai.mcp import MCPServerSSE
 import chat_agent_message_cache
+from pydantic_ai.messages import ModelMessage
 import asyncio
 import json
 import re
 import logging
 import traceback
 import sys
+from dataclasses import replace
 from pathlib import Path
 
 import config as chat_agent_config
 from backend import config as backend_config
 
 MCP_SERVER_URL = backend_config.MCP_SERVER_MCP_URL
+
+
+CHART_DATA_PATTERN = re.compile(r'\[CHART_DATA\](.*?)\[/CHART_DATA\]', re.DOTALL)
+CHART_HISTORY_REPLACEMENT = '[Chart data omitted from chat history.]'
+MALFORMED_CHART_WARNING = 'A chart could not be rendered because the chart data was malformed.'
 
 # Configure logging - write to both file and stdout so logs appear in Domino app logs
 logging.basicConfig(
@@ -125,7 +128,7 @@ def _get_llm_model():
     return _llm_model
 
 
-def _create_agent_for_session(session_id: str) -> Agent:
+def _create_agent_for_session(session_id: str) -> Agent | None:
     """Create an agent with an MCP server connection bound to a specific session."""
     llm_model = _get_llm_model()
     if llm_model is None:
@@ -138,6 +141,73 @@ def _create_agent_for_session(session_id: str) -> Agent:
         headers={'X-Session-Id': session_id},
     )
     return Agent(llm_model, toolsets=[server], system_prompt=SYSTEM_PROMPT, retries=5)
+
+
+def _create_agent_without_mcp() -> Agent | None:
+    """Create an agent without MCP tools for degraded chat responses."""
+    llm_model = _get_llm_model()
+    if llm_model is None:
+        return None
+
+    return Agent(llm_model, system_prompt=SYSTEM_PROMPT, retries=5)
+
+
+def _strip_chart_blocks_from_text(text: str) -> str:
+    return CHART_DATA_PATTERN.sub(CHART_HISTORY_REPLACEMENT, text)
+
+
+def _sanitize_message_for_history(message: ModelMessage) -> ModelMessage:
+    """Remove chart payloads from text-bearing message parts before storage."""
+    parts = getattr(message, 'parts', None)
+    if parts is None:
+        return message
+
+    sanitized_parts = []
+    changed = False
+    for part in parts:
+        content = getattr(part, 'content', None)
+        if isinstance(content, str):
+            sanitized_content = _strip_chart_blocks_from_text(content)
+            if sanitized_content != content:
+                part = replace(part, content=sanitized_content)
+                changed = True
+        sanitized_parts.append(part)
+
+    if not changed:
+        return message
+    return replace(message, parts=sanitized_parts)
+
+
+def _prepare_message_history_for_storage(message_history: list[ModelMessage]) -> list[ModelMessage]:
+    return [_sanitize_message_for_history(message) for message in message_history]
+
+
+def _extract_response_payload(response_text: str) -> dict:
+    charts = []
+    malformed_chart_count = 0
+
+    def remove_chart_block(match):
+        nonlocal malformed_chart_count
+        chart_json = match.group(1).strip()
+        try:
+            chart_data = json.loads(chart_json)
+            charts.append(chart_data)
+            chart_type = chart_data.get('type', 'unknown') if isinstance(chart_data, dict) else 'unknown'
+            logger.debug(f"Successfully parsed chart: {chart_type}")
+        except json.JSONDecodeError as e:
+            malformed_chart_count += 1
+            logger.warning(f"Failed to parse chart data: {e}")
+            logger.warning(f"Chart JSON that failed: {chart_json[:200]}")
+        return ''
+
+    clean_text = CHART_DATA_PATTERN.sub(remove_chart_block, response_text).strip()
+    if malformed_chart_count:
+        clean_text = f"{clean_text}\n\n{MALFORMED_CHART_WARNING}".strip()
+
+    return {
+        'text': clean_text,
+        'charts': charts,
+    }
 
 
 async def get_agent_response(message: str, session_id: str = 'default') -> dict:
@@ -153,6 +223,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
     message_history = chat_agent_message_cache.get_messages(session_id)
+    message_history[:] = _prepare_message_history_for_storage(message_history)
 
     logger.info(f"Starting agent response for session {session_id[:8]}...")
 
@@ -165,40 +236,25 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         except Exception as mcp_error:
             logger.warning(f"MCP server connection failed: {mcp_error}")
             logger.info("Falling back to agent without MCP servers...")
-            result = await current_agent.run(message, message_history=message_history)
+            fallback_agent = _create_agent_without_mcp()
+            if fallback_agent is None:
+                raise RuntimeError("Chat is not configured. Please set the required environment variables.")
+            result = await fallback_agent.run(message, message_history=message_history)
 
         logger.debug("Agent run completed successfully")
 
         # Update this session's history
-        message_history = chat_agent_message_cache.add_messages(session_id, result.new_messages())
-
+        new_messages = _prepare_message_history_for_storage(result.new_messages())
+        message_history = chat_agent_message_cache.add_messages(session_id, new_messages)
         logger.debug(f"Session {session_id[:8]} history now has {len(message_history)} messages")
 
         response_text = result.output
         logger.debug(f"Got response text of length {len(response_text)}")
 
-        # Parse out any chart specifications
-        charts = []
-        chart_pattern = r'\[CHART_DATA\](.*?)\[/CHART_DATA\]'
-        matches = re.finditer(chart_pattern, response_text, re.DOTALL)
+        response_payload = _extract_response_payload(response_text)
 
-        for match in matches:
-            try:
-                chart_json = match.group(1).strip()
-                chart_data = json.loads(chart_json)
-                charts.append(chart_data)
-                logger.debug(f"Successfully parsed chart: {chart_data.get('type', 'unknown')}")
-            except json.JSONDecodeError as e:
-                logger.warning(f"Failed to parse chart data: {e}")
-
-        # Remove chart data blocks from the text
-        clean_text = re.sub(chart_pattern, '', response_text, flags=re.DOTALL).strip()
-
-        logger.info(f"Successfully generated response with {len(charts)} charts")
-        return {
-            'text': clean_text,
-            'charts': charts
-        }
+        logger.info(f"Successfully generated response with {len(response_payload['charts'])} charts")
+        return response_payload
 
     except Exception as e:
         logger.error(f"Error in get_agent_response: {str(e)}")
