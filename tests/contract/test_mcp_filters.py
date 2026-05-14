@@ -35,6 +35,10 @@ def test_expression_filter_reduces_row_count(mcp_client):
 
 _EXPRESSION_SYNTAX_CASES = [
     ("sas", "treatment NOT IN ('Placebo', 'DrugB')", 64),
+    ("sas", "age BETWEEN 30 AND 50", 31),
+    ("sas", "treatment <> 'Placebo'", 80),
+    ("sas", "weight_kg IS NULL", 7),
+    ("sas", "weight_kg IS NOT NULL", 93),
     ("sas", "notes LIKE '%headache%'", 23),
     ("sas", "notes NOT LIKE '%headache%'", 77),
     ("r", '!str_detect(notes, "headache")', 77),
@@ -44,7 +48,16 @@ _EXPRESSION_SYNTAX_CASES = [
 @pytest.mark.parametrize(
     ("syntax", "expression", "expected_rows"),
     _EXPRESSION_SYNTAX_CASES,
-    ids=["sas-not-in", "sas-like", "sas-not-like", "r-not-str-detect"],
+    ids=[
+        "sas-not-in",
+        "sas-between",
+        "sas-not-equal-angle",
+        "sas-is-null",
+        "sas-is-not-null",
+        "sas-like",
+        "sas-not-like",
+        "r-not-str-detect",
+    ],
 )
 def test_expression_filter_supported_syntax_cases(mcp_client, syntax, expression, expected_rows):
     resp = mcp_client.post(

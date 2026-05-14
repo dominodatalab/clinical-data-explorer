@@ -45,7 +45,8 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
     - = (equality) -> ==
     - IN (...) -> .isin([...])
     - LIKE with % -> str.contains()
-    - IS MISSING, IS NOT MISSING -> .isna(), .notna()
+    - IS MISSING, IS NOT MISSING, IS NULL, IS NOT NULL -> .isna(), .notna()
+    - BETWEEN lower AND upper -> >= lower and <= upper
     - String literals: 'value' or "value"
     """
     if not expression or not expression.strip():
@@ -56,8 +57,7 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
     # SAS is case-insensitive for keywords, but we need to preserve column names
     # First, let's handle keywords case-insensitively
     
-    # Handle IS NOT MISSING / IS MISSING (must be done before other replacements)
-    # Pattern: column IS NOT MISSING or column IS MISSING
+    # Handle IS NOT MISSING / IS MISSING / IS NOT NULL / IS NULL (must be done before other replacements)
     def replace_missing(match):
         col = match.group(1).strip()
         is_not = match.group(2) is not None
@@ -67,7 +67,7 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
             return f"{col}.isna()"
     
     result = regex_module.sub(
-        r'(\w+)\s+IS\s+(NOT\s+)?MISSING',
+        r'(\w+)\s+IS\s+(NOT\s+)?(?:MISSING|NULL)',
         replace_missing,
         result,
         flags=regex_module.IGNORECASE
@@ -102,7 +102,22 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
         result,
         flags=regex_module.IGNORECASE
     )
-    
+
+    # Handle BETWEEN before AND becomes a boolean operator.
+    def replace_between(match):
+        col = match.group(1).strip()
+        lower = match.group(2).strip()
+        upper = match.group(3).strip()
+        return f"(({col} >= {lower}) & ({col} <= {upper}))"
+
+    value_pattern = r"(?:'[^']*'|\"[^\"]*\"|[^\s()]+)"
+    result = regex_module.sub(
+        rf'(\w+)\s+BETWEEN\s+({value_pattern})\s+AND\s+({value_pattern})',
+        replace_between,
+        result,
+        flags=regex_module.IGNORECASE
+    )
+
     # Replace SAS comparison operators (word form) - case insensitive
     # Must do these before = replacement to avoid conflicts
     replacements = [
@@ -112,6 +127,7 @@ def translate_sas_to_pandas(expression: str, df: pd.DataFrame) -> str:
         (r'\bLE\b', '<='),
         (r'\bGT\b', '>'),
         (r'\bLT\b', '<'),
+        (r'<>', '!='),
     ]
 
     for pattern, replacement in replacements:
@@ -285,7 +301,7 @@ def validate_expression_columns(expression: str, df: pd.DataFrame, syntax: str =
     
     # SAS WHERE clause keywords (case-insensitive)
     sas_keywords = {
-        'and', 'or', 'not', 'in', 'is', 'missing', 'like',
+        'and', 'or', 'not', 'in', 'is', 'missing', 'null', 'like',
         'eq', 'ne', 'gt', 'lt', 'ge', 'le', 'between'
     }
     
