@@ -344,7 +344,7 @@ Run `make test` before committing. Run `make test-all` before opening a PR.
 First-time setup:
 
 ```
-uv sync --locked
+uv sync --dev
 uv run --locked playwright install chromium     # only needed for make test-e2e
 ```
 
@@ -354,6 +354,3 @@ uv run --locked playwright install chromium     # only needed for make test-e2e
 - Only add an MCP contract test if the feature introduces a new *category* of backend behavior (not a new endpoint within an existing category).
 - Do NOT add unit tests for internal helpers; prefer integration-level tests.
 - If the feature depends on governance, chat, or another external service, mark the test `@pytest.mark.external`.
-
-# To Do
-auth passthrough for Domino extensions mode
