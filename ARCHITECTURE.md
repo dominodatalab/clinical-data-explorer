@@ -129,16 +129,25 @@ MCP server
   maps the browser session ID to the loaded dataset
 
 Flask backend
-  clears chat history for that browser session
+  clears chat history for that browser session after the load succeeds
   returns dataset metadata to the UI
 
 Browser
   initializes table, charts, filters, and governance status
 ```
 
-The load path supports local files, Domino datasets, dataset snapshots, dataset
-file deeplinks, and NetApp volume files. Snapshot identity is preserved where
+The load path supports Domino datasets, dataset snapshots, dataset
+file deeplinks, NetApp volumes, and NetApp volume files. Snapshot identity is preserved where
 possible so the app can reload or govern the exact file revision the user chose.
+
+Chat history is cleared only for the browser session that loaded the dataset,
+and only after the MCP server has successfully loaded the new file. A failed
+dataset load should leave the existing chat context alone. The reset matters
+because chat history is tied to the previously loaded dataset: if a user switches
+from one dataset to another, old questions, answers, and tool results can refer
+to columns, values, filters, or findings that no longer apply. Clearing the
+session's chat history makes the next chat start from the newly loaded dataset
+instead of carrying assumptions from the old one.
 
 ## Analysis Flow
 
@@ -149,43 +158,27 @@ Browser
   sends table, filter, chart, summary, or chat request
 
 Flask backend
-  forwards the request with the browser session ID
+  forwards the request to the MCP server with the browser session ID
 
 MCP server
   finds the DataFrame for that session
   performs the requested operation
-  returns only the relevant result
+  returns the result
 
 Browser
   renders the page, chart, summary, or chat response
 ```
 
-This keeps large data processing on the server and keeps browser payloads
-focused on the current interaction.
-
 ## Governance Flow
 
-Governance checks depend on file identity, not just display name. When a Domino
-or NetApp-backed file is loaded, the app keeps enough source context to identify
-the file and snapshot that were actually loaded.
-
-The browser uses that context through the Flask backend to check for matching
+The browser uses file information from the Flask backend to check for matching
 governance bundles. If the file is governed, the UI can create a finding. The
-Flask backend submits the finding to Domino Governance using the user's
-propagated identity.
-
-This keeps governance actions auditable as Domino user actions and avoids
-treating local display names as sufficient governance identity.
+Flask backend submits the finding to Domino Governance.
 
 ## Permalinks And Deep Links
 
 The app stores view state in URLs so users can share or return to a specific
-view. Links can include the loaded dataset, filters, expression filters, page
-state, row hints, and source identity for Domino or NetApp-backed files.
-
-For snapshot-backed data, links preserve enough source identity to target the
-same file revision rather than silently falling back to whatever file is latest
-when the link is opened.
+view.
 
 ## Operational Notes
 
@@ -195,14 +188,14 @@ means capacity planning matters.
 
 Important operational assumptions:
 
-- keep Flask backend and MCP server worker counts aligned with the process-local
+- keep Flask backend and MCP server worker counts equal to `1`, which is aligned with the process-local
   state model
-- size memory for loaded DataFrames, not just raw source files
+- size memory for loaded DataFrames, not just raw source files. DataFrames may be ~5x bigger than source
 - configure dataset size limits according to the hardware tier
-- treat queues and caches as per-process safeguards, not global cluster
-  coordination
-- use sticky routing where possible for horizontally scaled deployments
+- treat queues and caches as per-process safeguards, not global coordination
+- sticky routing is required for horizontally scaled deployments. This is the default behavior with Domino
+  App autoscaling
 
 If the app needs higher scale later, the main architectural change would be to
-externalize shared state: dataset load coordination, session-to-dataset
-metadata, chat history, and possibly cached analysis artifacts.
+externalize shared state: the dataset load queue, DataFrame caching, chat history. Some concurrency
+safeguards may be removed at that time.
