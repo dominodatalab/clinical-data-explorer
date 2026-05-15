@@ -419,7 +419,7 @@ def apply_expression_filter(df: pd.DataFrame, expression: str, syntax: str) -> p
     if not pandas_expr:
         return df
     
-    logger.info(f"Translated expression ({syntax}): {expression} -> {pandas_expr}")
+    logger.info(f"Translated filter using {syntax} syntax")
     
     # Try using pandas query() first (safer, more restricted)
     try:

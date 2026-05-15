@@ -169,8 +169,7 @@ def discover_netapp_files_for_project(project_id, token):
                             'volume_id': vol_id
                         })
             except Exception as e:
-                error_msg = str(e).split('\n')[0][:200]
-                logger.warning(f'Failed to list files for NetApp volume {vol_name}: {error_msg}')
+                logger.warning(f'Failed to list files for NetApp volume {vol_id}: {e}')
 
         return netapp_files, netapp_volumes
 
@@ -243,8 +242,7 @@ def list_datasets_via_api(project_id):
                         if ext in SUPPORTED_EXTENSIONS:
                             file_list.append(f'{ds_name}/{f.name}')
                 except Exception as e:
-                    error_msg = str(e).split('\n')[0][:200]
-                    logger.warning(f'Failed to list files for dataset {ds_name}: {error_msg}')
+                    logger.warning(f'Failed to list files for dataset {ds_id}: {e}')
 
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
@@ -689,7 +687,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 
         # Download to session-specific temp directory
         with data_file_path(volume_key, file_name, 'netapp', snapshot_version) as temp_path:
-            logger.info(f"Downloading {file_name} from NetApp volume {vol_name} to {temp_path}")
+            logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
             buf = io.BytesIO()
             target_file.download_fileobj(buf)
             with open(temp_path, 'wb') as f:

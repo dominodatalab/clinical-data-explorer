@@ -55,7 +55,8 @@ def chat():
         logger.warning("Chat request received with no message")
         return jsonify({'error': 'No message provided'}), 400
 
-    logger.info(f"Processing chat message: {user_message[:100]}...")
+    message_length = len(user_message)
+    logger.info(f"Processing chat message with {message_length} characters")
 
     # Get response from the chat agent using the async function
     try:
