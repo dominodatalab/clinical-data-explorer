@@ -1,10 +1,10 @@
-# Data Explorer
+# Clinical Data Explorer
 
-Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.
+Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.
 
 ## Overview
 
-Data Explorer provides three main capabilities:
+Clinical Data Explorer provides three main capabilities:
 
 - **Table View**: Browse and filter datasets with an interactive data table
 - **Explore**: Create visualizations with configurable charts
@@ -14,9 +14,11 @@ Data Explorer provides three main capabilities:
 
 ### Prerequisites
 
-Data Explorer is designed to run as a Domino App. Dependencies are managed with `uv` via `pyproject.toml` and `uv.lock`.
+Clinical Data Explorer is designed to run as a Domino App.
 
 ### App Configuration
+
+See the [INSTALL.md](./INSTALL.md) for an indepth overview of how to configure the App manually for production and deploy as a Domino Extension.
 
 1. Navigate to your Domino project and select **Publish > App**
 2. Set the startup script to:
@@ -27,9 +29,13 @@ Data Explorer is designed to run as a Domino App. Dependencies are managed with 
 
 `start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`
 
+### Quick Start
+
+See the [QUICKSTART.md](./QUICKSTART.md) for developer information on working on the App.
+
 ### Data Access
 
-Data Explorer reads data files from the `datasets` folder in your Domino project. Supported formats include:
+Clinical Data Explorer reads data files from the `datasets` folder in your Domino project. Supported formats include:
 
 - CSV (`.csv`)
 - Parquet (`.parquet`)
@@ -42,7 +48,7 @@ Add your data files to the project's `datasets` folder, and they will appear in 
 
 ### Column Labels (Friendly Names)
 
-Data Explorer supports human-readable labels for column names, useful for datasets with cryptic variable names (e.g., CDISC/ADaM clinical data). When enabled, column headers and dropdowns display friendly labels instead of raw column names.
+Clinical Data Explorer supports human-readable labels for column names, useful for datasets with cryptic variable names (e.g., CDISC/ADaM clinical data). When enabled, column headers and dropdowns display friendly labels instead of raw column names.
 
 #### Enable Friendly Names in the UI
 
@@ -265,7 +271,7 @@ Ask the chatbot about the columns in your dataset or request specific analyses:
 
 ## Use Domino Governance
 
-Data Explorer integrates with Domino Governance to help you create findings for governed datasets. When a dataset is attached to a governance bundle, you can submit findings directly from the app.
+Clinical Data Explorer integrates with Domino Governance to help you create findings for governed datasets. When a dataset is attached to a governance bundle, you can submit findings directly from the app.
 
 ### Governed Datasets
 
@@ -338,7 +344,7 @@ Run `make test` before committing. Run `make test-all` before opening a PR.
 First-time setup:
 
 ```
-uv sync --locked
+uv sync --dev
 uv run --locked playwright install chromium     # only needed for make test-e2e
 ```
 
@@ -348,6 +354,3 @@ uv run --locked playwright install chromium     # only needed for make test-e2e
 - Only add an MCP contract test if the feature introduces a new *category* of backend behavior (not a new endpoint within an existing category).
 - Do NOT add unit tests for internal helpers; prefer integration-level tests.
 - If the feature depends on governance, chat, or another external service, mark the test `@pytest.mark.external`.
-
-# To Do
-auth passthrough for Domino extensions mode

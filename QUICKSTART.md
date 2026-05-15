@@ -1,10 +1,10 @@
-# Data Explorer - Quick Start Guide
+# Clinical Data Explorer - Quick Start Guide
 
 ## Get Started in 4 Steps
 
 ### Step 1: Install Dependencies
 
-Some dataset related features require dependencies that only exist in Domino execution. To develop in a Domino Workspace,
+Some dataset related features require dependencies that only exist in Domino executions. To develop in a Domino Workspace,
 - Create a Git-Based Project with this repo
 - In the central config dashboard, set `com.cerebro.domino.workbench.workspace.sandboxForwardedPortsInVsCode=false`
 - Launch a vscode workspace
@@ -61,7 +61,7 @@ uv run --locked python app.py
 ```
 
 ### Step 4: Open Your Browser
-Navigate to: http://localhost:5000
+Navigate to: http://localhost:8888
 
 ## Using the Interface
 
@@ -125,7 +125,7 @@ This will test:
 **Solution**: Add CSV files to the `datasets/` folder
 
 ### "Could not connect to MCP server"
-**Solution**: Make sure the MCP server is running on port 8888
+**Solution**: Make sure the MCP server is running on port 3333
 ```bash
 uv run --locked python data_analysis_mcp.py
 ```
@@ -136,7 +136,8 @@ uv run --locked python data_analysis_mcp.py
 ### Import errors
 **Solution**: Install all dependencies
 ```bash
-uv sync --locked
+uv sync
+uv sync --dev # for testing dependencies
 ```
 
 ### Port already in use
@@ -148,7 +149,7 @@ lsof -i :8888
 kill -9 <PID>
 ```
 
-## Adding Your Own Datasets
+## Adding Your Own Local Datasets
 
 1. Place your CSV file in the `datasets/` folder
 2. Refresh the web page or restart the servers
