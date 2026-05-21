@@ -293,7 +293,7 @@ Another note.
     assert "[CHART_DATA]" not in payload["text"]
 
 
-def test_get_agent_response_strips_chart_payloads_before_storing_history(monkeypatch):
+def test_get_agent_response_keeps_chart_payloads_in_message_history(monkeypatch):
     output = (
         "Here is the distribution.\n"
         "[CHART_DATA]"
@@ -313,23 +313,9 @@ def test_get_agent_response_strips_chart_payloads_before_storing_history(monkeyp
     assert response["charts"][0]["type"] == "bar"
     assert response["text"] == "Here is the distribution."
     stored_text = _message_text(chat_agent.get_message_histories()["session-chart"][0])
-    assert "[CHART_DATA]" not in stored_text
-    assert "categories" not in stored_text
-    assert chat_agent.CHART_HISTORY_REPLACEMENT in stored_text
-
-
-def test_prepare_message_history_preserves_all_messages_after_sanitizing():
-    history = chat_agent._prepare_message_history_for_storage([
-        _message("old"),
-        _message("middle [CHART_DATA]{\"type\":\"bar\"}[/CHART_DATA]"),
-        _message("new"),
-    ])
-
-    assert [_message_text(message) for message in history] == [
-        "old",
-        f"middle {chat_agent.CHART_HISTORY_REPLACEMENT}",
-        "new",
-    ]
+    assert stored_text == output
+    assert "[CHART_DATA]" in stored_text
+    assert "categories" in stored_text
 
 
 def test_get_agent_response_caps_message_history(monkeypatch):

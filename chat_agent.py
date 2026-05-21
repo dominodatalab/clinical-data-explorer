@@ -4,14 +4,12 @@ from pydantic_ai.providers.openai import OpenAIProvider
 
 from pydantic_ai.mcp import MCPServerSSE
 import chat_agent_message_cache
-from pydantic_ai.messages import ModelMessage
 import asyncio
 import json
 import re
 import logging
 import traceback
 import sys
-from dataclasses import replace
 from pathlib import Path
 
 import config as chat_agent_config
@@ -21,7 +19,6 @@ MCP_SERVER_URL = backend_config.MCP_SERVER_MCP_URL
 
 
 CHART_DATA_PATTERN = re.compile(r'\[CHART_DATA\](.*?)\[/CHART_DATA\]', re.DOTALL)
-CHART_HISTORY_REPLACEMENT = '[Chart data omitted from chat history.]'
 MALFORMED_CHART_WARNING = 'A chart could not be rendered because the chart data was malformed.'
 
 # Configure logging - write to both file and stdout so logs appear in Domino app logs
@@ -152,36 +149,6 @@ def _create_agent_without_mcp() -> Agent | None:
     return Agent(llm_model, system_prompt=SYSTEM_PROMPT, retries=5)
 
 
-def _strip_chart_blocks_from_text(text: str) -> str:
-    return CHART_DATA_PATTERN.sub(CHART_HISTORY_REPLACEMENT, text)
-
-
-def _sanitize_message_for_history(message: ModelMessage) -> ModelMessage:
-    """Remove chart payloads from text-bearing message parts before storage."""
-    parts = getattr(message, 'parts', None)
-    if parts is None:
-        return message
-
-    sanitized_parts = []
-    changed = False
-    for part in parts:
-        content = getattr(part, 'content', None)
-        if isinstance(content, str):
-            sanitized_content = _strip_chart_blocks_from_text(content)
-            if sanitized_content != content:
-                part = replace(part, content=sanitized_content)
-                changed = True
-        sanitized_parts.append(part)
-
-    if not changed:
-        return message
-    return replace(message, parts=sanitized_parts)
-
-
-def _prepare_message_history_for_storage(message_history: list[ModelMessage]) -> list[ModelMessage]:
-    return [_sanitize_message_for_history(message) for message in message_history]
-
-
 def _extract_response_payload(response_text: str) -> dict:
     charts = []
     malformed_chart_count = 0
@@ -223,7 +190,6 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
     message_history = chat_agent_message_cache.get_messages(session_id)
-    message_history[:] = _prepare_message_history_for_storage(message_history)
 
     logger.info(f"Starting agent response for session {session_id[:8]}...")
 
@@ -244,8 +210,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
         logger.debug("Agent run completed successfully")
 
         # Update this session's history
-        new_messages = _prepare_message_history_for_storage(result.new_messages())
-        message_history = chat_agent_message_cache.add_messages(session_id, new_messages)
+        message_history = chat_agent_message_cache.add_messages(session_id, result.new_messages())
         logger.debug(f"Session {session_id[:8]} history now has {len(message_history)} messages")
 
         response_text = result.output
