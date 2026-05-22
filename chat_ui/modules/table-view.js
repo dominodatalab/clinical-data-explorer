@@ -779,8 +779,8 @@ export async function updateDistinctValuesCard() {
         
         // Fetch both stats and values in parallel
         const [statsData, valuesData] = await Promise.all([
-            fetchJson(apiUrl(statsUrl)).then(throwIfApiError),
-            fetchJson(apiUrl(valuesUrl)).then(throwIfApiError)
+            fetchJson(apiUrl(statsUrl)),
+            fetchJson(apiUrl(valuesUrl))
         ]);
         
         // Show count
@@ -1376,11 +1376,11 @@ export async function loadTableData() {
             requestBody.syntax = tableState.expressionFilter.syntax;
         }
 
-        const data = throwIfApiError(await fetchJson(apiUrl(endpoint), {
+        const data = await fetchJson(apiUrl(endpoint), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
-        }));
+        });
 
         tableState.totalRows = data.filtered_rows;
         tableState.totalPages = data.total_pages;
@@ -1481,11 +1481,11 @@ export async function loadSummaryData() {
             expression: tableState.expressionFilter?.expression,
             syntax: tableState.expressionFilter?.syntax
         };
-        const data = throwIfApiError(await fetchJson(apiUrl('table/summary'), {
+        const data = await fetchJson(apiUrl('table/summary'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
-        }));
+        });
 
         tableState.summaryData = data;
         

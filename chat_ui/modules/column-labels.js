@@ -23,14 +23,13 @@
 // the same guarantee `script.js`'s `DOMContentLoaded` callback was using.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { displayMessage } from './chat.js';
 
 const labelToggleContainer = document.getElementById('label-toggle-container');
 
 export function loadColumnLabels() {
     fetchJson(apiUrl('column_labels'))
-        .then(throwIfApiError)
         .then(data => {
             if (data.available && data.labels) {
                 state.columnLabels = data.labels;

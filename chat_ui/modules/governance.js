@@ -39,7 +39,7 @@
 // Same pattern as `modules/column-labels.js` (P12 / 4.4a).
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { showToast } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { displayMessage } from './chat.js';
@@ -102,7 +102,7 @@ export async function checkGovernanceBundles(ctx) {
             if (ctx.volumeId) params['identifier.volumeId'] = ctx.volumeId;
         }
 
-        const data = throwIfApiError(await queryAttachmentOverviews(params));
+        const data = await queryAttachmentOverviews(params);
 
         if (!data.data || data.data.length === 0) {
             console.log('No governance bundles found for this snapshot file');
@@ -305,7 +305,7 @@ function getDominoBaseUrl() {
 
 async function loadBundleStages(bundleId) {
     try {
-        const data = throwIfApiError(await fetchJson(apiUrl(`governance/bundles/${bundleId}/stages`)));
+        const data = await fetchJson(apiUrl(`governance/bundles/${bundleId}/stages`));
 
         state.governanceState.bundleStages = data.stages || [];
         state.governanceState.bundleApprovals = data.approvals || [];
@@ -340,7 +340,7 @@ async function loadBundleStages(bundleId) {
 
 async function loadProjectCollaborators() {
     try {
-        const data = throwIfApiError(await fetchJson(apiUrl('governance/project-collaborators')));
+        const data = await fetchJson(apiUrl('governance/project-collaborators'));
 
         state.governanceState.projectCollaborators = data.collaborators || [];
         console.log(`Loaded ${state.governanceState.projectCollaborators.length} project collaborators`);
@@ -354,7 +354,7 @@ async function loadProjectCollaborators() {
 
 async function loadCurrentUser() {
     try {
-        const data = throwIfApiError(await fetchJson(apiUrl('governance/current-user')));
+        const data = await fetchJson(apiUrl('governance/current-user'));
         state.governanceState.currentUser = data;
     } catch (error) {
         console.error('Error loading current user:', error);
@@ -497,11 +497,11 @@ export async function createFinding(findingData, permalink) {
             findingRequest.evidenceId = findingData.evidenceId;
         }
 
-        const data = throwIfApiError(await fetchJson(apiUrl('governance/findings'), {
+        const data = await fetchJson(apiUrl('governance/findings'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(findingRequest)
-        }));
+        });
 
         // Success!
         closeFindingModal();

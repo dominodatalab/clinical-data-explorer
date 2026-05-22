@@ -55,7 +55,7 @@
 // pattern.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { getDisplayName } from './column-labels.js';
@@ -233,11 +233,11 @@ async function applyExpressionFilter() {
             filters: tableStateRef.filters
         };
 
-        const data = throwIfApiError(await fetchJson(apiUrl('table/expression_filter'), {
+        const data = await fetchJson(apiUrl('table/expression_filter'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
-        }));
+        });
 
         // Expression is valid - save and apply
         tableStateRef.expressionFilter = {
@@ -288,7 +288,7 @@ async function fetchAutocomplete() {
     }
 
     try {
-        const data = throwIfApiError(await fetchJson(apiUrl(`table/column_values/${encodeURIComponent(column)}?search=${encodeURIComponent(search)}&limit=15`)));
+        const data = await fetchJson(apiUrl(`table/column_values/${encodeURIComponent(column)}?search=${encodeURIComponent(search)}&limit=15`));
 
         if (data.values && data.values.length > 0) {
             renderAutocomplete(data.values, search);

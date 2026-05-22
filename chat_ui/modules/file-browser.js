@@ -35,7 +35,7 @@
 // evaluates. Same pattern as `modules/governance.js`.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { displayMessage } from './chat.js';
@@ -232,7 +232,7 @@ async function onSourceSelected() {
 
         try {
             const sourceType = source.type; // 'dataset' or 'netapp'
-            const data = throwIfApiError(await fetchJson(apiUrl(`snapshots/${sourceType}/${encodeURIComponent(source.id)}`)));
+            const data = await fetchJson(apiUrl(`snapshots/${sourceType}/${encodeURIComponent(source.id)}`));
 
             state.fileBrowserState.snapshots = data.snapshots || [];
 
@@ -399,7 +399,7 @@ async function loadSnapshotFiles(snapshotId, path) {
         let url = apiUrl(`snapshot/${encodeURIComponent(snapshotId)}/files`);
         if (path) url += '?path=' + encodeURIComponent(path);
 
-        const data = throwIfApiError(await fetchJson(url));
+        const data = await fetchJson(url);
 
         state.fileBrowserState.entries = data.entries || [];
         state.fileBrowserState.currentPath = path;
@@ -432,7 +432,7 @@ async function loadNetAppFilesForBrowser(volumeKey) {
         const qs = params.toString();
         if (qs) url += '?' + qs;
 
-        const data = throwIfApiError(await fetchJson(url));
+        const data = await fetchJson(url);
 
         state.fileBrowserState.entries = data.entries || [];
         state.fileBrowserState.currentPath = path;
@@ -608,7 +608,7 @@ async function _walkDirectory(path, results) {
         return;
     }
 
-    const data = throwIfApiError(await fetchJson(url));
+    const data = await fetchJson(url);
     const entries = data.entries || [];
 
     const subdirs = [];

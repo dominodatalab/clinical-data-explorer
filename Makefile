@@ -1,10 +1,13 @@
-.PHONY: test test-unit test-e2e test-all test-external
+.PHONY: test test-unit test-frontend test-e2e test-all test-external
 
 test:
 	uv run --locked pytest tests/contract
 
 test-unit:
 	uv run --locked pytest tests/unit tests/mcp_server
+
+test-frontend:
+	node --experimental-vm-modules --test tests/unit/js/*.test.mjs
 
 test-e2e:
 	uv run --locked pytest tests/e2e

@@ -6,18 +6,16 @@
 //      reverse proxy (`/<workspace-prefix>/<deployment-id>/`).
 //   2. `apiUrl(endpoint)` — prefix a relative endpoint with that base URL.
 //   3. `fetchWithStatusCheck(input, init)` — shared response-level wrapper
-//      around `fetch()` that returns the original Response but rejects when
-//      the response status is > 399.
+//      around `fetch()` that returns the original Response but rejects on
+//      HTTP error statuses.
 //   4. `getApiErrorMessage(error, fallback)` — extract `error`, `message`,
 //      and `description` fields from failed API responses for UI messages.
 //   5. `fetchJson(input, init)` — convenience wrapper for the common
-//      "GET/POST then `.json()`" pattern. It builds on
-//      `fetchWithStatusCheck`, so non-2xx API responses reject consistently.
+//      "GET/POST then `.json()`" pattern. It rejects on HTTP errors and on
+//      successful JSON payloads that still contain an `error` field.
 //
-// `BASE_URL` is computed once at module load. The original code computed it
-// inside the DOMContentLoaded callback and logged it; under ES module
-// semantics modules execute before DOMContentLoaded fires, so the log line
-// just appears slightly earlier in the console — the value is identical.
+// `BASE_URL` is computed once at module load so every module shares the same
+// API prefix.
 
 export function getBaseUrl() {
     let path = window.location.pathname;
@@ -34,27 +32,22 @@ export function apiUrl(endpoint) {
     return BASE_URL + endpoint;
 }
 
-export class HttpStatusError extends Error {
-    constructor(response) {
-        super(`HTTP ${response.status}`);
-        this.name = 'HttpStatusError';
+export class ApiError extends Error {
+    constructor(message = 'API request failed', { response = null, data = null } = {}) {
+        super(message);
+        this.name = 'ApiError';
         this.response = response;
-        this.status = response.status;
-        this.statusText = response.statusText;
-    }
-}
-
-export class ApiResponseError extends Error {
-    constructor(data) {
-        super(data && data.error ? data.error : 'API request failed');
-        this.name = 'ApiResponseError';
         this.data = data;
+        if (response) {
+            this.status = response.status;
+            this.statusText = response.statusText;
+        }
     }
 }
 
 export function throwIfApiError(data) {
     if (data && data.error) {
-        throw new ApiResponseError(data);
+        throw new ApiError(data.error, { data });
     }
     return data;
 }
@@ -84,13 +77,13 @@ export async function getApiErrorMessage(error, fallback = 'Request failed') {
 
 export async function fetchWithStatusCheck(input, init) {
     const response = await fetch(input, init);
-    if (response.status > 399) {
-        throw new HttpStatusError(response);
+    if (response.status >= 400) {
+        throw new ApiError(`HTTP ${response.status}`, { response });
     }
     return response;
 }
 
 export async function fetchJson(input, init) {
     const response = await fetchWithStatusCheck(input, init);
-    return await response.json();
+    return throwIfApiError(await response.json());
 }

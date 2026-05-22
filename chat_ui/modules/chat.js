@@ -37,7 +37,7 @@
 // rare case where another module fires a system message before init.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
 import {
     renderBarChart,
     renderScatterChart,
@@ -64,7 +64,7 @@ export async function checkChatStatus() {
     }
 
     try {
-        const data = throwIfApiError(await fetchJson(apiUrl('chat/status')));
+        const data = await fetchJson(apiUrl('chat/status'));
         state.chatStatus.configured = data.configured;
         state.chatStatus.checked = true;
         state.chatStatus.details = data;
@@ -122,7 +122,6 @@ function clearChat() {
     clearChatButton.disabled = true;
 
     fetchJson(apiUrl('chat/clear'), { method: 'POST' })
-        .then(throwIfApiError)
         .then(() => {
             chatBox.innerHTML = '';
             displayMessage('Chat history cleared. You can start a new conversation.', 'system');
@@ -164,7 +163,6 @@ function sendMessage() {
         },
         body: JSON.stringify({ message: messageText }),
     })
-    .then(throwIfApiError)
     .then(data => {
         console.log('Received data from server:', data);
         if (data.response) {

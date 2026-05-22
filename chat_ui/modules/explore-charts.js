@@ -438,7 +438,6 @@ function updateBarChart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-    .then(throwIfApiError)
     .then(data => {
         // Convert server response to chart format
         // Server returns: { chart_data: [{label, value}, ...] }
@@ -603,7 +602,6 @@ function updateHistogramChart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-    .then(throwIfApiError)
     .then(data => {
         renderHistogramChart(data);
     })
@@ -768,7 +766,6 @@ function fetchTimeSeriesChart(xAxis, yAxis, aggregationType) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-    .then(throwIfApiError)
     .then(data => {
         renderTimeSeriesChartFromServer(data.chart_data, xAxis, yAxis, aggregationType);
     })
@@ -800,7 +797,6 @@ function fetchXYChart(xAxis, yAxis, aggregationType) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
-    .then(throwIfApiError)
     .then(data => {
         renderXYChartFromServer(data, xAxis, yAxis, aggregationType);
     })
