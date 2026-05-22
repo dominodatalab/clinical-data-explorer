@@ -5,6 +5,10 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clinical Data Explorer - Dataset Analysis</title>
+    <!-- Iframe detector: tags <html> with `in-iframe` before the stylesheet
+         loads so the top header is hidden on first paint when Domino renders
+         us inside its own chrome (deep-linking OFF). -->
+    <script src="iframe-detect.js"></script>
     <link rel="stylesheet" href="style.css">
     <!-- Highcharts Library (vendored locally) -->
     <script src="vendor/highcharts/highcharts.js"></script>

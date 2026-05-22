@@ -104,6 +104,14 @@ body {
     z-index: 10;
 }
 
+/* When embedded in an iframe (Domino app with deep-linking OFF), suppress
+   our local header so it doesn't visually duplicate Domino's own top nav.
+   The `in-iframe` class is set on <html> by iframe-detect.js before the
+   stylesheet loads, so this applies on first paint with no flash. */
+html.in-iframe .header {
+    display: none;
+}
+
 .logo-section {
     display: flex;
     flex-direction: row;
