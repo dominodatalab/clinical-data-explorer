@@ -399,21 +399,43 @@
     align-items: center;
 }
 
-/* No governance fallback */
+/* Ungoverned state — render the same .governance-badge markup as a small
+   neutral tag instead of a loud pill. The governed state stays prominent
+   (green badge + popover + Create Finding action), but the ungoverned state
+   is just informational, so it should not compete with the file pill or the
+   tabs for attention.
+
+   Visually: small gray chip, no gradient, no shadow, no caret, non-interactive
+   cursor. The redesign explicitly demotes this state — see mockups/header-redesign.html. */
 .governance-indicator.no-governance .governance-badge {
-    background: linear-gradient(135deg, #9e9e9e 0%, #757575 100%);
+    height: 22px;
+    padding: 0 8px;
+    background: var(--color-border-borderlight);
+    color: var(--color-text-textsecondary);
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: 11px;
     box-shadow: none;
     cursor: default;
     max-width: none;
+    font-size: 11px;
+    font-weight: 500;
 }
 
 .governance-indicator.no-governance .governance-badge:hover {
     transform: none;
     box-shadow: none;
+    background: var(--color-border-borderlight);
 }
 
 .governance-indicator.no-governance .governance-badge-prefix {
-    color: rgba(255, 255, 255, 0.9);
+    color: var(--color-text-textsecondary);
+}
+
+/* The ungoverned chip has no bundle context, so the colon and caret are
+   irrelevant — they were already being hidden in the markup, but we belt-and-
+   brace it here. */
+.governance-indicator.no-governance .governance-badge-prefix::after {
+    content: '' !important;
 }
 
 /* ===== CREATE FINDING BUTTON & MODAL STYLES ===== */

@@ -5,6 +5,10 @@
     <meta http-equiv="X-UA-Compatible" content="IE=edge">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Clinical Data Explorer - Dataset Analysis</title>
+    <!-- Iframe detector: tags <html> with `in-iframe` before the stylesheet
+         loads so the top header is hidden on first paint when Domino renders
+         us inside its own chrome (deep-linking OFF). -->
+    <script src="iframe-detect.js"></script>
     <link rel="stylesheet" href="style.css">
     <!-- Highcharts Library (vendored locally) -->
     <script src="vendor/highcharts/highcharts.js"></script>
@@ -41,8 +45,25 @@
                 <button class="tab-button" data-tab="explore" data-testid="tab-explore">Explore</button>
             </div>
             <div class="dataset-selector">
-                <span class="current-dataset-label" id="current-dataset-label" data-testid="current-dataset-label">No dataset loaded</span>
-                <button id="browse-files-button" class="dataset-browse-btn" data-testid="browse-files-button">Browse Files</button>
+                <!-- Filename pill: empty-state is a "ghost CTA" (purple-tinted) when no
+                     dataset is loaded; once loaded, performDatasetLoad() removes the
+                     `empty` class and the pill relaxes into a quiet container. The
+                     ids on the outer button and inner span are kept so the file-browser
+                     click wiring (modules/file-browser.js) and dataset label updates
+                     (script.js performDatasetLoad) continue to work unchanged. -->
+                <button id="browse-files-button" class="file-pill empty" data-testid="browse-files-button">
+                    <svg class="file-pill-icon file-pill-icon-leading" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"></path>
+                        <polyline points="13 2 13 9 20 9"></polyline>
+                    </svg>
+                    <span class="file-name" id="current-dataset-label" data-testid="current-dataset-label">Choose a data file…</span>
+                    <svg class="file-pill-icon file-pill-icon-trailing" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <polyline points="17 1 21 5 17 9"></polyline>
+                        <path d="M3 11V9a4 4 0 0 1 4-4h14"></path>
+                        <polyline points="7 23 3 19 7 15"></polyline>
+                        <path d="M21 13v2a4 4 0 0 1-4 4H3"></path>
+                    </svg>
+                </button>
 
                 <!-- Governance Bundle Indicator -->
                 <div class="governance-indicator" id="governance-indicator" style="display: none;">
@@ -75,12 +96,21 @@
                     </div>
                 </div>
                 <button class="toolbar-btn toolbar-btn-primary header-create-finding-btn" id="create-finding-btn" style="display: none;" title="Create a governance finding">
-                    <span>Create Finding</span>
+                    <svg class="create-finding-icon" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                        <line x1="12" y1="5" x2="12" y2="19"></line>
+                        <line x1="5" y1="12" x2="19" y2="12"></line>
+                    </svg>
+                    <span>Finding</span>
                 </button>
 
+                <!-- Friendly Names toggle: visually an Ant-style switch, but the
+                     underlying checkbox is preserved (visually hidden) so existing
+                     state.useLabels wiring in script.js continues to work via
+                     useLabelsCheckbox.checked / change events. -->
                 <div class="label-toggle" id="label-toggle-container" style="display: none;">
-                    <label class="toggle-label" title="Show human-readable column names">
-                        <input type="checkbox" id="use-labels-checkbox">
+                    <label class="toggle-label" title="Show friendly column names">
+                        <input type="checkbox" id="use-labels-checkbox" class="ant-switch-input">
+                        <span class="ant-switch" aria-hidden="true"></span>
                         <span class="toggle-text">Friendly Names</span>
                     </label>
                 </div>
