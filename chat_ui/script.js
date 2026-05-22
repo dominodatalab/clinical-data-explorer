@@ -1,5 +1,5 @@
 import { state } from './core/state.js';
-import { apiUrl } from './core/api.js';
+import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -42,14 +42,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // URL params: ?mountPointType=datasetFileContext&datasetId=X&datasetSnapshotId=Y&filePath=Z
 
     // ===== FILE BROWSER STATE =====
-    
+
     // Column metadata from /dataset/load - used to initialize UI without fetching all data
 
     // ===== UI STATE =====
-    
+
     // Chat configuration status
-    
-    
+
+
     // Loading state for individual components
 
     // Column label mapping state
@@ -126,7 +126,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialize state.useLabels from checkbox state on page load
     if (useLabelsCheckbox) {
         state.useLabels = useLabelsCheckbox.checked;
-        
+
         // Handle toggle checkbox change. The cross-module call sequence below
         // is preserved from pre-extraction (table render → explore re-init →
         // filter chips → table-side card refreshes → stats resort) so the
@@ -179,11 +179,11 @@ document.addEventListener('DOMContentLoaded', () => {
     tabButtons.forEach(button => {
         button.addEventListener('click', () => {
             const tabName = button.getAttribute('data-tab');
-            
+
             // Update active states
             tabButtons.forEach(btn => btn.classList.remove('active'));
             tabContents.forEach(content => content.classList.remove('active'));
-            
+
             button.classList.add('active');
             document.getElementById(`${tabName}-tab`).classList.add('active');
 
@@ -193,7 +193,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     initializeTableView();
                 }
             }
-            
+
             // If switching to chat tab, check if chat is configured
             if (tabName === 'chat') {
                 checkChatStatus();
@@ -229,15 +229,8 @@ document.addEventListener('DOMContentLoaded', () => {
             datasetsUrl = apiUrl('datasets');
         }
 
-        fetch(datasetsUrl)
-            .then(response => {
-                if (response.status === 401 || response.status === 403) {
-                    return response.json().then(data => {
-                        throw { authError: true, message: data.error || 'Authentication required' };
-                    });
-                }
-                return response.json();
-            })
+        fetchWithStatusCheck(datasetsUrl)
+            .then(response => response.json())
             .then(data => {
                 state.cachedDatasetListResponse = data;
 
@@ -310,15 +303,20 @@ document.addEventListener('DOMContentLoaded', () => {
                     setTimeout(() => openFileBrowserModal(), 200);
                 }
             })
-            .catch(error => {
+            .catch(async error => {
                 console.error('Error loading datasets:', error);
-                if (error && error.authError) {
+                if (error && (error.status === 401 || error.status === 403)) {
+                    const message = await getApiErrorMessage(error, 'Authentication required');
                     const emptyMessage = document.getElementById('table-empty-message');
                     const tableEmptyState = document.getElementById('table-empty-state');
-                    if (emptyMessage) emptyMessage.textContent = error.message;
+                    if (emptyMessage) emptyMessage.textContent = message;
                     if (tableEmptyState) tableEmptyState.classList.remove('hidden');
+                } else if (error && error.response) {
+                    const message = await getApiErrorMessage(error, `HTTP ${error.status}`);
+                    displayMessage(`Error loading datasets: ${message}`, 'system');
                 } else {
-                    displayMessage('Error loading datasets. Make sure the server is running.', 'system');
+                    const message = await getApiErrorMessage(error, 'Make sure the server is running.');
+                    displayMessage(`Error loading datasets: ${message}`, 'system');
                 }
             });
     }
@@ -480,22 +478,18 @@ document.addEventListener('DOMContentLoaded', () => {
         const browseBtn = document.getElementById('browse-files-button');
         browseBtn.disabled = true;
 
-        fetch(apiUrl('dataset/load'), {
+        fetchWithStatusCheck(apiUrl('dataset/load'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(loadBody),
         })
-        .then(response => response.json().then(data => ({ status: response.status, data })))
-        .then(({ status, data }) => {
-            if (data.error) {
-                const prefix = (status === 401 || status === 403) ? 'Access denied: ' : 'Error loading dataset: ';
-                displayMessage(`${prefix}${data.error}`, 'system');
-            } else {
-                state.currentDataset = datasetName;
-                state.selectedDataset = datasetName;
-                state.currentFilter = null;
-                clearSelectedRow();
-                invalidateSummaryStats();
+        .then(response => response.json().then(throwIfApiError))
+        .then(data => {
+            state.currentDataset = datasetName;
+            state.selectedDataset = datasetName;
+            state.currentFilter = null;
+            clearSelectedRow();
+            invalidateSummaryStats();
 
                 // Update the current dataset label and drop the file pill's
                 // ghost-CTA "empty" state — once a dataset is loaded, the pill
@@ -503,65 +497,66 @@ document.addEventListener('DOMContentLoaded', () => {
                 document.getElementById('current-dataset-label').textContent = datasetName;
                 browseBtn.classList.remove('empty');
 
-                state.columnMetadata = {
-                    columns: data.columns || [],
-                    numeric_columns: data.numeric_columns || [],
-                    categorical_columns: data.categorical_columns || [],
-                    date_columns: data.date_columns || [],
-                    column_types: data.column_types || {},
-                    num_rows: data.num_rows || 0
-                };
+            state.columnMetadata = {
+                columns: data.columns || [],
+                numeric_columns: data.numeric_columns || [],
+                categorical_columns: data.categorical_columns || [],
+                date_columns: data.date_columns || [],
+                column_types: data.column_types || {},
+                num_rows: data.num_rows || 0
+            };
 
-                console.log('Column metadata loaded:', state.columnMetadata);
+            console.log('Column metadata loaded:', state.columnMetadata);
 
-                if (typeof tableState !== 'undefined') {
-                    if (isDatasetSwitch) {
-                        tableState.filters = [];
-                        tableState.expressionFilter = null;
-                        tableState.pinnedColumns = [];
-                        tableState.currentPage = 1;
-                        tableState.sortColumn = null;
-                        tableState.sortDirection = 'asc';
-                    }
+            if (typeof tableState !== 'undefined') {
+                if (isDatasetSwitch) {
+                    tableState.filters = [];
+                    tableState.expressionFilter = null;
+                    tableState.pinnedColumns = [];
+                    tableState.currentPage = 1;
+                    tableState.sortColumn = null;
+                    tableState.sortDirection = 'asc';
                 }
-
-                resetExploreCharts();
-
-                displayMessage(`Successfully loaded dataset: ${datasetName} (${state.columnMetadata.num_rows.toLocaleString()} rows). You can now ask questions about this data!`, 'system');
-
-                initializeExploreTab();
-                initializeTableView();
-
-                // Build governance context from backend response + loadBody.
-                // The backend echoes sourceType/datasetId/snapshotId/volumeId/
-                // snapshotVersion and governanceFilename (basename stripped of
-                // the source prefix); we fall back to loadBody for each field.
-                const govCtx = {
-                    sourceType: data.sourceType || loadBody.sourceType || null,
-                    filename: data.governanceFilename || null,
-                    datasetId: data.datasetId || loadBody.datasetId || null,
-                    snapshotId: data.snapshotId || loadBody.snapshotId || null,
-                    volumeId: data.volumeId || loadBody.volumeId || null,
-                    snapshotVersion: data.snapshotVersion != null ? data.snapshotVersion : (loadBody.snapshotVersion != null ? loadBody.snapshotVersion : null),
-                };
-                checkGovernanceBundles(govCtx);
-
-                // Snapshot info needed to rebuild a permalink that resolves to
-                // this exact file + snapshot (not just the volume).
-                state.lastLoadContext = {
-                    sourceType: govCtx.sourceType,
-                    datasetName: datasetName,
-                    datasetId: govCtx.datasetId,
-                    snapshotId: govCtx.snapshotId,
-                    snapshotVersion: govCtx.snapshotVersion,
-                    volumeId: govCtx.volumeId,
-                    volumeKey: loadBody.volumeKey || null,
-                };
             }
+
+            resetExploreCharts();
+
+            displayMessage(`Successfully loaded dataset: ${datasetName} (${state.columnMetadata.num_rows.toLocaleString()} rows). You can now ask questions about this data!`, 'system');
+
+            initializeExploreTab();
+            initializeTableView();
+
+            // Build governance context from backend response + loadBody.
+            // The backend echoes sourceType/datasetId/snapshotId/volumeId/
+            // snapshotVersion and governanceFilename (basename stripped of
+            // the source prefix); we fall back to loadBody for each field.
+            const govCtx = {
+                sourceType: data.sourceType || loadBody.sourceType || null,
+                filename: data.governanceFilename || null,
+                datasetId: data.datasetId || loadBody.datasetId || null,
+                snapshotId: data.snapshotId || loadBody.snapshotId || null,
+                volumeId: data.volumeId || loadBody.volumeId || null,
+                snapshotVersion: data.snapshotVersion != null ? data.snapshotVersion : (loadBody.snapshotVersion != null ? loadBody.snapshotVersion : null),
+            };
+            checkGovernanceBundles(govCtx);
+
+            // Snapshot info needed to rebuild a permalink that resolves to
+            // this exact file + snapshot (not just the volume).
+            state.lastLoadContext = {
+                sourceType: govCtx.sourceType,
+                datasetName: datasetName,
+                datasetId: govCtx.datasetId,
+                snapshotId: govCtx.snapshotId,
+                snapshotVersion: govCtx.snapshotVersion,
+                volumeId: govCtx.volumeId,
+                volumeKey: loadBody.volumeKey || null,
+            };
         })
-        .catch(error => {
+        .catch(async error => {
             console.error('Error:', error);
-            displayMessage('Error loading dataset. Make sure the server is running.', 'system');
+            const prefix = (error.status === 401 || error.status === 403) ? 'Access denied: ' : 'Error loading dataset: ';
+            const message = await getApiErrorMessage(error, 'Make sure the server is running.');
+            displayMessage(`${prefix}${message}`, 'system');
         })
         .finally(() => {
             browseBtn.disabled = false;
@@ -569,7 +564,7 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-    
+
     // Loading banner functions
     function showLoadingBanner(message) {
         const banner = document.getElementById('loading-banner');
@@ -579,14 +574,14 @@ document.addEventListener('DOMContentLoaded', () => {
             banner.classList.add('visible');
         }
     }
-    
+
     function hideLoadingBanner() {
         const banner = document.getElementById('loading-banner');
         if (banner) {
             banner.classList.remove('visible');
         }
     }
-    
+
     // ===== TABLE VIEW =====
     // The table-view UX (state, DOM refs, render pipeline, pagination,
     // sorting, column pin/reorder/resize, row details, summary cards,

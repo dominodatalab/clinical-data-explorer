@@ -55,10 +55,11 @@
 // pattern.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { getDisplayName } from './column-labels.js';
+import { displayMessage } from './chat.js';
 
 // Injected dependencies (populated at initFilters)
 let tableStateRef = null;
@@ -232,16 +233,11 @@ async function applyExpressionFilter() {
             filters: tableStateRef.filters
         };
 
-        const data = await fetchJson(apiUrl('table/expression_filter'), {
+        const data = throwIfApiError(await fetchJson(apiUrl('table/expression_filter'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
-        });
-
-        if (data.error) {
-            showExpressionError(data.error);
-            return;
-        }
+        }));
 
         // Expression is valid - save and apply
         tableStateRef.expressionFilter = {
@@ -257,7 +253,8 @@ async function applyExpressionFilter() {
 
     } catch (e) {
         console.error('Error validating expression:', e);
-        showExpressionError('Failed to validate expression. Please try again.');
+        const message = await getApiErrorMessage(e, 'Please try again.');
+        showExpressionError(`Failed to validate expression: ${message}`);
     }
 }
 
@@ -291,7 +288,7 @@ async function fetchAutocomplete() {
     }
 
     try {
-        const data = await fetchJson(apiUrl(`table/column_values/${encodeURIComponent(column)}?search=${encodeURIComponent(search)}&limit=15`));
+        const data = throwIfApiError(await fetchJson(apiUrl(`table/column_values/${encodeURIComponent(column)}?search=${encodeURIComponent(search)}&limit=15`)));
 
         if (data.values && data.values.length > 0) {
             renderAutocomplete(data.values, search);
@@ -300,6 +297,8 @@ async function fetchAutocomplete() {
         }
     } catch (e) {
         console.error('Autocomplete error:', e);
+        const message = await getApiErrorMessage(e, 'Could not load autocomplete values.');
+        displayMessage(`Autocomplete error: ${message}`, 'system');
     }
 }
 

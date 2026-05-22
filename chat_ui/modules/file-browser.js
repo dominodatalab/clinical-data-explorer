@@ -35,9 +35,10 @@
 // evaluates. Same pattern as `modules/governance.js`.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
+import { displayMessage } from './chat.js';
 
 let performDatasetLoadFn = null;
 let allFilesCache = null;
@@ -231,7 +232,7 @@ async function onSourceSelected() {
 
         try {
             const sourceType = source.type; // 'dataset' or 'netapp'
-            const data = await fetchJson(apiUrl(`snapshots/${sourceType}/${encodeURIComponent(source.id)}`));
+            const data = throwIfApiError(await fetchJson(apiUrl(`snapshots/${sourceType}/${encodeURIComponent(source.id)}`)));
 
             state.fileBrowserState.snapshots = data.snapshots || [];
 
@@ -244,7 +245,9 @@ async function onSourceSelected() {
             populateSnapshotDropdown();
         } catch (error) {
             console.error('Error fetching snapshots:', error);
+            const message = await getApiErrorMessage(error, 'Failed to load snapshots');
             snapshotSelect.innerHTML = '<option value="">Failed to load snapshots</option>';
+            displayMessage(`Error loading snapshots: ${message}`, 'system');
             // Fall back: try loading files without snapshot info
             if (source.type === 'netapp') {
                 loadNetAppFilesForBrowser(source.volumeKey || source.id);
@@ -396,12 +399,7 @@ async function loadSnapshotFiles(snapshotId, path) {
         let url = apiUrl(`snapshot/${encodeURIComponent(snapshotId)}/files`);
         if (path) url += '?path=' + encodeURIComponent(path);
 
-        const data = await fetchJson(url);
-
-        if (data.error) {
-            fileList.innerHTML = `<div class="fb-error">${data.error}</div>`;
-            return;
-        }
+        const data = throwIfApiError(await fetchJson(url));
 
         state.fileBrowserState.entries = data.entries || [];
         state.fileBrowserState.currentPath = path;
@@ -409,7 +407,8 @@ async function loadSnapshotFiles(snapshotId, path) {
         renderFileList();
     } catch (error) {
         console.error('Error loading snapshot files:', error);
-        fileList.innerHTML = '<div class="fb-error">Failed to load files</div>';
+        const message = await getApiErrorMessage(error, 'Failed to load files');
+        fileList.innerHTML = `<div class="fb-error">${escapeHtml(message)}</div>`;
     } finally {
         state.fileBrowserState.loading = false;
     }
@@ -433,12 +432,7 @@ async function loadNetAppFilesForBrowser(volumeKey) {
         const qs = params.toString();
         if (qs) url += '?' + qs;
 
-        const data = await fetchJson(url);
-
-        if (data.error) {
-            fileList.innerHTML = `<div class="fb-error">${data.error}</div>`;
-            return;
-        }
+        const data = throwIfApiError(await fetchJson(url));
 
         state.fileBrowserState.entries = data.entries || [];
         state.fileBrowserState.currentPath = path;
@@ -446,7 +440,8 @@ async function loadNetAppFilesForBrowser(volumeKey) {
         renderFileList();
     } catch (error) {
         console.error('Error loading NetApp files:', error);
-        fileList.innerHTML = '<div class="fb-error">Failed to load files</div>';
+        const message = await getApiErrorMessage(error, 'Failed to load files');
+        fileList.innerHTML = `<div class="fb-error">${escapeHtml(message)}</div>`;
     } finally {
         state.fileBrowserState.loading = false;
     }
@@ -589,7 +584,8 @@ async function performFileSearch(query) {
         renderFileList();
     } catch (error) {
         console.error('Search indexing error:', error);
-        fileList.innerHTML = '<div class="fb-error">Search failed</div>';
+        const message = await getApiErrorMessage(error, 'Search failed');
+        fileList.innerHTML = `<div class="fb-error">${escapeHtml(message)}</div>`;
     }
 }
 
@@ -612,7 +608,7 @@ async function _walkDirectory(path, results) {
         return;
     }
 
-    const data = await fetchJson(url);
+    const data = throwIfApiError(await fetchJson(url));
     const entries = data.entries || [];
 
     const subdirs = [];

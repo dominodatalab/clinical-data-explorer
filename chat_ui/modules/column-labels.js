@@ -23,12 +23,14 @@
 // the same guarantee `script.js`'s `DOMContentLoaded` callback was using.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { displayMessage } from './chat.js';
 
 const labelToggleContainer = document.getElementById('label-toggle-container');
 
 export function loadColumnLabels() {
     fetchJson(apiUrl('column_labels'))
+        .then(throwIfApiError)
         .then(data => {
             if (data.available && data.labels) {
                 state.columnLabels = data.labels;
@@ -41,8 +43,10 @@ export function loadColumnLabels() {
                 console.log('Column labels not available');
             }
         })
-        .catch(error => {
+        .catch(async error => {
             console.error('Error loading column labels:', error);
+            const message = await getApiErrorMessage(error, 'Friendly names will be unavailable.');
+            displayMessage(`Error loading column labels: ${message}`, 'system');
             state.labelsAvailable = false;
             labelToggleContainer.style.display = 'none';
         });

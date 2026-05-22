@@ -66,7 +66,8 @@
 // module that touches the same fields.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { escapeHtml } from '../core/dom.js';
 import { getDisplayName } from './column-labels.js';
 
 // Module-private state
@@ -137,26 +138,16 @@ function loadDatasetData() {
         return;
     }
 
-    fetch(apiUrl('dataset/data'))
-        .then(response => {
-            if (!response.ok) {
-                return response.json().then(data => {
-                    throw new Error(data.error || 'Failed to load dataset data');
-                });
-            }
-            return response.json();
+    fetchWithStatusCheck(apiUrl('dataset/data'))
+        .then(response => response.json())
+        .then(throwIfApiError)
+        .then(() => {
+            initializeExploreTab();
         })
-        .then(data => {
-            if (data.error) {
-                console.error('Error loading dataset data:', data.error);
-                showExploreMessage(`Error: ${data.error}`);
-            } else {
-                initializeExploreTab();
-            }
-        })
-        .catch(error => {
+        .catch(async error => {
+            const message = await getApiErrorMessage(error, 'Request failed');
             console.error('Error fetching dataset data:', error);
-            showExploreMessage(`Error loading data: ${error.message}. Make sure the MCP server is running and a dataset is loaded.`);
+            showExploreMessage(`Error loading data: ${message}. Make sure the MCP server is running and a dataset is loaded.`);
         });
 }
 
@@ -165,7 +156,7 @@ function showExploreMessage(message) {
     const barChart = document.getElementById('bar-chart');
     const mainChart = document.getElementById('main-chart');
 
-    const messageHtml = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-textsecondary); font-style: italic; padding: 20px; text-align: center;">${message}</div>`;
+    const messageHtml = `<div style="display: flex; align-items: center; justify-content: center; height: 100%; color: var(--color-text-textsecondary); font-style: italic; padding: 20px; text-align: center;">${escapeHtml(message)}</div>`;
 
     if (barChart) barChart.innerHTML = messageHtml;
     if (mainChart) mainChart.innerHTML = messageHtml;
@@ -447,21 +438,17 @@ function updateBarChart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
+    .then(throwIfApiError)
     .then(data => {
-        if (data.error) {
-            console.error('Bar chart error:', data.error);
-            barChartEl.innerHTML = `<div class="chart-error">Error: ${data.error}</div>`;
-            return;
-        }
-
         // Convert server response to chart format
         // Server returns: { chart_data: [{label, value}, ...] }
         const chartData = data.chart_data.map(d => [d.label, d.value]);
         renderExploreBarChart(chartData, category, aggregation);
     })
-    .catch(error => {
+    .catch(async error => {
+        const message = await getApiErrorMessage(error, 'Error loading chart');
         console.error('Error fetching bar chart data:', error);
-        barChartEl.innerHTML = `<div class="chart-error">Error loading chart</div>`;
+        barChartEl.innerHTML = `<div class="chart-error">Error: ${escapeHtml(message)}</div>`;
     });
 }
 
@@ -616,17 +603,14 @@ function updateHistogramChart() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
+    .then(throwIfApiError)
     .then(data => {
-        if (data.error) {
-            console.error('Histogram error:', data.error);
-            mainChartEl.innerHTML = `<div class="chart-error">Error: ${data.error}</div>`;
-            return;
-        }
         renderHistogramChart(data);
     })
-    .catch(error => {
+    .catch(async error => {
+        const message = await getApiErrorMessage(error, 'Error loading chart');
         console.error('Error fetching histogram data:', error);
-        mainChartEl.innerHTML = `<div class="chart-error">Error loading chart</div>`;
+        mainChartEl.innerHTML = `<div class="chart-error">Error: ${escapeHtml(message)}</div>`;
     });
 }
 
@@ -784,18 +768,14 @@ function fetchTimeSeriesChart(xAxis, yAxis, aggregationType) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
+    .then(throwIfApiError)
     .then(data => {
-        if (data.error) {
-            console.error('Time series chart error:', data.error);
-            document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error: ${data.error}</div>`;
-            return;
-        }
-
         renderTimeSeriesChartFromServer(data.chart_data, xAxis, yAxis, aggregationType);
     })
-    .catch(error => {
+    .catch(async error => {
+        const message = await getApiErrorMessage(error, 'Error loading chart');
         console.error('Error fetching time series data:', error);
-        document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error loading chart</div>`;
+        document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error: ${escapeHtml(message)}</div>`;
     });
 }
 
@@ -820,18 +800,14 @@ function fetchXYChart(xAxis, yAxis, aggregationType) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody)
     })
+    .then(throwIfApiError)
     .then(data => {
-        if (data.error) {
-            console.error('XY chart error:', data.error);
-            document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error: ${data.error}</div>`;
-            return;
-        }
-
         renderXYChartFromServer(data, xAxis, yAxis, aggregationType);
     })
-    .catch(error => {
+    .catch(async error => {
+        const message = await getApiErrorMessage(error, 'Error loading chart');
         console.error('Error fetching XY chart data:', error);
-        document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error loading chart</div>`;
+        document.getElementById('main-chart').innerHTML = `<div class="chart-error">Error: ${escapeHtml(message)}</div>`;
     });
 }
 
