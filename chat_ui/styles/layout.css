@@ -136,56 +136,64 @@ body {
     gap: var(--spacing-xsmall);
 }
 
-/* Tab Navigation */
+/* Tab Navigation
+   Vertical padding (top 8px, bottom 16px) gives the row breathing room above
+   the action toolbar below — previously the toolbar felt glued to the tabs.
+   The 8px-more-than-the-top is the requested extra spacing per the redesign mock. */
 .tab-navigation {
     display: flex;
     align-items: center;
     justify-content: space-between;
     background: var(--color-background-bg);
     border-bottom: 1px solid var(--color-border-bordermedium);
-    padding: 0 var(--spacing-large);
+    padding: 8px var(--spacing-large) 16px;
     gap: var(--spacing-xsmall);
 }
 
+/* Tab buttons rendered as an Ant-style Segmented control.
+   The `.tab-buttons` div is the gray track; each `.tab-button` is a pill that
+   raises onto a white background with a soft shadow when active. The previous
+   underline-indicator pattern (.tab-button::after) is removed in favor of the
+   segmented active-pill treatment. Class names are kept (rather than renamed
+   to .ant-segmented*) so script.js tab-switching wiring needs no change. */
 .tab-buttons {
-    display: flex;
-    gap: var(--spacing-xsmall);
+    display: inline-flex;
+    padding: 2px;
+    background: var(--color-border-borderlight);
+    border-radius: 6px;
+    gap: 0;
 }
 
 .tab-button {
-    padding: 14px 16px;
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 60px;
+    height: 28px;
+    padding: 4px 12px;
     background: transparent;
     color: var(--color-text-textsecondary);
     border: none;
+    border-radius: 4px;
     cursor: pointer;
     font-size: 14px;
-    font-weight: 600;
-    transition: color 0.2s;
-    position: relative;
+    font-weight: 500;
+    transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
 }
 
-.tab-button::after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 16px;
-    right: 16px;
-    height: 2px;
-    background: transparent;
-    border-radius: 1px;
-    transition: background-color 0.2s;
-}
-
-.tab-button:hover {
+.tab-button:hover:not(.active) {
+    background: rgba(0, 0, 0, 0.06);
     color: var(--color-text-textprimary);
 }
 
 .tab-button.active {
-    color: var(--color-primary-primary);
-}
-
-.tab-button.active::after {
-    background: var(--color-primary-primary);
+    background: var(--color-background-bg);
+    color: var(--color-text-textprimary);
+    font-weight: 600;
+    box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03),
+                0 1px 6px -1px rgba(0, 0, 0, 0.02),
+                0 2px 4px 0 rgba(0, 0, 0, 0.02);
 }
 
 /* Tab Content */
@@ -201,30 +209,82 @@ body {
     flex-direction: column;
 }
 
-/* Current dataset label in toolbar */
-.current-dataset-label {
-    font-size: 13px;
+/* File pill — combines the previous "current dataset label" + "Browse Files"
+   button into a single clickable affordance. Two visual weights:
+     - .empty       — no dataset loaded yet. Ghost CTA: purple-tinted bg/border
+                      and purple icons. Draws the eye, since this is the entry
+                      point to using the app.
+     - (no .empty)  — dataset loaded. Quiet container: white bg, gray border,
+                      gray icons. Hover deepens to purple border + soft glow.
+   performDatasetLoad() in script.js removes the .empty class when a file
+   loads and sets .file-name's text content. */
+.file-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    height: 32px;
+    padding: 0 10px;
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
     color: var(--color-text-textprimary);
-    max-width: 300px;
+    cursor: pointer;
+    font-size: 13px;
+    max-width: 340px;
+    font-family: inherit;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+}
+
+.file-pill:hover {
+    border-color: var(--color-primary-primary);
+    box-shadow: 0 0 0 3px rgba(84, 63, 222, 0.08);
+}
+
+.file-pill:disabled {
+    cursor: not-allowed;
+    opacity: 0.6;
+    box-shadow: none;
+    border-color: var(--color-border-bordermedium);
+}
+
+.file-pill .file-pill-icon {
+    flex-shrink: 0;
+    color: var(--color-text-textsecondary);
+    opacity: 0.75;
+    transition: color 0.15s, opacity 0.15s;
+}
+
+.file-pill:hover .file-pill-icon {
+    color: var(--color-primary-primary);
+    opacity: 1;
+}
+
+.file-pill .file-name {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    max-width: 240px;
 }
 
-.dataset-browse-btn {
-    background: var(--color-primary-primary);
-    color: var(--color-text-textprimarylight);
-    padding: 0 16px;
-    border-radius: var(--radius-small);
-    border: 1px solid var(--color-primary-primary);
-    cursor: pointer;
-    font-size: 13px;
+/* Empty state — ghost CTA treatment. */
+.file-pill.empty {
+    background: var(--color-background-bgprimary);
+    border-color: var(--color-primary-primary);
+    color: var(--color-primary-primary);
     font-weight: 500;
-    height: 32px;
-    transition: all 0.15s ease;
 }
 
-.dataset-browse-btn:hover {
-    background: #4232c7;
-    border-color: #4232c7;
+.file-pill.empty .file-pill-icon,
+.file-pill.empty:hover .file-pill-icon {
+    color: var(--color-primary-primary);
+    opacity: 1;
+}
+
+.file-pill.empty .file-name {
+    color: var(--color-primary-primary);
+}
+
+.file-pill.empty:hover {
+    background: #e6e1fa;
+    box-shadow: 0 2px 6px rgba(84, 63, 222, 0.15);
 }

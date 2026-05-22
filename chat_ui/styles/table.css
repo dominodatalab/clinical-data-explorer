@@ -946,6 +946,14 @@ body.resizing .summary-stats-panel.summary-sidebar {
 }
 
 /* Label Toggle Checkbox */
+/* Friendly Names toggle — visually an Ant Design Switch.
+   The underlying <input type="checkbox" id="use-labels-checkbox" class="ant-switch-input">
+   is preserved (kept visually hidden but still focusable) so:
+     - script.js useLabelsCheckbox.checked / change-event wiring continues to work,
+     - form / a11y semantics are preserved,
+     - keyboard interaction (Space, Enter on label, focus ring) still works.
+   The sibling .ant-switch span is the visible track + handle, driven by
+   the :checked pseudo-class on the hidden input. */
 .label-toggle {
     display: flex;
     align-items: center;
@@ -955,23 +963,78 @@ body.resizing .summary-stats-panel.summary-sidebar {
 }
 
 .toggle-label {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 6px;
+    gap: 8px;
+    height: 32px;
     cursor: pointer;
     user-select: none;
 }
 
-.toggle-label input[type="checkbox"] {
-    width: 16px;
+/* Visually hide the real checkbox while keeping it focusable. */
+.ant-switch-input {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    margin: -1px;
+    padding: 0;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    border: 0;
+    white-space: nowrap;
+}
+
+/* Ant-style Switch track + handle, small size (track 16px, handle 12px,
+   2px padding) — see https://ant.design/components/switch for the spec. */
+.ant-switch {
+    position: relative;
+    display: inline-block;
+    box-sizing: border-box;
+    min-width: 28px;
     height: 16px;
-    accent-color: var(--color-primary-primary);
+    background-color: rgba(0, 0, 0, 0.25);
+    border-radius: 100px;
     cursor: pointer;
+    transition: background-color 0.2s;
+    flex-shrink: 0;
+}
+
+.toggle-label:hover .ant-switch {
+    background-color: rgba(0, 0, 0, 0.45);
+}
+
+.ant-switch-input:checked + .ant-switch {
+    background-color: var(--color-primary-primary);
+}
+
+.toggle-label:hover .ant-switch-input:checked + .ant-switch {
+    background-color: #4232c7;
+}
+
+.ant-switch-input:focus-visible + .ant-switch {
+    box-shadow: 0 0 0 3px rgba(84, 63, 222, 0.2);
+}
+
+.ant-switch::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 12px;
+    height: 12px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 2px 4px 0 rgba(0, 35, 11, 0.2);
+    transition: left 0.2s cubic-bezier(0.78, 0.14, 0.15, 0.86);
+}
+
+.ant-switch-input:checked + .ant-switch::after {
+    left: calc(100% - 14px);
 }
 
 .toggle-text {
     color: var(--color-text-textprimary);
-    font-size: 11px;
+    font-size: 13px;
     font-weight: 400;
     white-space: nowrap;
 }

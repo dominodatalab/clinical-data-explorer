@@ -497,8 +497,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 clearSelectedRow();
                 invalidateSummaryStats();
 
-                // Update the current dataset label
+                // Update the current dataset label and drop the file pill's
+                // ghost-CTA "empty" state — once a dataset is loaded, the pill
+                // becomes a quiet container that still opens the file browser.
                 document.getElementById('current-dataset-label').textContent = datasetName;
+                browseBtn.classList.remove('empty');
 
                 state.columnMetadata = {
                     columns: data.columns || [],
