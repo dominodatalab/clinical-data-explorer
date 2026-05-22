@@ -342,116 +342,147 @@
         margin: 0 4px;
     }
 
-    /* Shared base for all friendly-names toggle variants below */
-    .proposed .fn-toggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        gap: 6px;
-        height: 32px;
-        padding: 0 10px;
-        border-radius: var(--radius-small);
-        border: 1px solid var(--color-border-bordermedium);
-        background: var(--color-background-bg);
-        color: var(--color-text-textsecondary);
+    /* ---- Ant Design–style Switch component (small size).
+       Spec ref: trackHeight 16, trackMinWidth 28, handleSize 12,
+       trackPadding 2, handleShadow per AntD docs. Brand color swapped
+       to our --color-primary-primary. ---- */
+    .proposed .ant-switch {
+        position: relative;
+        display: inline-block;
+        box-sizing: border-box;
+        min-width: 28px;
+        height: 16px;
+        padding: 0;
+        margin: 0;
+        background-color: rgba(0, 0, 0, 0.25);
+        border: none;
+        border-radius: 100px;
         cursor: pointer;
-        font-family: inherit;
-        font-size: 12px;
-        font-weight: 500;
-        transition: all 0.15s;
-    }
-    .proposed .fn-toggle:hover {
-        border-color: var(--color-primary-primary);
-        color: var(--color-text-textprimary);
-    }
-    .proposed .fn-toggle.on {
-        background: var(--color-background-bgprimary);
-        border-color: var(--color-primary-primary);
-        color: var(--color-primary-primary);
-    }
-
-    /* Variant A — "Aa" glyph */
-    .proposed .fn-toggle.aa { min-width: 32px; padding: 0 8px; font-size: 13px; font-weight: 600; }
-    .proposed .fn-toggle.aa .glyph { font-style: italic; letter-spacing: -1px; }
-
-    /* Variant B — "Labels" word + indicator dot */
-    .proposed .fn-toggle.word .dot {
-        width: 8px;
-        height: 8px;
-        border-radius: 50%;
-        background: var(--color-border-bordermedium);
+        transition: all 0.2s;
         flex-shrink: 0;
     }
-    .proposed .fn-toggle.word.on .dot { background: var(--color-primary-primary); }
-
-    /* Variant C — Tag icon */
-    .proposed .fn-toggle.tag { min-width: 32px; padding: 0 8px; }
-    .proposed .fn-toggle.tag svg { display: block; }
-
-    /* Variant D — Segmented "ID / Labels" two-state */
-    .proposed .fn-segmented {
-        display: inline-flex;
-        align-items: stretch;
-        height: 32px;
-        border-radius: var(--radius-small);
-        border: 1px solid var(--color-border-bordermedium);
-        background: var(--color-background-bg);
-        overflow: hidden;
-        font-family: inherit;
-        font-size: 12px;
-        font-weight: 500;
+    .proposed .ant-switch:hover {
+        background-color: rgba(0, 0, 0, 0.45);
     }
-    .proposed .fn-segmented button {
+    .proposed .ant-switch.on {
+        background-color: var(--color-primary-primary);
+    }
+    .proposed .ant-switch.on:hover {
+        background-color: #4232c7;
+    }
+    .proposed .ant-switch::after {
+        content: '';
+        position: absolute;
+        top: 2px;
+        left: 2px;
+        width: 12px;
+        height: 12px;
+        background: #fff;
+        border-radius: 50%;
+        box-shadow: 0 2px 4px 0 rgba(0, 35, 11, 0.2);
+        transition: all 0.2s cubic-bezier(0.78, 0.14, 0.15, 0.86);
+    }
+    .proposed .ant-switch.on::after {
+        left: calc(100% - 14px);
+    }
+
+    /* Switch + label wrapper for Friendly Names */
+    .proposed .switch-field {
+        display: inline-flex;
+        align-items: center;
+        gap: 8px;
+        height: 32px;
+        font-size: 13px;
+        color: var(--color-text-textprimary);
+        cursor: pointer;
+        user-select: none;
+    }
+
+    /* ---- Ant Design–style Segmented control for the main tab nav.
+       Spec ref: trackBg #f5f5f5, trackPadding 2, itemSelectedBg #fff,
+       borderRadiusXS 2 for inner items, controlHeight 32 (medium). ---- */
+    .ant-segmented {
+        display: inline-flex;
+        padding: 2px;
+        background: #f5f5f5;
+        border-radius: 6px;
+        gap: 0;
+    }
+    .ant-segmented-item {
+        position: relative;
+        padding: 4px 12px;
+        height: 28px;
         background: transparent;
         border: none;
-        padding: 0 12px;
-        color: var(--color-text-textsecondary);
+        border-radius: 4px;
         cursor: pointer;
         font-family: inherit;
-        font-size: 12px;
+        font-size: 14px;
         font-weight: 500;
-    }
-    .proposed .fn-segmented button.active {
-        background: var(--color-background-bgprimary);
-        color: var(--color-primary-primary);
-        font-weight: 600;
-    }
-    .proposed .fn-segmented button + button {
-        border-left: 1px solid var(--color-border-bordermedium);
-    }
-
-    /* Older selector kept so existing usage in the comparison rows still works */
-    .proposed .aa-toggle {
+        color: rgba(0, 0, 0, 0.65);
+        transition: color 0.2s, background 0.2s;
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        gap: 0;
-        height: 32px;
-        min-width: 32px;
-        padding: 0 8px;
-        border-radius: var(--radius-small);
-        border: 1px solid var(--color-border-bordermedium);
-        background: var(--color-background-bg);
-        color: var(--color-text-textsecondary);
-        cursor: pointer;
-        font-family: inherit;
-        font-size: 13px;
-        font-weight: 600;
-        transition: all 0.15s;
-        position: relative;
+        min-width: 60px;
     }
-    .proposed .aa-toggle:hover {
-        border-color: var(--color-primary-primary);
+    .ant-segmented-item:hover:not(.active) {
+        background: rgba(0, 0, 0, 0.06);
+        color: rgba(0, 0, 0, 0.88);
+    }
+    .ant-segmented-item.active {
+        background: #ffffff;
+        color: rgba(0, 0, 0, 0.88);
+        font-weight: 600;
+        box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.03),
+                    0 1px 6px -1px rgba(0, 0, 0, 0.02),
+                    0 2px 4px 0 rgba(0, 0, 0, 0.02);
+    }
+
+    /* ---- Tab navigation with proposed segmented control needs a bit
+       more breathing room below — the existing app has the action toolbar
+       immediately below it and it was feeling cramped. ---- */
+    .tab-navigation.proposed-spacing {
+        padding-top: 8px;
+        padding-bottom: 16px; /* was 8px (from .dataset-selector padding) — adding 8px more */
+    }
+    .tab-navigation.proposed-spacing .dataset-selector {
+        padding: 0; /* spacing now lives on the parent, not the inner cluster */
+    }
+
+    /* Faux "next row" so the user can see the spacing breathe vs the toolbar */
+    .faux-toolbar {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px var(--spacing-large);
+        background: var(--color-background-bglight1);
+        border: 1px solid var(--color-border-bordermedium);
+        border-top: none;
+        border-radius: 0 0 var(--radius-small) var(--radius-small);
+        font-size: 12px;
+        color: var(--color-text-textsecondary);
+    }
+    .faux-toolbar .chip {
+        display: inline-flex;
+        align-items: center;
+        padding: 3px 10px;
+        background: var(--color-background-bg);
+        border: 1px solid var(--color-border-bordermedium);
+        border-radius: 12px;
+        font-size: 11px;
         color: var(--color-text-textprimary);
     }
-    .proposed .aa-toggle.on {
-        background: var(--color-background-bgprimary);
-        border-color: var(--color-primary-primary);
-        color: var(--color-primary-primary);
+    .faux-toolbar .chip.muted {
+        color: var(--color-text-textsecondary);
+        background: transparent;
+        border-style: dashed;
     }
-    .proposed .aa-toggle .aa-glyph {
-        font-style: italic;
-        letter-spacing: -1px;
+    /* When the faux toolbar follows the tab nav, remove the nav's bottom radius
+       so they read as one stacked unit. */
+    .tab-navigation.has-toolbar-below {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
     }
 
     /* Annotations under each variant */
@@ -515,11 +546,11 @@
         <!-- PROPOSED -->
         <div class="compare-col proposed">
             <h3>Proposed</h3>
-            <div class="tab-navigation">
-                <div class="tab-buttons">
-                    <button class="tab-button active">Table View</button>
-                    <button class="tab-button">Chat</button>
-                    <button class="tab-button">Explore</button>
+            <div class="tab-navigation proposed-spacing has-toolbar-below">
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item active">Table View</button>
+                    <button class="ant-segmented-item">Chat</button>
+                    <button class="ant-segmented-item">Explore</button>
                 </div>
                 <div class="dataset-selector">
                     <button class="file-pill empty">
@@ -534,7 +565,10 @@
                     </button>
                 </div>
             </div>
-            <p class="annotation">Empty pill gets a "ghost CTA" treatment — purple-tinted background, purple border, purple icons. Clearly the action without being a giant filled button. Trailing chevron signals "go pick one." Once loaded, the same pill relaxes into a quiet container (see State 2 below).</p>
+            <div class="faux-toolbar">
+                <span>↓ action toolbar below (filters, etc.) — preview for spacing</span>
+            </div>
+            <p class="annotation">Tabs are now an Ant-style segmented control — quieter, more compact, and reads as a unit rather than three separate buttons. 8px of extra breathing room below the row so the action toolbar / filter chips don't feel glued to it.</p>
         </div>
 
     </div>
@@ -578,11 +612,11 @@
         <!-- PROPOSED -->
         <div class="compare-col proposed">
             <h3>Proposed</h3>
-            <div class="tab-navigation">
-                <div class="tab-buttons">
-                    <button class="tab-button active">Table View</button>
-                    <button class="tab-button">Chat</button>
-                    <button class="tab-button">Explore</button>
+            <div class="tab-navigation proposed-spacing has-toolbar-below">
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item active">Table View</button>
+                    <button class="ant-segmented-item">Chat</button>
+                    <button class="ant-segmented-item">Explore</button>
                 </div>
                 <div class="dataset-selector">
                     <button class="file-pill">
@@ -600,10 +634,18 @@
                     </button>
                     <span class="gov-tag ungoverned">Not governed</span>
                     <div class="divider"></div>
-                    <button class="fn-toggle word" title="Show column labels: off"><span class="dot"></span>Labels</button>
+                    <label class="switch-field" title="Show friendly column names">
+                        <span class="ant-switch" role="switch" aria-checked="false"></span>
+                        <span>Friendly Names</span>
+                    </label>
                 </div>
             </div>
-            <p class="annotation">Filename pill is the primary affordance (it'd glow purple on hover). Governance demoted to a small neutral tag. "Labels" toggle shows state via the small dot — gray = off, purple = on. See the toggle alternatives section below for other glyph options.</p>
+            <div class="faux-toolbar">
+                <span class="chip">AGE &gt; 65</span>
+                <span class="chip">TRTA = 'Placebo'</span>
+                <span class="chip muted">+ Add Filter</span>
+            </div>
+            <p class="annotation">Friendly Names is now a real Switch — Ant-style track with sliding handle. State is unambiguous (track is gray when off, purple when on) and matches a widely-known control pattern. The 8px below the tab row gives the filter chips room to breathe.</p>
         </div>
 
     </div>
@@ -650,11 +692,11 @@
         <!-- PROPOSED -->
         <div class="compare-col proposed">
             <h3>Proposed</h3>
-            <div class="tab-navigation">
-                <div class="tab-buttons">
-                    <button class="tab-button active">Table View</button>
-                    <button class="tab-button">Chat</button>
-                    <button class="tab-button">Explore</button>
+            <div class="tab-navigation proposed-spacing has-toolbar-below">
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item active">Table View</button>
+                    <button class="ant-segmented-item">Chat</button>
+                    <button class="ant-segmented-item">Explore</button>
                 </div>
                 <div class="dataset-selector">
                     <button class="file-pill">
@@ -682,98 +724,78 @@
                         Finding
                     </button>
                     <div class="divider"></div>
-                    <button class="fn-toggle word on" title="Show column labels: on"><span class="dot"></span>Labels</button>
+                    <label class="switch-field" title="Show friendly column names">
+                        <span class="ant-switch on" role="switch" aria-checked="true"></span>
+                        <span>Friendly Names</span>
+                    </label>
                 </div>
             </div>
-            <p class="annotation">When governed, the green badge takes the visual role of the gray tag — same slot, different weight. "Create Finding" loses its redundant "Create" word since the icon carries it. The "Labels" toggle is on — purple-tinted with a purple dot.</p>
+            <div class="faux-toolbar">
+                <span class="chip">SEX = 'M'</span>
+                <span class="chip muted">+ Add Filter</span>
+            </div>
+            <p class="annotation">When governed, the green badge takes the visual role of the gray tag — same slot, different weight. "Create Finding" loses its redundant "Create" word since the icon carries it. The Switch handle has slid right and the track is purple, so "Friendly Names is on" reads instantly.</p>
         </div>
 
     </div>
 </div>
 
 <!-- ===================================================================
-     Friendly-names toggle — alternatives to "Aa"
+     New components — Switch + Segmented in isolation
      =================================================================== -->
 <div class="section">
-    <p class="section-title">Friendly-names toggle · alternatives to "Aa"</p>
+    <p class="section-title">New components · Ant-style Switch and Segmented in detail</p>
     <p class="annotation" style="margin: 0 0 16px 4px;">
-        "Aa" was borrowed from typography UIs (font-size pickers, "match case") — it's not a real convention for showing column labels. Here are four options, ordered from most→least conventional in data tools. All four are 32px tall to match the rest of the row.
+        Both components match Ant Design's default sizing and behavior, with the brand color swapped to <code style="color: var(--color-primary-primary)">--color-primary-primary</code>. Hover over them to see the interaction states.
     </p>
 
-    <div class="proposed" style="padding: 20px; background: white; border: 1px solid var(--color-border-bordermedium); border-radius: var(--radius-small);">
+    <div class="proposed" style="padding: 24px; background: white; border: 1px solid var(--color-border-bordermedium); border-radius: var(--radius-small); display: flex; flex-direction: column; gap: 24px;">
 
-        <!-- A grid: 4 columns, each with off + on state stacked, plus a rationale -->
-        <div style="display: grid; grid-template-columns: repeat(4, 1fr); gap: 20px;">
-
-            <!-- Variant B: Labels word + dot (RECOMMENDED, listed first) -->
-            <div>
-                <p class="annotation" style="margin: 0 0 8px 0; font-weight: 600; color: var(--color-primary-primary); text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px;">Recommended</p>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
-                    <button class="fn-toggle word"><span class="dot"></span>Labels</button>
-                    <button class="fn-toggle word on"><span class="dot"></span>Labels</button>
-                </div>
-                <p class="annotation" style="margin-top: 12px;">
-                    <strong>"Labels" + state dot.</strong> Most discoverable. Matches the actual terminology in SAS/clinical data (columns have a name and a label). The dot is a tiny LED-style on/off indicator. ~70px wide.
-                </p>
+        <!-- Switch -->
+        <div>
+            <p style="margin: 0 0 12px 0; font-weight: 600; font-size: 13px;">Switch — "Friendly Names"</p>
+            <div style="display: flex; gap: 32px; align-items: center;">
+                <label class="switch-field">
+                    <span class="ant-switch" role="switch" aria-checked="false"></span>
+                    <span>Friendly Names</span>
+                </label>
+                <label class="switch-field">
+                    <span class="ant-switch on" role="switch" aria-checked="true"></span>
+                    <span>Friendly Names</span>
+                </label>
             </div>
-
-            <!-- Variant D: Segmented "ID / Labels" -->
-            <div>
-                <p class="annotation" style="margin: 0 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px;">Most explicit</p>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
-                    <div class="fn-segmented">
-                        <button class="active">Codes</button>
-                        <button>Labels</button>
-                    </div>
-                    <div class="fn-segmented">
-                        <button>Codes</button>
-                        <button class="active">Labels</button>
-                    </div>
-                </div>
-                <p class="annotation" style="margin-top: 12px;">
-                    <strong>"Codes / Labels" segmented.</strong> Most self-explanatory — shows both options and which is active. Tells the user explicitly that there are two view modes. Slightly wider (~110px).
-                </p>
-            </div>
-
-            <!-- Variant C: Tag icon -->
-            <div>
-                <p class="annotation" style="margin: 0 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px;">Smallest</p>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
-                    <button class="fn-toggle tag" title="Friendly column labels: off">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                            <line x1="7" y1="7" x2="7.01" y2="7"></line>
-                        </svg>
-                    </button>
-                    <button class="fn-toggle tag on" title="Friendly column labels: on">
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-                            <line x1="7" y1="7" x2="7.01" y2="7"></line>
-                        </svg>
-                    </button>
-                </div>
-                <p class="annotation" style="margin-top: 12px;">
-                    <strong>Tag icon.</strong> 32px square, smallest footprint. Tag = "label" is reasonably universal. Cost: requires hover tooltip for discoverability. Best if you're tight on horizontal space.
-                </p>
-            </div>
-
-            <!-- Variant A: Aa (original) -->
-            <div>
-                <p class="annotation" style="margin: 0 0 8px 0; font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; font-size: 10px;">Original (not a standard)</p>
-                <div style="display: flex; flex-direction: column; gap: 8px; align-items: flex-start;">
-                    <button class="fn-toggle aa"><span class="glyph">Aa</span></button>
-                    <button class="fn-toggle aa on"><span class="glyph">Aa</span></button>
-                </div>
-                <p class="annotation" style="margin-top: 12px;">
-                    <strong>"Aa" glyph.</strong> Compact, but borrowed from typography UIs — users will read it as "font size" or "match case" before they'll read it as "column labels." Worst on discoverability.
-                </p>
-            </div>
-
+            <p class="annotation" style="margin-top: 12px;">
+                Off — gray track, handle on the left. On — purple track, handle slides right. Built to Ant's small-Switch spec (16px track, 12px handle, 2px padding). Label is clickable too.
+            </p>
         </div>
 
-        <p class="annotation" style="margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--color-border-borderlight);">
-            <strong>My pick:</strong> the "Labels" + dot variant. Honest naming, visible state, ~70px (compared to today's "Friendly Names" checkbox at ~110px), and it teaches the user the concept rather than relying on icon-guessing. If you want even more clarity, the segmented "Codes / Labels" version is unambiguous at the cost of ~40 more pixels.
-        </p>
+        <div style="border-top: 1px solid var(--color-border-borderlight);"></div>
+
+        <!-- Segmented -->
+        <div>
+            <p style="margin: 0 0 12px 0; font-weight: 600; font-size: 13px;">Segmented — tab navigation</p>
+            <div style="display: flex; gap: 24px; align-items: center; flex-wrap: wrap;">
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item active">Table View</button>
+                    <button class="ant-segmented-item">Chat</button>
+                    <button class="ant-segmented-item">Explore</button>
+                </div>
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item">Table View</button>
+                    <button class="ant-segmented-item active">Chat</button>
+                    <button class="ant-segmented-item">Explore</button>
+                </div>
+                <div class="ant-segmented">
+                    <button class="ant-segmented-item">Table View</button>
+                    <button class="ant-segmented-item">Chat</button>
+                    <button class="ant-segmented-item active">Explore</button>
+                </div>
+            </div>
+            <p class="annotation" style="margin-top: 12px;">
+                Three states of the segmented control. The selected pill has a white background with a soft shadow; unselected items hover with a faint gray fill. Reads as a single grouped widget, which is what tabs really are.
+            </p>
+        </div>
+
     </div>
 </div>
 
