@@ -112,6 +112,19 @@ def create_app():
         response.content_type = "application/json"
         return response
 
+    @app.errorhandler(Exception)
+    def handle_generic_exception(e):
+        """Return JSON instead of HTML for unhandled non-HTTP errors."""
+        if isinstance(e, HTTPException):
+            return handle_exception(e)
+
+        logger.exception("Unhandled application exception")
+        return jsonify({
+            "code": 500,
+            "name": "Internal Server Error",
+            "description": str(e),
+        }), 500
+
     return app
 
 
