@@ -457,14 +457,14 @@ function loadLocalFiles() {
     if (!data) return;
 
     const datasets = data.datasets || [];
-    // Build entries from flat file paths with folder grouping
     const seen = new Set();
     const entries = [];
     const prefix = state.fileBrowserState.currentPath ? state.fileBrowserState.currentPath + '/' : '';
 
     datasets.forEach(fpath => {
-        if (prefix && !fpath.startsWith(prefix)) return;
-        const relative = fpath.substring(prefix.length);
+        const displayPath = getLocalDisplayPath(fpath);
+        if (prefix && !displayPath.startsWith(prefix)) return;
+        const relative = displayPath.substring(prefix.length);
         const parts = relative.split('/');
         if (parts.length === 1) {
             entries.push({ name: parts[0], isDir: false, fileName: parts[0], size: '', path: fpath });
@@ -481,6 +481,10 @@ function loadLocalFiles() {
     state.fileBrowserState.entries = entries;
     updateBreadcrumb(state.fileBrowserState.currentPath);
     renderFileList();
+}
+
+function getLocalDisplayPath(path) {
+    return String(path).replace(/^\/+/, '');
 }
 
 function updateBreadcrumb(path) {

@@ -197,6 +197,40 @@ def test_modal_wiring(live_servers, page):
         )
 
 
+def test_local_file_browser_displays_absolute_paths(page, chat_ui_static_url):
+    page.route(
+        "**/datasets",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"datasets":["/mnt/data/CDE/people.csv","root.csv"],"current_dataset":null}',
+        ),
+    )
+    page.route(
+        "**/column_labels",
+        lambda route: route.fulfill(
+            status=200,
+            content_type="application/json",
+            body='{"available":false,"labels":{}}',
+        ),
+    )
+
+    page.goto(chat_ui_static_url)
+    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=15_000)
+
+    page.locator('[data-testid="browse-files-button"]').click()
+    expect(page.locator('#file-browser-modal-overlay')).to_have_class(
+        _VISIBLE_CLASS_RE, timeout=2_000
+    )
+    expect(page.locator('[data-testid="fb-file-item"][data-fb-name="root.csv"]')).to_be_visible()
+    expect(page.locator('[data-testid="fb-dir-item"]').filter(has_text="mnt")).to_be_visible()
+
+    page.locator('[data-testid="fb-dir-item"]').filter(has_text="mnt").click()
+    page.locator('[data-testid="fb-dir-item"]').filter(has_text="data").click()
+    page.locator('[data-testid="fb-dir-item"]').filter(has_text="CDE").click()
+    expect(page.locator('[data-testid="fb-file-item"][data-fb-name="people.csv"]')).to_be_visible()
+
+
 def test_chat_text_and_chart_errors_are_not_rendered_as_html(page, chat_ui_static_url):
     page.goto(chat_ui_static_url)
     expect(page.locator("#chat-box")).to_be_attached(timeout=15_000)

@@ -257,9 +257,22 @@ def find_data_files() -> List[Dict[str, str]]:
     return data_files
 
 
+def _resolve_dataset_path(file_snapshot_path: str) -> Path:
+    dataset_path = Path(file_snapshot_path)
+    if dataset_path.exists():
+        return dataset_path
+
+    if not dataset_path.is_absolute():
+        datasets_path = datasets_folder / dataset_path
+        if datasets_path.exists():
+            return datasets_path
+
+    return dataset_path
+
+
 def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
     """Load a dataset file from disk and return the DataFrame."""
-    dataset_path = Path(file_snapshot_path)
+    dataset_path = _resolve_dataset_path(file_snapshot_path)
 
     if not dataset_path.exists():
         raise HTTPException(status_code=404, detail=f"Dataset '{file_snapshot_path}' not found")
