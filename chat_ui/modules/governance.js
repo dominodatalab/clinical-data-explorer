@@ -39,9 +39,10 @@
 // Same pattern as `modules/column-labels.js` (P12 / 4.4a).
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { showToast } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
+import { displayMessage } from './chat.js';
 
 const governanceIndicator = document.getElementById('governance-indicator');
 const governanceBadge = document.getElementById('governance-badge');
@@ -103,7 +104,7 @@ export async function checkGovernanceBundles(ctx) {
 
         const data = await queryAttachmentOverviews(params);
 
-        if (data.error || !data.data || data.data.length === 0) {
+        if (!data.data || data.data.length === 0) {
             console.log('No governance bundles found for this snapshot file');
             showUngovernedIndicator();
             return;
@@ -156,6 +157,8 @@ export async function checkGovernanceBundles(ctx) {
 
     } catch (error) {
         console.error('Error checking governance bundles:', error);
+        const message = await getApiErrorMessage(error, 'Could not check governance bundles.');
+        displayMessage(`Error checking governance bundles: ${message}`, 'system');
         showUngovernedIndicator();
     }
 }
@@ -304,11 +307,6 @@ async function loadBundleStages(bundleId) {
     try {
         const data = await fetchJson(apiUrl(`governance/bundles/${bundleId}/stages`));
 
-        if (data.error) {
-            console.error('Error loading bundle stages:', data.error);
-            return;
-        }
-
         state.governanceState.bundleStages = data.stages || [];
         state.governanceState.bundleApprovals = data.approvals || [];
         state.governanceState.designatedApprovers = data.designatedApprovers || [];
@@ -335,6 +333,8 @@ async function loadBundleStages(bundleId) {
 
     } catch (error) {
         console.error('Error loading bundle stages:', error);
+        const message = await getApiErrorMessage(error, 'Could not load governance bundle stages.');
+        displayMessage(`Error loading governance bundle stages: ${message}`, 'system');
     }
 }
 
@@ -342,28 +342,24 @@ async function loadProjectCollaborators() {
     try {
         const data = await fetchJson(apiUrl('governance/project-collaborators'));
 
-        if (data.error) {
-            console.warn('Could not load project collaborators:', data.error);
-            return;
-        }
-
         state.governanceState.projectCollaborators = data.collaborators || [];
         console.log(`Loaded ${state.governanceState.projectCollaborators.length} project collaborators`);
 
     } catch (error) {
         console.error('Error loading project collaborators:', error);
+        const message = await getApiErrorMessage(error, 'Could not load project collaborators.');
+        displayMessage(`Error loading project collaborators: ${message}`, 'system');
     }
 }
 
 async function loadCurrentUser() {
     try {
         const data = await fetchJson(apiUrl('governance/current-user'));
-
-        if (!data.error) {
-            state.governanceState.currentUser = data;
-        }
+        state.governanceState.currentUser = data;
     } catch (error) {
         console.error('Error loading current user:', error);
+        const message = await getApiErrorMessage(error, 'Could not load current governance user.');
+        displayMessage(`Error loading current governance user: ${message}`, 'system');
     }
 }
 
@@ -507,10 +503,6 @@ export async function createFinding(findingData, permalink) {
             body: JSON.stringify(findingRequest)
         });
 
-        if (data.error) {
-            throw new Error(data.error);
-        }
-
         // Success!
         closeFindingModal();
         showToast('Finding created successfully!');
@@ -519,7 +511,8 @@ export async function createFinding(findingData, permalink) {
 
     } catch (error) {
         console.error('Error creating finding:', error);
-        alert(`Failed to create finding: ${error.message}`);
+        const message = await getApiErrorMessage(error, error.message || 'Request failed');
+        alert(`Failed to create finding: ${message}`);
         throw error;
     } finally {
         submitBtn.classList.remove('loading');

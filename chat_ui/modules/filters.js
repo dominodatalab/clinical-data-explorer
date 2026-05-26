@@ -55,10 +55,11 @@
 // pattern.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { getDisplayName } from './column-labels.js';
+import { displayMessage } from './chat.js';
 
 // Injected dependencies (populated at initFilters)
 let tableStateRef = null;
@@ -238,11 +239,6 @@ async function applyExpressionFilter() {
             body: JSON.stringify(requestBody)
         });
 
-        if (data.error) {
-            showExpressionError(data.error);
-            return;
-        }
-
         // Expression is valid - save and apply
         tableStateRef.expressionFilter = {
             expression: expression,
@@ -257,7 +253,8 @@ async function applyExpressionFilter() {
 
     } catch (e) {
         console.error('Error validating expression:', e);
-        showExpressionError('Failed to validate expression. Please try again.');
+        const message = await getApiErrorMessage(e, 'Please try again.');
+        showExpressionError(`Failed to validate expression: ${message}`);
     }
 }
 
@@ -300,6 +297,8 @@ async function fetchAutocomplete() {
         }
     } catch (e) {
         console.error('Autocomplete error:', e);
+        const message = await getApiErrorMessage(e, 'Could not load autocomplete values.');
+        displayMessage(`Autocomplete error: ${message}`, 'system');
     }
 }
 

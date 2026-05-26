@@ -9,8 +9,9 @@ Helper functions referenced by the static handlers are kept at module
 scope. The before_request session hook (`ensure_session_id`) is also
 wired here because it is process-wide, not blueprint-scoped.
 """
-from flask import Flask, send_from_directory
+from flask import Flask, send_from_directory, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
+from werkzeug.exceptions import HTTPException
 import uuid
 from pathlib import Path
 import logging
@@ -95,6 +96,35 @@ def create_app():
     app.register_blueprint(data_bp)
     app.register_blueprint(datasets_bp)
     app.register_blueprint(governance_bp)
+
+
+    @app.errorhandler(HTTPException)
+    def handle_exception(e):
+        """Return JSON instead of HTML for HTTP errors."""
+        # Start with the correct headers and status code from the error
+        response = e.get_response()
+        # Replace the body with JSON
+        response.data = jsonify({
+            "code": e.code,
+            "name": e.name,
+            "description": e.description,
+        }).data
+        response.content_type = "application/json"
+        return response
+
+    @app.errorhandler(Exception)
+    def handle_generic_exception(e):
+        """Return JSON instead of HTML for unhandled non-HTTP errors."""
+        if isinstance(e, HTTPException):
+            return handle_exception(e)
+
+        logger.exception("Unhandled application exception")
+        return jsonify({
+            "code": 500,
+            "name": "Internal Server Error",
+            "description": str(e),
+        }), 500
+
     return app
 
 

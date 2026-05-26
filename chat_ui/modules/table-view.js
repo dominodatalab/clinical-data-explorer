@@ -109,10 +109,11 @@
 //     concurrent fetches, scroll debounce 120ms).
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from '../core/api.js';
 import { escapeHtml, showToast } from '../core/dom.js';
 import { getDisplayName, getDisplayNameWithOriginal } from './column-labels.js';
 import { renderActiveFilters } from './filters.js';
+import { displayMessage } from './chat.js';
 
 // ===== Shared mutable singleton =====
 export const tableState = {
@@ -169,6 +170,7 @@ const summaryStatsState = {
     attemptedCols: new Set(),
     loadingCols: new Set(),
     errorCols: new Set(),
+    errorMessages: new Map(),
     activeFetchToken: 0,
     filterText: '',
     allowWideAutoLoad: false,
@@ -292,6 +294,7 @@ function parsePermalinkFromUrl() {
             tableState.filters = JSON.parse(decodeURIComponent(filtersParam));
         } catch (e) {
             console.error('Failed to parse filters from URL:', e);
+            displayMessage(`Failed to parse filters from URL: ${e.message}`, 'system');
         }
     }
     
@@ -805,7 +808,10 @@ export async function updateDistinctValuesCard() {
         }
     } catch (e) {
         console.error('Error getting distinct values:', e);
+        const message = await getApiErrorMessage(e, 'Could not load distinct values.');
+        displayMessage(`Error loading distinct values: ${message}`, 'system');
         valueEl.textContent = 'Error';
+        valueEl.title = message;
         listEl.innerHTML = '';
     }
 }
@@ -859,6 +865,7 @@ export function invalidateSummaryStats() {
     summaryStatsState.attemptedCols.clear();
     summaryStatsState.loadingCols.clear();
     summaryStatsState.errorCols.clear();
+    summaryStatsState.errorMessages.clear();
     summaryStatsState.isFetching = false;
     summaryStatsState.activeFetchToken++;
 }
@@ -896,15 +903,20 @@ async function fetchColumnStatsForTable(column, fetchToken) {
     }
     const url = `table/column_stats/${encodeURIComponent(column)}?${params.toString()}`;
 
-    const response = await fetch(apiUrl(url));
-    if (!response.ok) {
-        const responseText = await response.text();
-        console.error(`column_stats request failed (${response.status}) for ${column}:`, responseText);
-        throw new Error(`HTTP ${response.status}`);
+    let response;
+    try {
+        response = await fetchWithStatusCheck(apiUrl(url));
+    } catch (error) {
+        if (error && error.response) {
+            const message = await getApiErrorMessage(error, `HTTP ${error.status}`);
+            console.error(`column_stats request failed (${error.status}) for ${column}:`, message);
+            throw new Error(message);
+        }
+        throw error;
     }
     const data = await response.json();
     if (fetchToken !== summaryStatsState.activeFetchToken) return null;
-    if (data && data.error) throw new Error(data.error);
+    throwIfApiError(data);
 
     // Cache by request context + column
     try {
@@ -972,9 +984,12 @@ async function loadSummaryStatsBatch(fetchToken) {
                 if (!stats) return;
                 summaryStatsState.statsByColumn.set(col, stats);
                 summaryStatsState.errorCols.delete(col);
+                summaryStatsState.errorMessages.delete(col);
             } catch (e) {
                 console.error('Error fetching stats for', col, e);
+                const message = await getApiErrorMessage(e, 'Could not load summary statistics.');
                 summaryStatsState.errorCols.add(col);
+                summaryStatsState.errorMessages.set(col, message);
             } finally {
                 summaryStatsState.loadingCols.delete(col);
                 summaryStatsState.attemptedCols.add(col);
@@ -1012,6 +1027,7 @@ function renderSummaryStatsTable() {
         summaryStatsState.statsByColumn.clear();
         summaryStatsState.loadingCols.clear();
         summaryStatsState.errorCols.clear();
+        summaryStatsState.errorMessages.clear();
         summaryStatsState.allowWideAutoLoad = false;
     }
 
@@ -1083,6 +1099,7 @@ function renderSummaryStatsTable() {
 
         if (isError) {
             count = 'Error';
+            countTitle = summaryStatsState.errorMessages.get(col) || '';
         } else if (stats) {
             const numeric = !!stats.is_numeric;
             count = typeof stats.non_null_count === 'number' ? stats.non_null_count.toLocaleString() : '–';
@@ -1365,12 +1382,6 @@ export async function loadTableData() {
             body: JSON.stringify(requestBody)
         });
 
-        if (data.error) {
-            console.error('Table data error:', data.error);
-            tableBody.innerHTML = `<tr class="table-loading-row"><td colspan="100">Error: ${data.error}</td></tr>`;
-            return;
-        }
-
         tableState.totalRows = data.filtered_rows;
         tableState.totalPages = data.total_pages;
         tableState.currentPage = data.page;
@@ -1448,7 +1459,8 @@ export async function loadTableData() {
 
     } catch (e) {
         console.error('Error loading table data:', e);
-        tableBody.innerHTML = `<tr class="table-loading-row"><td colspan="100">Error loading data</td></tr>`;
+        const message = await getApiErrorMessage(e, 'Error loading data');
+        tableBody.innerHTML = `<tr class="table-loading-row"><td colspan="100">Error loading data: ${escapeHtml(message)}</td></tr>`;
         return Promise.reject(e);
     }
 }
@@ -1474,11 +1486,6 @@ export async function loadSummaryData() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
-
-        if (data.error) {
-            console.error('Summary data error:', data.error);
-            return;
-        }
 
         tableState.summaryData = data;
         
@@ -1513,6 +1520,8 @@ export async function loadSummaryData() {
 
     } catch (e) {
         console.error('Error loading summary:', e);
+        const message = await getApiErrorMessage(e, 'Could not load summary data.');
+        displayMessage(`Error loading summary: ${message}`, 'system');
     }
 }
 

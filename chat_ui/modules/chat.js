@@ -37,7 +37,7 @@
 // rare case where another module fires a system message before init.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
 import {
     renderBarChart,
     renderScatterChart,
@@ -73,6 +73,8 @@ export async function checkChatStatus() {
         return data.configured;
     } catch (error) {
         console.error('Error checking chat status:', error);
+        const message = await getApiErrorMessage(error, 'Unable to determine whether chat is configured.');
+        displayMessage(`Error checking chat status: ${message}`, 'system');
         state.chatStatus.configured = false;
         state.chatStatus.checked = true;
         updateChatUI();
@@ -124,9 +126,10 @@ function clearChat() {
             chatBox.innerHTML = '';
             displayMessage('Chat history cleared. You can start a new conversation.', 'system');
         })
-        .catch(error => {
+        .catch(async error => {
             console.error('Error clearing chat:', error);
-            displayMessage('Failed to clear chat history. Please try again.', 'system');
+            const message = await getApiErrorMessage(error, 'Please try again.');
+            displayMessage(`Failed to clear chat history: ${message}`, 'system');
         })
         .finally(() => {
             clearChatButton.disabled = false;
@@ -165,14 +168,20 @@ function sendMessage() {
         if (data.response) {
             console.log('Charts received:', data.charts);
             displayMessage(data.response, 'agent', data.charts);
-        } else if (data.error) {
+        }
+    })
+    .catch(async error => {
+        console.error('Error:', error);
+        const data = await getApiErrorPayload(error);
+        if (data && data.error) {
             console.error('Agent error:', data.error);
             console.error('Error details:', data.error_detail);
             console.error('Error type:', data.error_type);
 
-            let errorMsg = 'Error: Could not get response from agent.\n\n';
+            const apiMessage = await getApiErrorMessage(error, data.error);
+            let errorMsg = `Error: Could not get response from agent.\n\n${apiMessage}`;
             if (data.error_detail) {
-                errorMsg += 'Details: ' + data.error_detail;
+                errorMsg += '\nDetails: ' + data.error_detail;
             }
             if (data.error_type) {
                 errorMsg += '\nError Type: ' + data.error_type;
@@ -180,11 +189,10 @@ function sendMessage() {
             errorMsg += '\n\nPlease check the Domino app logs for more details.';
 
             displayMessage(errorMsg, 'agent');
+            return;
         }
-    })
-    .catch((error) => {
-        console.error('Error:', error);
-        displayMessage('Error: Could not connect to the server. Make sure the Flask server is running.', 'agent');
+        const message = await getApiErrorMessage(error, 'Make sure the Flask server is running.');
+        displayMessage(`Error: Could not connect to the server. ${message}`, 'agent');
     })
     .finally(() => {
         removeThinkingAnimation(thinkingElement);
