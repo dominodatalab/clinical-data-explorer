@@ -2,7 +2,7 @@
 
 Extracted from `mcp_server/app.py` as step 2.3 of REFACTOR_PLAN.md §2
 (mirror of `backend/session.py` on the Flask side, but adapted for the
-FastAPI/Starlette middleware world).
+FastAPI/Starlette ASGI middleware world).
 
 Each user session gets its own DataFrame so concurrent users don't clobber
 each other. The session ID comes from the `X-Session-Id` request header
@@ -25,8 +25,9 @@ import time
 from typing import Dict, Optional
 
 import pandas as pd
-from fastapi import HTTPException, Request
-from starlette.middleware.base import BaseHTTPMiddleware
+from fastapi import HTTPException
+from starlette.datastructures import Headers
+from starlette.types import ASGIApp, Receive, Scope, Send
 
 from mcp_server import dataframe_cache
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
@@ -58,17 +59,27 @@ def _get_sessions():
 def get_cache():
     return dataframe_cache.get_cache()
 
-class SessionMiddleware(BaseHTTPMiddleware):
+class SessionMiddleware:
     """Extract X-Session-Id header and set it in contextvars for the request."""
-    async def dispatch(self, request: Request, call_next):
-        session_id = request.headers.get("x-session-id", "default")
-        _current_session_id.set(session_id)
+
+    def __init__(self, app: ASGIApp):
+        self.app = app
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        session_id = Headers(scope=scope).get("x-session-id", "default")
+        token = _current_session_id.set(session_id)
         # Touch the session so it stays alive
         sessions = _get_sessions()
         if session_id in sessions:
             sessions[session_id].last_accessed = time.time()
-        response = await call_next(request)
-        return response
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            _current_session_id.reset(token)
 
 
 def _evict_stale_sessions():

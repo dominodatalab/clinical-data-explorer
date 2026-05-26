@@ -3,6 +3,8 @@ import pytest
 from cachetools import LRUCache
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
+from starlette.middleware.base import BaseHTTPMiddleware
+from starlette.responses import StreamingResponse
 
 import mcp_server.dataframe_cache as dataframe_cache
 import mcp_server.session as session_module
@@ -134,6 +136,29 @@ def test_session_middleware_defaults_session_id_when_header_is_missing():
 
     assert response.status_code == 200
     assert response.json() == {"session_id": "default"}
+
+
+def test_session_middleware_is_pure_asgi_for_streaming_routes():
+    assert not issubclass(session_module.SessionMiddleware, BaseHTTPMiddleware)
+
+
+def test_session_middleware_preserves_session_for_streaming_routes():
+    app = FastAPI()
+    app.add_middleware(session_module.SessionMiddleware)
+
+    @app.get("/stream")
+    async def stream_session():
+        async def stream_body():
+            yield f"session_id:{session_module._current_session_id.get()}"
+
+        return StreamingResponse(stream_body(), media_type="text/plain")
+
+    client = TestClient(app)
+
+    response = client.get("/stream", headers={"X-Session-Id": "stream-session"})
+
+    assert response.status_code == 200
+    assert response.text == "session_id:stream-session"
 
 
 def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, monkeypatch, tmp_path):
