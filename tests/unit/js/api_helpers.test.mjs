@@ -6,12 +6,19 @@ import vm from 'node:vm';
 const apiSourcePath = new URL('../../../chat_ui/core/api.js', import.meta.url);
 const apiSource = await readFile(apiSourcePath, 'utf8');
 
-async function loadApiModule({ pathname = '/', fetchImpl = async () => ({ status: 200 }) } = {}) {
+async function loadApiModule({
+    pathname = '/',
+    fetchImpl = async () => ({ status: 200 }),
+    assignLocation = () => {},
+} = {}) {
     const context = vm.createContext({
         console: { log() {} },
         fetch: fetchImpl,
         window: {
-            location: { pathname },
+            location: {
+                pathname,
+                assign: assignLocation,
+            },
         },
     });
     const module = new vm.SourceTextModule(apiSource, {
@@ -26,10 +33,17 @@ async function loadApiModule({ pathname = '/', fetchImpl = async () => ({ status
 }
 
 function jsonResponse(status, data, extra = {}) {
+    const headers = extra.headers || {};
     return {
         status,
         statusText: extra.statusText || '',
         bodyUsed: extra.bodyUsed || false,
+        headers: {
+            get(name) {
+                const matchingKey = Object.keys(headers).find(key => key.toLowerCase() === name.toLowerCase());
+                return matchingKey ? headers[matchingKey] : null;
+            },
+        },
         json: extra.json || (async () => data),
     };
 }
@@ -173,6 +187,54 @@ test('fetchWithStatusCheck returns successful responses and throws ApiError on H
             return true;
         },
     );
+});
+
+test('fetchWithStatusCheck reloads the UI when a 302 response has a Location header', async () => {
+    let assignedLocation = null;
+    const redirectResponse = jsonResponse(302, null, {
+        headers: { Location: '/login?next=/app/workspace/' },
+    });
+    const api = await loadApiModule({
+        fetchImpl: async () => redirectResponse,
+        assignLocation: location => {
+            assignedLocation = location;
+        },
+    });
+
+    await assert.rejects(
+        api.fetchWithStatusCheck('/chat/status'),
+        error => {
+            assert.ok(error instanceof api.ApiError);
+            assert.equal(error.message, 'Redirecting to /login?next=/app/workspace/');
+            assert.equal(error.response, redirectResponse);
+            assert.equal(error.status, 302);
+            return true;
+        },
+    );
+    assert.equal(assignedLocation, '/login?next=/app/workspace/');
+});
+
+test('fetchWithStatusCheck rejects 302 responses without a Location header', async () => {
+    let assignedLocation = null;
+    const redirectResponse = jsonResponse(302, null);
+    const api = await loadApiModule({
+        fetchImpl: async () => redirectResponse,
+        assignLocation: location => {
+            assignedLocation = location;
+        },
+    });
+
+    await assert.rejects(
+        api.fetchWithStatusCheck('/chat/status'),
+        error => {
+            assert.ok(error instanceof api.ApiError);
+            assert.equal(error.message, 'HTTP 302');
+            assert.equal(error.response, redirectResponse);
+            assert.equal(error.status, 302);
+            return true;
+        },
+    );
+    assert.equal(assignedLocation, null);
 });
 
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {
