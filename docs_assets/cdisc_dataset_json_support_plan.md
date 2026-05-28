@@ -93,7 +93,42 @@ happens to contain only one value in the sample (could get classified as
 categorical). That's a known edge case for CSV today too — not a
 regression.
 
-### 3. Memory model
+### 3. What happens if the user loads a random `.json` file?
+
+This matters because, unlike `.parquet` / `.sas7bdat` / `.xpt` / `.dsjc`,
+**`.json` is a generic extension**. A user could plausibly have a
+`package.json`, a pandas `to_json` dump, or any random configuration
+file sitting next to their real datasets. Two cases to handle:
+
+1. **`.json` / `.ndjson` that parses as JSON but isn't Dataset-JSON shape.**
+   The validator (`_validate_dataset_json_shape()` in the loader sketch
+   below) fails fast with a 400 carrying a clear message:
+   `"<file> is not a CDISC Dataset-JSON file (missing 'columns'
+   metadata). Supported JSON encodings: Dataset-JSON v1.1,
+   Dataset-NDJSON v1.1, DSJC."`
+
+   We check for both `datasetJSONVersion` **and** `columns` — either alone
+   could false-positive on a coincidentally-named field. Both is a tight
+   signal that the file follows the spec.
+
+2. **`.dsjc` that isn't actually compressed** (or is corrupt). Wrap the
+   `zlib.decompress` call in a `try` and re-raise as a friendly 400:
+   `"<file> could not be decompressed as DSJC (expected zLib or gzip
+   stream)."` Without this, the user sees an opaque `Error -3 while
+   decompressing data`.
+
+3. **`.json` / `.ndjson` with invalid JSON syntax.** The route-layer
+   500 wrap-up in `load_dataset()` already turns this into
+   `"Error loading dataset: …"`. Acceptable as-is — same behavior the
+   CSV path has for malformed CSV.
+
+These error paths surface through the existing error display in
+`chat_ui/script.js` (see the recent error-rendering commit `bd68af3`).
+Tests for the validator should live in the new
+`tests/contract/test_mcp_dataset_json.py` — one assertion per error mode
+(non-Dataset-JSON shape, non-compressed `.dsjc`).
+
+### 4. Memory model
 
 NDJSON's whole point is that it's streamable. We could read it line by
 line and not hold the parsed structure in memory twice.
@@ -129,7 +164,14 @@ SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'} | DATASE
 def _read_dsjc_bytes(path: Path) -> bytes:
     """Decompress a .dsjc file. Spec says raw zLib but vendor outputs
     often use gzip; wbits=47 auto-detects both."""
-    return zlib.decompress(path.read_bytes(), wbits=47)
+    try:
+        return zlib.decompress(path.read_bytes(), wbits=47)
+    except zlib.error as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{path.name} could not be decompressed as DSJC "
+                   f"(expected zLib or gzip stream): {e}",
+        )
 
 
 def _load_dataset_json(path: Path) -> pd.DataFrame:
@@ -174,14 +216,18 @@ def _load_dataset_json(path: Path) -> pd.DataFrame:
 
 def _validate_dataset_json_shape(obj: dict, path: Path) -> None:
     """Fail fast with a clear error if a .json/.ndjson file isn't actually
-    Dataset-JSON (since .json is a generic extension)."""
-    if not isinstance(obj, dict) or 'columns' not in obj:
+    Dataset-JSON (since .json is a generic extension — could be a
+    package.json, a pandas to_json dump, anything)."""
+    if (not isinstance(obj, dict)
+            or 'columns' not in obj
+            or 'datasetJSONVersion' not in obj):
         raise HTTPException(
             status_code=400,
             detail=(
                 f"{path.name} is not a CDISC Dataset-JSON file "
-                f"(missing 'columns' metadata). Supported JSON encodings: "
-                f"Dataset-JSON v1.1, Dataset-NDJSON v1.1, DSJC."
+                f"(missing 'datasetJSONVersion' or 'columns' metadata). "
+                f"Supported JSON encodings: Dataset-JSON v1.1, "
+                f"Dataset-NDJSON v1.1, DSJC."
             ),
         )
 ```
