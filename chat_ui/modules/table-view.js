@@ -1874,7 +1874,14 @@ export function initializeTableView() {
     
     // Load summary data separately (may take slightly longer)
     loadSummaryData();
-    
+
+    // The metadata pane is dataset-level (independent of filters/summary), so
+    // loadSummaryData() doesn't touch it. Refresh it here on dataset switch if
+    // it's the active tab — its per-dataset cache key triggers a refetch.
+    if (state.selectedSidebarTab === 'metadata') {
+        renderMetadataTab();
+    }
+
     renderActiveFilters();
 }
 
