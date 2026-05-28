@@ -113,3 +113,72 @@ def test_corrupt_dsjc_rejected(json_client, tmp_path):
     resp = json_client.post("/dataset/load", params={"file_snapshot_path": str(bad)})
     assert resp.status_code == 400, resp.text
     assert "could not be decompressed as DSJC" in resp.json()["detail"]
+
+
+# ===== Metadata panel endpoint =====
+
+@pytest.mark.parametrize("fixture_name", ["ae.json", "ae.ndjson", "ae.dsjc"])
+def test_metadata_endpoint_dataset_json(json_client, fixture_name):
+    """The verbatim metadata header is exposed for all three encodings."""
+    load = json_client.post(
+        "/dataset/load", params={"file_snapshot_path": str(FIXTURES / fixture_name)})
+    assert load.status_code == 200
+
+    body = json_client.get("/dataset/metadata").json()
+    assert body["available"] is True
+    assert "Dataset-JSON" in body["format"]
+
+    file_kv = {item["key"]: item["value"] for item in body["file"]}
+    assert file_kv["Dataset"] == "AE"
+    assert file_kv["Records"] == "74"
+    assert "Study OID" in file_kv  # cdisc.com/CDISCPILOT01
+
+    headers = body["variables"]["headers"]
+    rows = body["variables"]["rows"]
+    assert headers[:4] == ["Name", "Label", "Type", "Length"]
+    assert len(rows) == 37
+    aeseq = next(r for r in rows if r[0] == "AESEQ")
+    assert aeseq[1] == "Sequence Number"  # verbatim label
+    assert aeseq[2] == "integer"          # verbatim declared type
+
+
+def test_metadata_endpoint_adam_has_key_and_format(json_client):
+    """ADaM fixture carries keySequence + displayFormat, so those optional
+    columns appear and a known date variable shows its DATE9. format."""
+    load = json_client.post(
+        "/dataset/load", params={"file_snapshot_path": str(FIXTURES / "adae.json")})
+    assert load.status_code == 200
+
+    body = json_client.get("/dataset/metadata").json()
+    headers = body["variables"]["headers"]
+    assert "Key" in headers
+    assert "Format" in headers
+
+    fmt_idx = headers.index("Format")
+    trtsdt = next(r for r in body["variables"]["rows"] if r[0] == "TRTSDT")
+    assert trtsdt[fmt_idx] == "DATE9."
+
+
+def test_metadata_endpoint_xpt(json_client):
+    """SAS .xpt exposes labels/types via pyreadstat's metadata-only read."""
+    load = json_client.post(
+        "/dataset/load", params={"file_snapshot_path": str(FIXTURES / "ae.xpt")})
+    assert load.status_code == 200
+
+    body = json_client.get("/dataset/metadata").json()
+    assert body["available"] is True
+    assert "XPT" in body["format"]
+    assert len(body["variables"]["rows"]) == 37
+
+
+def test_metadata_endpoint_empty_for_csv(json_client, tmp_path):
+    """CSV carries no embedded metadata — the endpoint reports available:False
+    with a helpful message rather than erroring."""
+    csv = tmp_path / "plain.csv"
+    csv.write_text("a,b\n1,x\n2,y\n")
+    load = json_client.post("/dataset/load", params={"file_snapshot_path": str(csv)})
+    assert load.status_code == 200
+
+    body = json_client.get("/dataset/metadata").json()
+    assert body["available"] is False
+    assert "metadata" in body["message"].lower()

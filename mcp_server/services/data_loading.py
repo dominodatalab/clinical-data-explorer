@@ -272,6 +272,190 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+# ===== Verbatim file metadata extraction (for the "Metadata" side panel) =====
+#
+# This is purely informational: we surface metadata that already lives in the
+# file, with no inference or extra computation. CSV/Parquet carry none, so they
+# get an empty-state. Dataset-JSON embeds a rich header; SAS files (.xpt /
+# .sas7bdat) expose labels/types/widths via pyreadstat's metadata-only read.
+#
+# define.xml (the CDISC submission-level metadata document referenced by
+# `metaDataRef`) is intentionally out of scope — it's one-per-submission,
+# deeply nested, and not co-located with the data file. We only extract what
+# is verbatim inside the data file itself.
+
+_NO_METADATA_MESSAGE = (
+    "No embedded metadata for this file type. CDISC Dataset-JSON "
+    "(.json, .ndjson, .dsjc) and SAS files (.xpt, .sas7bdat) carry dataset- "
+    "and variable-level metadata; CSV and Parquet do not."
+)
+
+# Friendly label + display order for the Dataset-JSON file-level header keys.
+# Anything not listed here is still shown afterwards, verbatim by its raw key.
+_DATASET_JSON_FILE_LABELS = [
+    ('name', 'Dataset'),
+    ('label', 'Dataset Label'),
+    ('records', 'Records'),
+    ('datasetJSONVersion', 'Dataset-JSON Version'),
+    ('studyOID', 'Study OID'),
+    ('metaDataVersionOID', 'Metadata Version OID'),
+    ('metaDataRef', 'Metadata Reference'),
+    ('itemGroupOID', 'Item Group OID'),
+    ('originator', 'Originator'),
+    ('sourceSystem', 'Source System'),
+    ('datasetJSONCreationDateTime', 'Created'),
+    ('dbLastModifiedDateTime', 'DB Last Modified'),
+    ('fileOID', 'File OID'),
+]
+
+
+def _stringify_meta_value(value) -> str:
+    """Render a metadata value as a flat display string. Handles the nested
+    `sourceSystem` object ({name, version}) and list-valued fields."""
+    if isinstance(value, dict):
+        name = value.get('name')
+        version = value.get('version')
+        if name and version:
+            return f"{name} ({version})"
+        return ', '.join(f"{k}: {v}" for k, v in value.items())
+    if isinstance(value, list):
+        return ', '.join(str(v) for v in value)
+    return str(value)
+
+
+def _dataset_json_header(path: Path) -> dict:
+    """Read just the metadata header of a Dataset-JSON file (no rows for
+    NDJSON/DSJC; the compact .json form is one object so it's parsed whole)."""
+    ext = path.suffix.lower()
+    if ext == '.json':
+        with open(path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    if ext == '.dsjc':
+        first_line = _read_dsjc_bytes(path).decode('utf-8').splitlines()[0]
+        return json.loads(first_line)
+    # .ndjson — line 1 is the metadata object.
+    with open(path, 'r', encoding='utf-8') as f:
+        return json.loads(f.readline())
+
+
+def _build_dataset_json_metadata(path: Path) -> dict:
+    obj = _dataset_json_header(path)
+    if not isinstance(obj, dict) or 'columns' not in obj:
+        return {'available': False, 'message': _NO_METADATA_MESSAGE}
+
+    file_items = []
+    seen = set()
+    for key, label in _DATASET_JSON_FILE_LABELS:
+        if key in obj and obj[key] not in (None, ''):
+            file_items.append({'key': label, 'value': _stringify_meta_value(obj[key])})
+            seen.add(key)
+    # Surface any remaining top-level keys verbatim (forward-compatible with
+    # spec additions), skipping the bulky data arrays.
+    for key, value in obj.items():
+        if key in seen or key in ('columns', 'rows') or value in (None, ''):
+            continue
+        file_items.append({'key': key, 'value': _stringify_meta_value(value)})
+
+    columns = obj.get('columns', [])
+    has_key = any(c.get('keySequence') is not None for c in columns)
+    has_format = any(c.get('displayFormat') for c in columns)
+    headers = ['Name', 'Label', 'Type', 'Length']
+    if has_key:
+        headers.append('Key')
+    if has_format:
+        headers.append('Format')
+
+    rows = []
+    for c in columns:
+        length = c.get('length')
+        row = [
+            c.get('name', ''),
+            c.get('label', ''),
+            c.get('dataType', ''),
+            '' if length is None else str(length),
+        ]
+        if has_key:
+            ks = c.get('keySequence')
+            row.append('' if ks is None else str(ks))
+        if has_format:
+            row.append(c.get('displayFormat', '') or '')
+        rows.append(row)
+
+    version = obj.get('datasetJSONVersion')
+    fmt = 'CDISC Dataset-JSON' + (f' v{version}' if version else '')
+    return {
+        'available': True,
+        'format': fmt,
+        'file': file_items,
+        'variables': {'headers': headers, 'rows': rows},
+    }
+
+
+def _build_sas_metadata(path: Path) -> dict:
+    if not PYREADSTAT_AVAILABLE:
+        return {'available': False, 'message': _NO_METADATA_MESSAGE}
+
+    ext = path.suffix.lower()
+    reader = pyreadstat.read_xport if ext == '.xpt' else pyreadstat.read_sas7bdat
+    # metadataonly avoids materializing the rows just to read the header.
+    _, meta = reader(str(path), metadataonly=True)
+
+    file_items = []
+
+    def add(label, value):
+        if value not in (None, ''):
+            file_items.append({'key': label, 'value': str(value)})
+
+    add('Dataset', meta.table_name)
+    add('Dataset Label', meta.file_label)
+    add('Records', meta.number_rows)
+    add('Variables', meta.number_columns)
+    add('Encoding', meta.file_encoding)
+    add('Created', meta.creation_time)
+    add('Modified', meta.modification_time)
+
+    labels = meta.column_names_to_labels or {}
+    types = meta.readstat_variable_types or {}
+    widths = meta.variable_storage_width or {}
+    rows = []
+    for name in (meta.column_names or []):
+        width = widths.get(name)
+        rows.append([
+            name,
+            labels.get(name, '') or '',
+            str(types.get(name, '') or ''),
+            '' if width is None else str(width),
+        ])
+
+    fmt = 'SAS Transport (XPT)' if ext == '.xpt' else 'SAS dataset (sas7bdat)'
+    return {
+        'available': True,
+        'format': fmt,
+        'file': file_items,
+        'variables': {'headers': ['Name', 'Label', 'Type', 'Length'], 'rows': rows},
+    }
+
+
+def extract_dataset_metadata(path: Path) -> dict:
+    """Extract verbatim file/variable metadata for the Metadata panel.
+
+    Never raises — informational only. Returns a dict with `available: True`
+    and `file` / `variables` sections when the format carries metadata, or
+    `available: False` with a `message` otherwise (CSV/Parquet, unreadable
+    files, or non-Dataset-JSON `.json`).
+    """
+    try:
+        ext = path.suffix.lower()
+        if ext in DATASET_JSON_EXTENSIONS:
+            return _build_dataset_json_metadata(path)
+        if ext in {'.xpt', '.sas7bdat'}:
+            return _build_sas_metadata(path)
+        return {'available': False, 'message': _NO_METADATA_MESSAGE}
+    except Exception as e:
+        logger.debug(f"Could not extract metadata for {path}: {e}")
+        return {'available': False, 'message': _NO_METADATA_MESSAGE}
+
+
 def find_data_files() -> List[Dict[str, str]]:
     """
     Find all supported data files from:

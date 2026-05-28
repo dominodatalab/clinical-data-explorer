@@ -181,8 +181,13 @@ const summaryStatsState = {
 // ===== Cached DOM refs (populated in initTableView) =====
 let tableBody, tableHeader, tableWrapper, tableEmptyState;
 let summaryStatsToggleBtn, summaryStatsPanel, sidebarSectionSelect, rightPanelResizeHandle;
-let rowDetailsBody;
+let rowDetailsBody, metadataBody;
 let statsTableContainer, statsSearchInput, statsLoadInitialBtn;
+
+// Metadata panel cache, keyed on the dataset it was fetched for so a dataset
+// switch auto-invalidates it (no explicit reset hook needed).
+let metadataCache = null;
+let metadataCacheKey = null;
 
 // ===== Permalink machinery =====
 
@@ -432,6 +437,8 @@ function setSidebarTab(tabId, { ensureDefaults = true } = {}) {
             }
         } else if (tabId === 'row-details') {
             renderRowDetailsTab();
+        } else if (tabId === 'metadata') {
+            renderMetadataTab();
         }
     }
 }
@@ -528,6 +535,102 @@ export function renderRowDetailsTab() {
 
     html += '</table>';
     rowDetailsBody.innerHTML = visibilityNote + html;
+}
+
+// ===== Metadata tab =====
+
+function metadataEmptyState(title, body) {
+    return `
+        <div class="row-details-empty-state">
+            <div class="empty-title">${escapeHtml(title)}</div>
+            <div>${escapeHtml(body)}</div>
+        </div>
+    `;
+}
+
+// Render the verbatim file/variable metadata embedded in formats that carry it
+// (CDISC Dataset-JSON, SAS .xpt/.sas7bdat). Lazily fetched only when the tab is
+// opened, cached per dataset. Purely informational — no effect on the grid.
+export async function renderMetadataTab() {
+    if (!metadataBody) return;
+
+    if (!state.currentDataset) {
+        metadataBody.innerHTML = metadataEmptyState(
+            'No dataset loaded',
+            'Load a dataset to see its embedded metadata here.'
+        );
+        return;
+    }
+
+    if (metadataCache && metadataCacheKey === state.currentDataset) {
+        renderMetadataContent(metadataCache);
+        return;
+    }
+
+    metadataBody.innerHTML = metadataEmptyState('Loading metadata…', '');
+    try {
+        const data = await fetchJson(apiUrl('dataset/metadata'));
+        metadataCache = data;
+        metadataCacheKey = state.currentDataset;
+        renderMetadataContent(data);
+    } catch (e) {
+        metadataBody.innerHTML = metadataEmptyState(
+            'Could not load metadata',
+            getApiErrorMessage(e) || 'An error occurred while fetching metadata.'
+        );
+    }
+}
+
+function renderMetadataContent(data) {
+    if (!metadataBody) return;
+
+    if (!data || !data.available) {
+        metadataBody.innerHTML = metadataEmptyState(
+            'No embedded metadata',
+            (data && data.message) || 'This file type does not carry embedded metadata.'
+        );
+        return;
+    }
+
+    let html = '';
+    if (data.format) {
+        html += `<div class="metadata-format-badge">${escapeHtml(data.format)}</div>`;
+    }
+
+    // File / Study section — key/value table (mirrors row-details styling).
+    const fileItems = Array.isArray(data.file) ? data.file : [];
+    if (fileItems.length) {
+        html += '<div class="metadata-section-title">File / Study</div>';
+        html += '<table class="row-detail-table metadata-file-table">';
+        fileItems.forEach(item => {
+            html += `<tr><th>${escapeHtml(String(item.key))}</th>`
+                  + `<td>${escapeHtml(String(item.value))}</td></tr>`;
+        });
+        html += '</table>';
+    }
+
+    // Variables section — wide table (scrolls horizontally if needed).
+    const vars = data.variables || {};
+    const headers = Array.isArray(vars.headers) ? vars.headers : [];
+    const rows = Array.isArray(vars.rows) ? vars.rows : [];
+    if (headers.length && rows.length) {
+        html += `<div class="metadata-section-title">Variables (${rows.length})</div>`;
+        html += '<div class="metadata-variables-scroll"><table class="metadata-variables-table">';
+        html += '<thead><tr>' + headers.map(h => `<th>${escapeHtml(String(h))}</th>`).join('') + '</tr></thead>';
+        html += '<tbody>';
+        rows.forEach(row => {
+            html += '<tr>' + row.map((cell, i) => {
+                const val = (cell === null || cell === undefined || cell === '') ? '' : String(cell);
+                // First column (variable name) gets emphasis via a th.
+                return i === 0
+                    ? `<th>${escapeHtml(val)}</th>`
+                    : `<td>${escapeHtml(val)}</td>`;
+            }).join('') + '</tr>';
+        });
+        html += '</tbody></table></div>';
+    }
+
+    metadataBody.innerHTML = html || metadataEmptyState('No embedded metadata', '');
 }
 
 function highlightSelectedRow(rowIndex) {
@@ -1795,6 +1898,7 @@ export function initTableView() {
     sidebarSectionSelect = document.getElementById('sidebar-section-select');
     rightPanelResizeHandle = document.getElementById('right-panel-resize-handle');
     rowDetailsBody = document.getElementById('row-details-body');
+    metadataBody = document.getElementById('metadata-body');
     statsTableContainer = document.getElementById('stats-table-container');
     statsSearchInput = document.getElementById('stats-search-input');
     statsLoadInitialBtn = document.getElementById('stats-load-initial-btn');

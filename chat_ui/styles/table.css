@@ -1141,6 +1141,96 @@ body.resizing .summary-stats-panel.summary-sidebar {
     font-variant-numeric: tabular-nums;
 }
 
+/* ===== Metadata panel ===== */
+.metadata-body {
+    margin-top: var(--spacing-xsmall);
+}
+
+.metadata-format-badge {
+    display: inline-block;
+    margin-bottom: var(--spacing-small);
+    padding: 3px 8px;
+    border-radius: var(--radius-small);
+    background: var(--color-background-bgprimary);
+    border: 1px solid var(--color-border-borderlight);
+    color: var(--color-text-textsecondary);
+    font-size: 11px;
+    font-weight: 600;
+}
+
+.metadata-section-title {
+    margin: var(--spacing-small) 0 var(--spacing-xsmall);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--color-text-textsecondary);
+}
+
+/* Reuse row-detail-table look for the file/study key-val block, but its
+   key column doesn't need to be as wide as the row-details one. */
+.metadata-file-table th {
+    width: 45%;
+    font-weight: 500;
+    color: var(--color-text-textsecondary);
+}
+
+/* Variables table — denser than the file block, scrolls horizontally
+   when there are more columns than fit (Key / Format optional cols). */
+.metadata-variables-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-border-borderlight);
+    border-radius: var(--radius-small);
+}
+
+.metadata-variables-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.metadata-variables-table thead th {
+    position: sticky;
+    top: 0;
+    text-align: left;
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: 600;
+    white-space: nowrap;
+    color: var(--color-text-textsecondary);
+    background: var(--color-background-bgprimary);
+    border-bottom: 1px solid var(--color-border-bordermedium);
+}
+
+.metadata-variables-table tbody th,
+.metadata-variables-table tbody td {
+    padding: 6px 10px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-border-borderlight);
+    white-space: nowrap;
+}
+
+.metadata-variables-table tbody th {
+    font-weight: 600;
+    color: var(--color-text-textprimary);
+    font-variant-numeric: tabular-nums;
+}
+
+.metadata-variables-table tbody td {
+    color: var(--color-text-textsecondary);
+}
+
+.metadata-variables-table tbody tr:last-child th,
+.metadata-variables-table tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.metadata-variables-table tbody tr:hover th,
+.metadata-variables-table tbody tr:hover td {
+    background: var(--color-background-bglight1);
+}
+
 /* Make table rows clickable */
 .data-table tbody tr {
     cursor: pointer;

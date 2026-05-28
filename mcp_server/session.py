@@ -20,6 +20,7 @@ import contextvars
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
+from pathlib import Path
 import threading
 import time
 from typing import Dict, Optional
@@ -30,7 +31,7 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
-from mcp_server.services.data_loading import load_dataset
+from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,10 @@ _current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('sessi
 class LoadedDataEntry:
     file_snapshot_path: str
     last_accessed: float = 0
+    # Verbatim file/variable metadata captured at load time. Stored here
+    # because Domino-sourced files are downloaded to a temp path that gets
+    # deleted right after load, so it can't be re-read on demand later.
+    metadata: Optional[dict] = None
 
 _sessions: Dict[str, LoadedDataEntry] = {}
 
@@ -88,7 +93,7 @@ def _evict_stale_sessions():
             del sessions[sid]
 
 
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
+def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
     """Store a DataFrame for the current session."""
     session_id = _current_session_id.get()
     sessions = _get_sessions()
@@ -100,7 +105,8 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
 
     sessions[session_id] = LoadedDataEntry(
         file_snapshot_path=file_snapshot_path,
-        last_accessed=time.time()
+        last_accessed=time.time(),
+        metadata=metadata,
     )
     _evict_stale_sessions()
 
@@ -117,8 +123,24 @@ def _get_session_dataset_name() -> Optional[str]:
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
     df = load_dataset(file_snapshot_path)
-    _set_current_df(df, file_snapshot_path)
+    # Capture verbatim file metadata while the file is still on disk (Domino
+    # temp files are deleted right after load).
+    metadata = extract_dataset_metadata(Path(file_snapshot_path))
+    _set_current_df(df, file_snapshot_path, metadata)
     return df
+
+
+def get_current_metadata() -> dict:
+    """Return the verbatim file metadata captured for the current session."""
+    session_id = _current_session_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None:
+        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+    if session.metadata is not None:
+        return session.metadata
+    # Fallback for sessions loaded before metadata capture existed: extract
+    # now if the source file is still present (no-op safe — never raises).
+    return extract_dataset_metadata(Path(session.file_snapshot_path))
 
 
 def get_current_df() -> pd.DataFrame:

@@ -85,6 +85,26 @@ def load_dataset():
         ) from exc
 
 
+@bp.route('/dataset/metadata', methods=['GET'])
+def get_dataset_metadata():
+    """Proxy the current dataset's verbatim embedded metadata from the MCP server."""
+    try:
+        response = mcp_get("/dataset/metadata")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        elif response.status_code == 400:
+            return jsonify({'error': 'No dataset loaded. Please load a dataset first.'}), 400
+        else:
+            error_detail = response.json().get('detail', 'Failed to get dataset metadata')
+            return jsonify({'error': error_detail}), response.status_code
+    except requests.exceptions.ConnectionError:
+        logger.error("Could not connect to MCP server for dataset metadata")
+        return jsonify({'error': 'Could not connect to MCP server'}), 503
+    except Exception as e:
+        logger.error(f"Error getting dataset metadata: {e}")
+        return jsonify({'error': str(e)}), 500
+
+
 @bp.route('/dataset/data', methods=['GET'])
 def get_dataset_data():
     """Get the current dataset data and metadata for visualization"""
