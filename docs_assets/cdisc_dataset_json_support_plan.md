@@ -275,6 +275,13 @@ exhaustive cross-product tests.
 - `backend/services/column_labels.py`: see "Design decisions" §1 — out
   of scope.
 - `backend/routes/datasets.py`: only imports the constant, no edit needed.
+- The Domino **"Open with..."** deeplink flow (URL params
+  `?datasetId=…&datasetSnapshotId=…&filePath=…` and the NetApp variants)
+  works automatically once the two `SUPPORTED_EXTENSIONS` constants are
+  updated. The flow downloads bytes by `(snapshotId, filePath)` without
+  inspecting the extension; the MCP server's `load_dataset()` then
+  dispatches on the new extensions like it does for `.csv`/`.parquet`/`.xpt`.
+  No extra plumbing needed for deeplinks.
 
 ## Implementation order for the coding agent
 
