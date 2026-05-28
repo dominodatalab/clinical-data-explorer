@@ -292,9 +292,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     const tableEmptyState = document.getElementById('table-empty-state');
                     if (emptyMessage) {
                         emptyMessage.textContent = state.extensionDatasetId
-                            ? 'No supported data files found in this dataset. Supported formats: CSV, Parquet, SAS.'
+                            ? 'No supported data files found in this dataset. Supported formats: CSV, Parquet, SAS, Dataset-JSON.'
                             : state.extensionProjectId
-                                ? 'No supported data files found in this project. Supported formats: CSV, Parquet, SAS.'
+                                ? 'No supported data files found in this project. Supported formats: CSV, Parquet, SAS, Dataset-JSON.'
                                 : 'No datasets available. Add CSV files to the datasets folder to get started.';
                     }
                     if (tableEmptyState) tableEmptyState.classList.remove('hidden');

@@ -41,6 +41,7 @@ Clinical Data Explorer reads data files from the `datasets` folder in your Domin
 - Parquet (`.parquet`)
 - SAS (`.sas7bdat`)
 - SAS Transport (`.xpt`)
+- CDISC Dataset-JSON (`.json`, `.ndjson`, `.dsjc`)
 
 Add your data files to the project's `datasets` folder, and they will appear in the dataset dropdown when the app loads.
 
@@ -315,7 +316,7 @@ Governance features require:
 ### "No datasets found"
 
 - Verify that data files exist in the `datasets` folder
-- Check that files have supported extensions (`.csv`, `.parquet`, `.sas7bdat`, `.xpt`)
+- Check that files have supported extensions (`.csv`, `.parquet`, `.sas7bdat`, `.xpt`, `.json`, `.ndjson`, `.dsjc`)
 
 ### Chat feature shows "Not Configured"
 

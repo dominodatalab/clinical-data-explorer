@@ -30,6 +30,8 @@ Design notes:
   (column types, detected numeric/categorical columns) are preserved
   byte-equivalent for parity with the previous behavior.
 """
+import json
+import zlib
 from pathlib import Path
 from typing import Dict, List
 
@@ -62,8 +64,85 @@ mnt_netapp_folder = Path("/mnt/netapp-volumes")
 domino_datasets_folder = Path("/domino/datasets")
 domino_netapp_folder = Path("/domino/netapp-volumes")
 
+# CDISC Dataset-JSON v1.1 encodings: compact JSON, newline-delimited JSON,
+# and zLib-compressed NDJSON (DSJC). All three carry the same payload.
+DATASET_JSON_EXTENSIONS = {'.json', '.ndjson', '.dsjc'}
+
 # Supported file extensions
-SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'}
+SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'} | DATASET_JSON_EXTENSIONS
+
+
+def _read_dsjc_bytes(path: Path) -> bytes:
+    """Decompress a .dsjc file. The CDISC spec says raw zLib, but vendor
+    outputs (e.g. VDE Dataset Converter) are often gzip-wrapped; wbits=47
+    auto-detects both gzip and zlib wrappers in one call."""
+    try:
+        return zlib.decompress(path.read_bytes(), wbits=47)
+    except zlib.error as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"{path.name} could not be decompressed as DSJC "
+                   f"(expected zLib or gzip stream): {e}",
+        )
+
+
+def _validate_dataset_json_shape(obj: dict, path: Path) -> None:
+    """Fail fast with a clear error if a .json/.ndjson file isn't actually
+    Dataset-JSON (since .json is a generic extension — could be a
+    package.json, a pandas to_json dump, anything). Requiring both
+    `datasetJSONVersion` and `columns` is a tight signal for the spec;
+    either alone could false-positive on a coincidentally-named field."""
+    if (not isinstance(obj, dict)
+            or 'columns' not in obj
+            or 'datasetJSONVersion' not in obj):
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"{path.name} is not a CDISC Dataset-JSON file "
+                f"(missing 'datasetJSONVersion' or 'columns' metadata). "
+                f"Supported JSON encodings: Dataset-JSON v1.1, "
+                f"Dataset-NDJSON v1.1, DSJC."
+            ),
+        )
+
+
+def _load_dataset_json(path: Path) -> pd.DataFrame:
+    """Load Dataset-JSON / Dataset-NDJSON / DSJC into a DataFrame.
+
+    All three encodings carry the same payload: metadata (with `columns`)
+    plus row arrays whose positions align to `columns`. We don't honor the
+    declared per-column dataType — we let pandas infer types and rely on
+    `_convert_arrow_types()` for normalization, matching the parquet path.
+    """
+    ext = path.suffix.lower()
+
+    if ext == '.json':
+        # Compact: one object with `columns` and `rows`.
+        with open(path, 'r', encoding='utf-8') as f:
+            obj = json.load(f)
+        _validate_dataset_json_shape(obj, path)
+        col_names = [c['name'] for c in obj['columns']]
+        rows = obj.get('rows', [])
+        df = pd.DataFrame(rows, columns=col_names)
+    else:
+        # NDJSON or DSJC: line 1 = metadata, lines 2..N = row arrays.
+        if ext == '.dsjc':
+            text = _read_dsjc_bytes(path).decode('utf-8')
+            lines = text.splitlines()
+        else:  # .ndjson
+            with open(path, 'r', encoding='utf-8') as f:
+                lines = f.read().splitlines()
+
+        if not lines:
+            raise HTTPException(status_code=400, detail=f"Empty Dataset-JSON file: {path.name}")
+
+        meta = json.loads(lines[0])
+        _validate_dataset_json_shape(meta, path)
+        col_names = [c['name'] for c in meta['columns']]
+        rows = [json.loads(line) for line in lines[1:] if line.strip()]
+        df = pd.DataFrame(rows, columns=col_names)
+
+    return df
 
 
 def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
@@ -176,8 +255,11 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
             except Exception:
                 pass
 
-        # Handle string types - keep as object for compatibility
-        elif dtype_str in ('string', 'string[python]', 'string[pyarrow]'):
+        # Handle string types - keep as object for compatibility.
+        # 'str' is pandas 3.0's arrow-backed default string dtype (when
+        # infer_string is on); downstream type detection (e.g. the route
+        # layer's date-sniffing) only recognizes object/'string' columns.
+        elif dtype_str in ('string', 'string[python]', 'string[pyarrow]', 'str'):
             try:
                 df[col] = df[col].astype('object')
             except Exception:
@@ -295,6 +377,13 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
             df, meta = pyreadstat.read_xport(str(dataset_path))
             logger.info(f"Loaded SAS Transport file with {len(df)} rows and {len(df.columns)} columns")
             # pyreadstat returns a clean DataFrame, but we should still convert types for consistency
+            df = _convert_arrow_types(df)
+        elif file_ext in DATASET_JSON_EXTENSIONS:
+            # CDISC Dataset-JSON (.json), Dataset-NDJSON (.ndjson), or DSJC (.dsjc).
+            # Build the DataFrame from row arrays, then normalize types exactly
+            # like the parquet path — we let pandas infer rather than honoring
+            # the declared per-column dataType.
+            df = _load_dataset_json(dataset_path)
             df = _convert_arrow_types(df)
         else:
             raise HTTPException(status_code=400, detail=f"Unsupported file format: {file_ext}")
