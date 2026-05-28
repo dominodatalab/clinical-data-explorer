@@ -185,7 +185,11 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
                 col_series = df[col]
                 col_dtype_str = str(col_series.dtype).lower()
 
-                if col_series.dtype == 'object' or 'string' in col_dtype_str:
+                # 'str' covers pandas 3.0's arrow-backed default string dtype
+                # (str(dtype) == 'str', which does NOT contain 'string'); without
+                # it, missing-value normalization is silently skipped on every
+                # string column under infer_string and '.'/''/'NA' never become NaN.
+                if col_series.dtype == 'object' or 'str' in col_dtype_str:
                     # VECTORIZED missing value detection (much faster than apply() with lambda)
                     # Start with pandas NA check
                     is_missing = col_series.isna()

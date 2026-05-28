@@ -122,3 +122,70 @@ def test_parquet_numeric_filter_works_after_type_conversion(parquet_client):
         assert row["score"] is not None and row["score"] > 50, (
             f"row violates score > 50 filter: {row}"
         )
+
+
+@pytest.fixture
+def missing_values_parquet_path(tmp_path):
+    """Parquet with clinical-style missing-value indicators stored as strings.
+
+    Under pandas 3.0 + infer_string, these come back as the new 'str' dtype
+    (not object/string[pyarrow]). _convert_arrow_types must still normalize
+    ''/'.'/'NA' to NaN — otherwise a numeric-as-string column drops below the
+    90%-convertible threshold and is misclassified categorical, and string
+    columns under-report their nulls.
+    """
+    df = pd.DataFrame(
+        {
+            # Numeric data stored as strings with SAS-style '.' / '' / 'NA'
+            # missing markers. Must end up numeric with 3 NaNs.
+            "dose": ["1", "2", ".", "4", "", "NA", "7", "8", "9", "10"],
+            # Categorical strings with missing markers. Must stay categorical
+            # but report 2 nulls (the '' and the 'NA').
+            "arm": ["A", "B", "A", "", "B", "NA", "A", "B", "A", "B"],
+        }
+    )
+    path = tmp_path / "missing_values.parquet"
+    df.to_parquet(path, engine="pyarrow")
+    return path
+
+
+@pytest.fixture
+def missing_values_client(_mcp_app, missing_values_parquet_path):
+    session_id = f"pqmiss-{uuid.uuid4().hex}"
+    client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
+    resp = client.post("/dataset/load", params={"file_snapshot_path": str(missing_values_parquet_path)})
+    assert resp.status_code == 200, f"parquet load failed: {resp.status_code} {resp.text}"
+    yield client
+    from data_analysis_mcp import _sessions
+    _sessions.pop(session_id, None)
+
+
+def test_missing_value_indicators_normalized_after_load(missing_values_client):
+    """Regression guard: '.'/''/'NA' string missing-markers must become NaN.
+
+    This silently broke under the pandas 3.0 upgrade (the new 'str' dtype
+    isn't 'object' and its repr doesn't contain 'string', so the missing-value
+    normalization block was skipped). If it regresses again: numeric-as-string
+    columns get misclassified categorical and null counts are wrong.
+    """
+    body = missing_values_client.get("/dataset/info").json()
+
+    assert "dose" in set(body["numeric_columns"]), (
+        f"numeric-as-string column with '.'/''/'NA' missing markers was not "
+        f"detected as numeric: numeric_columns={body['numeric_columns']}"
+    )
+
+    # 'dose' filter must run and exclude the 3 missing rows.
+    resp = missing_values_client.post(
+        "/table/data",
+        json={"page": 1, "page_size": 100, "filters": [
+            {"column": "dose", "operator": "gt", "value": "0"}]},
+    )
+    assert resp.status_code == 200, resp.text
+    fb = resp.json()
+    assert fb["unfiltered_rows"] == 10
+    # 7 real numeric values > 0; the 3 missing markers are now NaN and excluded.
+    assert fb["total_rows"] == 7, (
+        f"expected 7 non-missing dose rows, got {fb['total_rows']} — missing "
+        f"markers were not normalized to NaN"
+    )
