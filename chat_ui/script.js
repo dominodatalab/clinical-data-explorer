@@ -13,6 +13,7 @@ import {
     loadSummaryData,
     clearSelectedRow,
     invalidateSummaryStats,
+    invalidateMetadataCache,
     initializeTableView,
     generatePermalink,
     renderTable,
@@ -490,6 +491,7 @@ document.addEventListener('DOMContentLoaded', () => {
             state.currentFilter = null;
             clearSelectedRow();
             invalidateSummaryStats();
+            invalidateMetadataCache();
 
                 // Update the current dataset label and drop the file pill's
                 // ghost-CTA "empty" state — once a dataset is loaded, the pill

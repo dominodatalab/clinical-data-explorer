@@ -184,10 +184,20 @@ let summaryStatsToggleBtn, summaryStatsPanel, sidebarSectionSelect, rightPanelRe
 let rowDetailsBody, metadataBody;
 let statsTableContainer, statsSearchInput, statsLoadInitialBtn;
 
-// Metadata panel cache, keyed on the dataset it was fetched for so a dataset
-// switch auto-invalidates it (no explicit reset hook needed).
+// Metadata panel cache. The key (display name) can't distinguish two loads of
+// the same-named file from different snapshots/volume versions, so callers must
+// invalidate it on every load via invalidateMetadataCache() — see below.
 let metadataCache = null;
 let metadataCacheKey = null;
+
+// Drop the cached metadata so the next renderMetadataTab() refetches. Must be
+// called on every dataset load: the cache key is only the display name, which
+// doesn't capture snapshot id / netapp volume version, so without this a new
+// snapshot of a same-named file would serve the previous snapshot's metadata.
+export function invalidateMetadataCache() {
+    metadataCache = null;
+    metadataCacheKey = null;
+}
 
 // ===== Permalink machinery =====
 
