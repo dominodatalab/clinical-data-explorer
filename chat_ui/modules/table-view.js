@@ -612,25 +612,66 @@ function renderMetadataContent(data) {
     // Variables section — wide table (scrolls horizontally if needed).
     const vars = data.variables || {};
     const headers = Array.isArray(vars.headers) ? vars.headers : [];
-    const rows = Array.isArray(vars.rows) ? vars.rows : [];
+    let rows = Array.isArray(vars.rows) ? vars.rows : [];
     if (headers.length && rows.length) {
+        // When the format marks variables as keys (e.g. CDISC keySequence,
+        // surfaced as a "Key" column), float those to the top — ordered by
+        // their key sequence — and tag the name with a key icon.
+        const keyColIdx = headers.findIndex(h => String(h).toLowerCase() === 'key');
+        const isKeyRow = (row) => keyColIdx >= 0
+            && row[keyColIdx] !== null && row[keyColIdx] !== undefined
+            && String(row[keyColIdx]).trim() !== '';
+        if (keyColIdx >= 0) {
+            const keySeq = (row) => {
+                const n = parseFloat(row[keyColIdx]);
+                return Number.isNaN(n) ? Number.MAX_SAFE_INTEGER : n;
+            };
+            const keyRows = rows.filter(isKeyRow).sort((a, b) => keySeq(a) - keySeq(b));
+            const otherRows = rows.filter(r => !isKeyRow(r));
+            rows = [...keyRows, ...otherRows];
+        }
+
         html += `<div class="metadata-section-title">Variables (${rows.length})</div>`;
         html += '<div class="metadata-variables-scroll"><table class="metadata-variables-table">';
         html += '<thead><tr>' + headers.map(h => `<th>${escapeHtml(String(h))}</th>`).join('') + '</tr></thead>';
         html += '<tbody>';
         rows.forEach(row => {
-            html += '<tr>' + row.map((cell, i) => {
+            const name = (row[0] === null || row[0] === undefined) ? '' : String(row[0]);
+            const isKey = isKeyRow(row);
+            // A row is pinnable when its variable maps to a real column in the
+            // main data table; clicking it toggles that column's pin.
+            const pinnable = name && tableState.columns.includes(name);
+            const isPinned = pinnable && tableState.pinnedColumns.includes(name);
+            const cls = [pinnable ? 'pinnable' : '', isPinned ? 'pinned' : ''].filter(Boolean).join(' ');
+            const attrs = pinnable
+                ? ` data-variable="${escapeHtml(name)}" title="${isPinned ? 'Unpin' : 'Pin'} “${escapeHtml(name)}” column"`
+                : '';
+            html += `<tr${cls ? ` class="${cls}"` : ''}${attrs}>` + row.map((cell, i) => {
                 const val = (cell === null || cell === undefined || cell === '') ? '' : String(cell);
-                // First column (variable name) gets emphasis via a th.
-                return i === 0
-                    ? `<th>${escapeHtml(val)}</th>`
-                    : `<td>${escapeHtml(val)}</td>`;
+                // First column (variable name) gets emphasis via a th, plus a
+                // key icon when this variable is a key.
+                if (i === 0) {
+                    const icon = isKey ? '<span class="metadata-key-icon" title="Key variable">🔑</span>' : '';
+                    return `<th>${icon}${escapeHtml(val)}</th>`;
+                }
+                return `<td>${escapeHtml(val)}</td>`;
             }).join('') + '</tr>';
         });
         html += '</tbody></table></div>';
     }
 
     metadataBody.innerHTML = html || metadataEmptyState('No embedded metadata', '');
+
+    // Clicking a pinnable variable row toggles that column's pin on the main
+    // data table (and we re-render to refresh the pinned highlight here).
+    metadataBody.querySelectorAll('.metadata-variables-table tbody tr.pinnable').forEach(tr => {
+        tr.addEventListener('click', () => {
+            const col = tr.getAttribute('data-variable');
+            if (!col) return;
+            togglePinColumn(col);
+            renderMetadataContent(data);
+        });
+    });
 }
 
 function highlightSelectedRow(rowIndex) {

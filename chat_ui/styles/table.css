@@ -1231,6 +1231,25 @@ body.resizing .summary-stats-panel.summary-sidebar {
     background: var(--color-background-bglight1);
 }
 
+/* Key variables float to the top and carry a key icon next to the name. */
+.metadata-key-icon {
+    margin-right: 4px;
+    font-size: 11px;
+    vertical-align: baseline;
+}
+
+/* Rows whose variable maps to a real column are clickable to pin/unpin it. */
+.metadata-variables-table tbody tr.pinnable {
+    cursor: pointer;
+}
+
+.metadata-variables-table tbody tr.pinned th,
+.metadata-variables-table tbody tr.pinned td,
+.metadata-variables-table tbody tr.pinned:hover th,
+.metadata-variables-table tbody tr.pinned:hover td {
+    background: var(--color-yellow-100);
+}
+
 /* Make table rows clickable */
 .data-table tbody tr {
     cursor: pointer;
