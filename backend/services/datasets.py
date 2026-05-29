@@ -44,7 +44,9 @@ from chat_agent import clear_history
 logger = logging.getLogger(__name__)
 
 # Supported file extensions for data files.
-SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'}
+# Note: this duplicates the constant in mcp_server/services/data_loading.py.
+# Keep the two in sync (pre-existing tech debt — not deduplicated here).
+SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt', '.json', '.ndjson', '.dsjc'}
 
 
 def find_data_files_fallback():

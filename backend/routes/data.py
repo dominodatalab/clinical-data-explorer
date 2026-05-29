@@ -30,7 +30,13 @@ import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
-from werkzeug.exceptions import RequestEntityTooLarge, TooManyRequests
+from werkzeug.exceptions import (
+    BadRequest,
+    RequestEntityTooLarge,
+    ServiceUnavailable,
+    TooManyRequests,
+    abort,
+)
 
 from backend.services.column_labels import load_column_labels
 from backend.services.datasets import (
@@ -83,6 +89,28 @@ def load_dataset():
         raise RequestEntityTooLarge(
             description=str(exc),
         ) from exc
+
+
+@bp.route('/dataset/metadata', methods=['GET'])
+def get_dataset_metadata():
+    """Proxy the current dataset's verbatim embedded metadata from the MCP server.
+
+    Errors are surfaced by raising werkzeug HTTPExceptions; the app-level
+    handler renders them in the standardized {code, name, description} envelope.
+    Any unhandled Exception bubbles to the same handler as a 500.
+    """
+    try:
+        response = mcp_get("/dataset/metadata")
+    except requests.exceptions.ConnectionError as exc:
+        logger.error("Could not connect to MCP server for dataset metadata")
+        raise ServiceUnavailable(description="Could not connect to MCP server") from exc
+
+    if response.status_code == 200:
+        return jsonify(response.json())
+    if response.status_code == 400:
+        raise BadRequest(description="No dataset loaded. Please load a dataset first.")
+    error_detail = response.json().get('detail', 'Failed to get dataset metadata')
+    abort(response.status_code, description=error_detail)
 
 
 @bp.route('/dataset/data', methods=['GET'])
