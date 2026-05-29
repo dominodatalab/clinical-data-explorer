@@ -1231,11 +1231,13 @@ body.resizing .summary-stats-panel.summary-sidebar {
     background: var(--color-background-bglight1);
 }
 
-/* Key variables float to the top and carry a key icon next to the name. */
+/* Key variables float to the top and carry a key icon after the name. */
 .metadata-key-icon {
-    margin-right: 4px;
-    font-size: 11px;
-    vertical-align: baseline;
+    display: inline-flex;
+    align-items: center;
+    margin-left: 5px;
+    color: var(--color-text-textsecondary);
+    vertical-align: middle;
 }
 
 /* Rows whose variable maps to a real column are clickable to pin/unpin it. */

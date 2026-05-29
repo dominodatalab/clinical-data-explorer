@@ -651,8 +651,13 @@ function renderMetadataContent(data) {
                 // First column (variable name) gets emphasis via a th, plus a
                 // key icon when this variable is a key.
                 if (i === 0) {
-                    const icon = isKey ? '<span class="metadata-key-icon" title="Key variable">🔑</span>' : '';
-                    return `<th>${icon}${escapeHtml(val)}</th>`;
+                    const icon = isKey
+                        ? '<span class="metadata-key-icon" title="Key variable">'
+                          + '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">'
+                          + '<path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"></path>'
+                          + '</svg></span>'
+                        : '';
+                    return `<th>${escapeHtml(val)}${icon}</th>`;
                 }
                 return `<td>${escapeHtml(val)}</td>`;
             }).join('') + '</tr>';
@@ -663,14 +668,25 @@ function renderMetadataContent(data) {
     metadataBody.innerHTML = html || metadataEmptyState('No embedded metadata', '');
 
     // Clicking a pinnable variable row toggles that column's pin on the main
-    // data table (and we re-render to refresh the pinned highlight here).
+    // data table; togglePinColumn() keeps this panel's highlight in sync.
     metadataBody.querySelectorAll('.metadata-variables-table tbody tr.pinnable').forEach(tr => {
         tr.addEventListener('click', () => {
             const col = tr.getAttribute('data-variable');
-            if (!col) return;
-            togglePinColumn(col);
-            renderMetadataContent(data);
+            if (col) togglePinColumn(col);
         });
+    });
+}
+
+// Reflect the current pin state in the Variables metadata table — keeps the
+// row highlight in sync whether the pin was toggled from here or the main
+// table header. Updates the existing DOM in place (no rebuild needed).
+function syncMetadataPinHighlight() {
+    if (!metadataBody) return;
+    metadataBody.querySelectorAll('.metadata-variables-table tbody tr.pinnable').forEach(tr => {
+        const col = tr.getAttribute('data-variable');
+        const isPinned = tableState.pinnedColumns.includes(col);
+        tr.classList.toggle('pinned', isPinned);
+        tr.setAttribute('title', `${isPinned ? 'Unpin' : 'Pin'} “${col}” column`);
     });
 }
 
@@ -1315,6 +1331,7 @@ function togglePinColumn(column) {
         tableState.pinnedColumns.push(column);
     }
     renderTable(tableState.lastData || []);
+    syncMetadataPinHighlight();
 }
 
 function handleDragStart(e, column) {
