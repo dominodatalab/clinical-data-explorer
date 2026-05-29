@@ -50,48 +50,15 @@ SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'}
 def find_data_files_fallback():
     """
     Fallback function to find data files when MCP server is unavailable.
-    Searches datasets/ folder, /mnt/data/, /mnt/netapp-volumes/, /domino/datasets/, and /domino/netapp-volumes/ recursively.
+    Searches only the repo datasets/ folder used for bundled local data.
     """
     data_files = []
     datasets_folder = Path('datasets')
-    mnt_data_folder = Path('/mnt/data')
-    mnt_netapp_folder = Path('/mnt/netapp-volumes')
-    domino_datasets_folder = Path('/domino/datasets')
-    domino_netapp_folder = Path('/domino/netapp-volumes')
 
-    # Search in datasets/ folder (flat search)
     if datasets_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
             for f in datasets_folder.glob(f"*{ext}"):
                 data_files.append(f.name)
-
-    # Search in /mnt/data/ folder recursively
-    if mnt_data_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            for f in mnt_data_folder.rglob(f"*{ext}"):
-                relative_path = f.relative_to(mnt_data_folder)
-                data_files.append(f"/mnt/data/{relative_path}")
-
-    # Search in /mnt/netapp-volumes/ folder recursively
-    if mnt_netapp_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            for f in mnt_netapp_folder.rglob(f"*{ext}"):
-                relative_path = f.relative_to(mnt_netapp_folder)
-                data_files.append(f"/mnt/netapp-volumes/{relative_path}")
-
-    # Search in /domino/datasets/ folder recursively
-    if domino_datasets_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            for f in domino_datasets_folder.rglob(f"*{ext}"):
-                relative_path = f.relative_to(domino_datasets_folder)
-                data_files.append(f"/domino/datasets/{relative_path}")
-
-    # Search in /domino/netapp-volumes/ folder recursively
-    if domino_netapp_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            for f in domino_netapp_folder.rglob(f"*{ext}"):
-                relative_path = f.relative_to(domino_netapp_folder)
-                data_files.append(f"/domino/netapp-volumes/{relative_path}")
 
     return data_files
 

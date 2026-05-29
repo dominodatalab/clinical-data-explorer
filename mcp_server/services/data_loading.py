@@ -4,9 +4,8 @@ Extracted from `mcp_server/app.py` as step 2.4a of REFACTOR_PLAN.md §2.
 
 What lives here:
 
-- `find_data_files()` — recursive search for supported files across the
-  five known data roots (`datasets/`, `/mnt/data`, `/mnt/netapp-volumes`,
-  `/domino/datasets`, `/domino/netapp-volumes`).
+- `find_data_files()` — search for supported files in the repo `datasets/`
+  folder used for bundled local data.
 - `load_dataset(file_snapshot_path)` — resolves a dataset path reference,
   reads it
   (CSV / parquet / SAS7BDAT / XPT), and normalizes types.
@@ -57,10 +56,6 @@ except ImportError:
 
 # Data source locations
 datasets_folder = Path("datasets")
-mnt_data_folder = Path("/mnt/data")
-mnt_netapp_folder = Path("/mnt/netapp-volumes")
-domino_datasets_folder = Path("/domino/datasets")
-domino_netapp_folder = Path("/domino/netapp-volumes")
 
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'}
@@ -188,69 +183,17 @@ def _convert_arrow_types(df: pd.DataFrame) -> pd.DataFrame:
 
 def find_data_files() -> List[Dict[str, str]]:
     """
-    Find all supported data files from:
-    1. datasets/ folder (flat)
-    2. /mnt/data/ folder (recursive)
-    3. /domino/datasets/ folder (recursive)
+    Find all supported data files from the repo datasets/ folder.
 
     Returns a list of dicts with 'name' (display name) and 'path' (full path)
     """
     data_files = []
 
-    # Search in datasets/ folder (flat search)
     if datasets_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
             for f in datasets_folder.glob(f"*{ext}"):
                 data_files.append({
                     'name': f.name,
-                    'path': str(f.resolve())
-                })
-
-    # Search in /mnt/data/ folder recursively
-    if mnt_data_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            # Use rglob for recursive search
-            for f in mnt_data_folder.rglob(f"*{ext}"):
-                # Use relative path from /mnt/data as the display name
-                relative_path = f.relative_to(mnt_data_folder)
-                data_files.append({
-                    'name': f"/mnt/data/{relative_path}",
-                    'path': str(f.resolve())
-                })
-
-    # Search in /mnt/netapp-volumes/ folder recursively
-    if mnt_netapp_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            # Use rglob for recursive search
-            for f in mnt_netapp_folder.rglob(f"*{ext}"):
-                # Use relative path from /mnt/netapp-volumes as the display name
-                relative_path = f.relative_to(mnt_netapp_folder)
-                data_files.append({
-                    'name': f"/mnt/netapp-volumes/{relative_path}",
-                    'path': str(f.resolve())
-                })
-
-    # Search in /domino/datasets/ folder recursively
-    if domino_datasets_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            # Use rglob for recursive search
-            for f in domino_datasets_folder.rglob(f"*{ext}"):
-                # Use relative path from /domino/datasets as the display name
-                relative_path = f.relative_to(domino_datasets_folder)
-                data_files.append({
-                    'name': f"/domino/datasets/{relative_path}",
-                    'path': str(f.resolve())
-                })
-
-    # Search in /domino/netapp-volumes/ folder recursively
-    if domino_netapp_folder.exists():
-        for ext in SUPPORTED_EXTENSIONS:
-            # Use rglob for recursive search
-            for f in domino_netapp_folder.rglob(f"*{ext}"):
-                # Use relative path from /domino/netapp-volumes as the display name
-                relative_path = f.relative_to(domino_netapp_folder)
-                data_files.append({
-                    'name': f"/domino/netapp-volumes/{relative_path}",
                     'path': str(f.resolve())
                 })
 
