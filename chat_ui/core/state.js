@@ -36,10 +36,10 @@ export const state = {
     extensionFilePath: new URLSearchParams(window.location.search).get('filePath') || null,
 
     // NetApp deeplink mode. Two shapes:
-    //   ?mountPointType=netAppVolume&netAppVolumeId=<uuid>&projectId=Z
+    //   ?mountPointType=netAppVolume&netAppVolumeId=<uuid>[&projectId=Z]
     //     -> open the file browser scoped to that volume.
     //   ?mountPointType=netAppVolumeFileContext&netAppVolumeId=<uuid>
-    //     &netAppVolumeSnapshotId=<latest|uuid>&filePath=<path>&projectId=Z
+    //     &netAppVolumeSnapshotId=<latest|uuid>&filePath=<path>[&projectId=Z]
     //     -> auto-load the file from that snapshot (or the r/w head if
     //        the snapshot id is the synthetic 'latest').
     // mountPointType is also kept around so permalink generation can
@@ -52,7 +52,7 @@ export const state = {
     cachedDatasetListResponse: null,
     fileBrowserState: {
         isOpen: false,
-        mode: null,            // 'local' | 'extension-project' | 'extension-dataset'
+        mode: null,            // 'local' | 'extension-project' | 'extension-dataset' | 'extension-netapp'
         sources: [],           // [{id, name, type:'dataset'|'netapp'|'local', volumeKey?, volumeId?}]
         selectedSource: null,
         snapshots: [],

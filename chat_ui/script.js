@@ -221,11 +221,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 datasetsUrl += '&snapshotId=' + encodeURIComponent(state.extensionSnapshotId);
             }
         } else if (state.extensionProjectId) {
-            // Project mode also covers the netapp deeplink shapes — they
-            // always carry projectId, and the project listing already
-            // includes per-volume file/volume metadata we need to resolve
-            // netAppVolumeId from the URL.
+            // Project mode also covers netapp deeplinks that carry
+            // projectId. The project listing includes the per-volume
+            // metadata we need to resolve netAppVolumeId from the URL.
             datasetsUrl = apiUrl('datasets') + '?projectId=' + encodeURIComponent(state.extensionProjectId);
+        } else if (state.extensionNetAppVolumeId) {
+            datasetsUrl = apiUrl('datasets') + '?netAppVolumeId=' + encodeURIComponent(state.extensionNetAppVolumeId);
         } else {
             datasetsUrl = apiUrl('datasets');
         }
@@ -240,6 +241,8 @@ document.addEventListener('DOMContentLoaded', () => {
                     state.fileBrowserState.mode = 'extension-dataset';
                 } else if (state.extensionProjectId) {
                     state.fileBrowserState.mode = 'extension-project';
+                } else if (state.extensionNetAppVolumeId) {
+                    state.fileBrowserState.mode = 'extension-netapp';
                 } else {
                     state.fileBrowserState.mode = 'local';
                 }
@@ -292,11 +295,15 @@ document.addEventListener('DOMContentLoaded', () => {
                     const emptyMessage = document.getElementById('table-empty-message');
                     const tableEmptyState = document.getElementById('table-empty-state');
                     if (emptyMessage) {
-                        emptyMessage.textContent = state.extensionDatasetId
-                            ? 'No supported data files found in this dataset. Supported formats: CSV, Parquet, SAS, Dataset-JSON.'
-                            : state.extensionProjectId
-                                ? 'No supported data files found in this project. Supported formats: CSV, Parquet, SAS, Dataset-JSON.'
-                                : 'No datasets available. Add CSV files to the datasets folder to get started.';
+                        let message = 'No datasets available. Add CSV files to the datasets folder to get started.';
+                        if (state.extensionDatasetId) {
+                            message = 'No supported data files found in this dataset. Supported formats: CSV, Parquet, SAS, Dataset-JSON.';
+                        } else if (state.extensionNetAppVolumeId) {
+                            message = 'No supported data files found in this NetApp volume. Supported formats: CSV, Parquet, SAS, Dataset-JSON.';
+                        } else if (state.extensionProjectId) {
+                            message = 'No supported data files found in this project. Supported formats: CSV, Parquet, SAS, Dataset-JSON.';
+                        }
+                        emptyMessage.textContent = message;
                     }
                     if (tableEmptyState) tableEmptyState.classList.remove('hidden');
                 } else if (state.extensionProjectId && !state.extensionFilePath) {
@@ -326,6 +333,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const sources = [];
         const datasetInfo = data.dataset_info || [];
         const netappFiles = data.netapp_files || [];
+        const netappVolumes = data.netapp_volumes || [];
 
         if (state.fileBrowserState.mode === 'local') {
             // Local mode: treat each file path as a source entry
@@ -335,7 +343,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 sources.push({ id: '__local__', name: 'Local Files', type: 'local' });
             }
         } else {
-            // Extension mode: build from dataset_info and netapp_files
+            // Extension mode: build from dataset_info and NetApp metadata.
             const seenDatasets = new Set();
             for (const ds of datasetInfo) {
                 if (!seenDatasets.has(ds.id)) {
@@ -344,8 +352,21 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
-            // Build unique volumes from netapp_files
             const seenVolumes = new Set();
+            for (const vol of netappVolumes) {
+                const volumeKey = vol.unique_name || vol.uniqueName || vol.volume_key || vol.volumeKey;
+                if (volumeKey && !seenVolumes.has(volumeKey)) {
+                    seenVolumes.add(volumeKey);
+                    sources.push({
+                        id: volumeKey,
+                        name: vol.name || volumeKey,
+                        type: 'netapp',
+                        volumeKey: volumeKey,
+                        volumeId: vol.id || vol.volume_id || vol.volumeId || '',
+                    });
+                }
+            }
+
             for (const nf of netappFiles) {
                 if (!seenVolumes.has(nf.volume_key)) {
                     seenVolumes.add(nf.volume_key);

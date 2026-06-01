@@ -65,6 +65,130 @@ def find_data_files_fallback():
     return data_files
 
 
+def _get_remotefs_host():
+    remotefs_host = config.get_domino_remote_file_system_hostport()
+    if not remotefs_host:
+        return None
+    if not remotefs_host.startswith('http'):
+        remotefs_host = f'http://{remotefs_host}'
+    return remotefs_host
+
+
+def _coerce_remotefs_volumes(value):
+    if isinstance(value, list):
+        return [v for v in value if isinstance(v, dict)]
+    if not isinstance(value, dict):
+        return []
+
+    for key in ('data', 'volumes', 'items', 'results', 'volume'):
+        if key in value:
+            return _coerce_remotefs_volumes(value[key])
+
+    if any(key in value for key in ('id', 'volumeId', 'volume_id', 'uniqueName', 'unique_name')):
+        return [value]
+
+    return []
+
+
+def _fetch_remotefs_volumes(token, params):
+    remotefs_host = _get_remotefs_host()
+    if not remotefs_host:
+        logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
+        return []
+
+    try:
+        response = requests.get(
+            f'{remotefs_host}/remotefs/v1/volumes',
+            params=params,
+            headers={'Authorization': f'Bearer {token}'},
+            timeout=30,
+        )
+
+        if response.status_code != 200:
+            logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
+            return []
+
+        return _coerce_remotefs_volumes(response.json())
+
+    except requests.exceptions.ConnectionError:
+        logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
+        return []
+
+
+def _first_present(mapping, keys, default=''):
+    for key in keys:
+        value = mapping.get(key)
+        if value not in (None, ''):
+            return str(value)
+    return default
+
+
+def _netapp_volume_metadata(vol):
+    vol_id = _first_present(vol, ('id', 'volumeId', 'volume_id'))
+    vol_name = _first_present(
+        vol,
+        ('name', 'displayName', 'display_name', 'volumeName', 'volume_name'),
+        vol_id,
+    )
+    vol_unique_name = _first_present(
+        vol,
+        ('uniqueName', 'unique_name', 'apiName', 'api_name', 'volumeKey', 'volume_key'),
+    )
+
+    if not vol_unique_name and vol_name and vol_id:
+        vol_unique_name = f'netapp-volume-{vol_name}-{vol_id}'
+
+    if not vol_unique_name:
+        return None
+
+    return {
+        'id': vol_id,
+        'name': vol_name or vol_unique_name,
+        'unique_name': vol_unique_name,
+    }
+
+
+def _volume_matches_identifier(vol, volume_id):
+    meta = _netapp_volume_metadata(vol)
+    return bool(meta and volume_id in (meta['id'], meta['unique_name']))
+
+
+def _discover_netapp_files_from_volumes(volumes, token):
+    if not volumes:
+        return [], []
+
+    from domino_data.netapp_volumes import NetAppVolumeClient
+    vol_client = NetAppVolumeClient(token=token)
+
+    netapp_files = []
+    netapp_volumes = []
+    seen_volumes = set()
+
+    for vol in volumes:
+        volume_meta = _netapp_volume_metadata(vol)
+        if not volume_meta or volume_meta['unique_name'] in seen_volumes:
+            continue
+
+        seen_volumes.add(volume_meta['unique_name'])
+        netapp_volumes.append(volume_meta)
+
+        try:
+            files = vol_client.list_files(volume_meta['unique_name']) or []
+            for fname in files:
+                ext = os.path.splitext(fname)[1].lower()
+                if ext in SUPPORTED_EXTENSIONS:
+                    netapp_files.append({
+                        'display_name': f"{volume_meta['name']}/{fname}",
+                        'volume_key': volume_meta['unique_name'],
+                        'volume_name': volume_meta['name'],
+                        'volume_id': volume_meta['id'],
+                    })
+        except Exception as e:
+            logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
+
+    return netapp_files, netapp_volumes
+
+
 def discover_netapp_files_for_project(project_id, token):
     """Discover NetApp volumes (and their r/w-head files) for a project.
     Queries the RemoteFS microservice for volumes attached to the project,
@@ -77,76 +201,45 @@ def discover_netapp_files_for_project(project_id, token):
         netAppVolumeId in the URL when the target file lives only in a
         non-current snapshot.
     """
-    remotefs_host = config.get_domino_remote_file_system_hostport()
-    if not remotefs_host:
-        logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
-        return [], []
-
-    # Ensure the host has a scheme
-    if not remotefs_host.startswith('http'):
-        remotefs_host = f'http://{remotefs_host}'
-
     try:
-        headers = {'Authorization': f'Bearer {token}'}
-
-        # Query RemoteFS API for active volumes attached to this project
-        response = requests.get(
-            f'{remotefs_host}/remotefs/v1/volumes',
-            params={'status': 'Active', 'project_id': project_id},
-            headers=headers,
-            timeout=30
+        volumes = _fetch_remotefs_volumes(
+            token,
+            {'status': 'Active', 'project_id': project_id},
         )
-
-        if response.status_code != 200:
-            logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
-            return [], []
-
-        volumes_data = response.json()
-        # The response may be a list directly or wrapped in a key
-        volumes = volumes_data if isinstance(volumes_data, list) else volumes_data.get('data', volumes_data.get('volumes', []))
-
-        if not volumes:
-            return [], []
-
-        from domino_data.netapp_volumes import NetAppVolumeClient
-        vol_client = NetAppVolumeClient(token=token)
-
-        netapp_files = []
-        netapp_volumes = []
-        for vol in volumes:
-            vol_name = vol.get('name', '')
-            vol_id = vol.get('id', '')
-            vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
-
-            netapp_volumes.append({
-                'id': vol_id,
-                'name': vol_name,
-                'unique_name': vol_unique_name,
-            })
-
-            try:
-                # Use client.list_files() which returns plain strings (file paths),
-                # not Volume.list_files() which returns _File objects
-                files = vol_client.list_files(vol_unique_name) or []
-                for fname in files:
-                    ext = os.path.splitext(fname)[1].lower()
-                    if ext in SUPPORTED_EXTENSIONS:
-                        netapp_files.append({
-                            'display_name': f'{vol_name}/{fname}',
-                            'volume_key': vol_unique_name,
-                            'volume_name': vol_name,
-                            'volume_id': vol_id
-                        })
-            except Exception as e:
-                logger.warning(f'Failed to list files for NetApp volume {vol_id}: {e}')
-
-        return netapp_files, netapp_volumes
+        return _discover_netapp_files_from_volumes(volumes, token)
 
     except requests.exceptions.ConnectionError:
         logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
         return [], []
     except Exception as e:
         logger.warning(f"Error discovering NetApp volumes: {e}")
+        return [], []
+
+
+def discover_netapp_files_for_volume(volume_id, token):
+    """Discover one accessible NetApp volume and its r/w-head supported files."""
+    try:
+        volumes = _fetch_remotefs_volumes(
+            token,
+            {'status': 'Active', 'id': volume_id},
+        )
+        matching_volumes = [vol for vol in volumes if _volume_matches_identifier(vol, volume_id)]
+
+        if not matching_volumes:
+            volumes = _fetch_remotefs_volumes(token, {'status': 'Active'})
+            matching_volumes = [vol for vol in volumes if _volume_matches_identifier(vol, volume_id)]
+
+        if not matching_volumes and volume_id.startswith('netapp-volume-'):
+            matching_volumes = [{
+                'id': volume_id,
+                'name': volume_id,
+                'uniqueName': volume_id,
+            }]
+
+        return _discover_netapp_files_from_volumes(matching_volumes, token)
+
+    except Exception as e:
+        logger.warning(f"Error discovering NetApp volume {volume_id}: {e}")
         return [], []
 
 
@@ -239,6 +332,39 @@ def list_datasets_via_api(project_id):
         logger.error(f"Error listing datasets via API: {e}")
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Error listing datasets: {str(e)}', 'datasets': []}), 500
+
+
+def list_netapp_volume_files_by_id(volume_id):
+    """List supported files for a NetApp volume opened from the global volume view."""
+    token = get_passthrough_token()
+    if not token:
+        return jsonify({
+            'error': 'Authentication required. Please ensure you are accessing this app through Domino.',
+            'auth_error': True,
+            'datasets': []
+        }), 401
+
+    netapp_files, netapp_volumes = discover_netapp_files_for_volume(volume_id, token)
+    if not netapp_volumes:
+        return jsonify({
+            'error': f'NetApp volume with ID "{volume_id}" not found or not accessible',
+            'datasets': [],
+            'netapp_files': [],
+            'netapp_volumes': [],
+            'current_dataset': None,
+            'extension_mode': True,
+            'netapp_volume_id': volume_id,
+        }), 404
+
+    return jsonify({
+        'datasets': [],
+        'dataset_info': [],
+        'netapp_files': netapp_files,
+        'netapp_volumes': netapp_volumes,
+        'current_dataset': None,
+        'extension_mode': True,
+        'netapp_volume_id': volume_id,
+    })
 
 
 def list_dataset_files_by_id(dataset_id, snapshot_id=None):
