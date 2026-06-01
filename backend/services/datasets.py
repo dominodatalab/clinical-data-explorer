@@ -19,10 +19,12 @@ from contextlib import contextmanager
 import io
 import logging
 import os
+import posixpath
 import shutil
 import tempfile
 import traceback
 from pathlib import Path
+from urllib.parse import unquote
 
 import requests
 from flask import jsonify
@@ -614,6 +616,34 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
         return jsonify({'error': f'Error loading file from snapshot: {str(e)}'}), 500
 
 
+def _resolve_netapp_file_name(file_name, files, vol_name=None, volume_key=None):
+    candidate = unquote(str(file_name)).strip('/')
+    if candidate in files:
+        return candidate
+
+    candidates = []
+    for prefix in (vol_name, volume_key):
+        prefix = str(prefix or '').strip('/')
+        if prefix and candidate.startswith(f'{prefix}/'):
+            candidates.append(candidate[len(prefix) + 1:])
+
+    for candidate_without_prefix in candidates:
+        if candidate_without_prefix in files:
+            return candidate_without_prefix
+
+    basename = posixpath.basename(candidate)
+    if basename:
+        basename_matches = [f for f in files if posixpath.basename(f) == basename]
+        if len(basename_matches) == 1:
+            return basename_matches[0]
+        if len(basename_matches) > 1:
+            raise ValueError(
+                f'Multiple files named "{basename}" found in volume "{vol_name}". Use the full file path.'
+            )
+
+    return candidate
+
+
 def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None, token=None, session_id=None):
     """Download a file from a NetApp volume and load it into the MCP server.
     Args:
@@ -638,11 +668,6 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         return jsonify({'error': f'Invalid volume file reference: {dataset_display_name}'}), 400
 
     vol_name, file_name = parts
-
-    # There is no API for getting the metadata for a netapp file, so we can't know
-    # the exact size before download. Use the configured size limit as a worst-case
-    # bound so we still reject obviously unsafe memory conditions.
-    file_size_limits.enforce(file_name, file_size_limits.DATA_FILE_SIZE_LIMIT)
 
     try:
         from domino_data.netapp_volumes import NetAppVolumeClient
@@ -676,7 +701,15 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             file_objects = volume.list_files() or []
             files = [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
         else:
-            files = vol_client.list_files(volume_key)
+            file_objects = vol_client.list_files(volume_key) or []
+            files = [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
+
+        file_name = _resolve_netapp_file_name(file_name, files, vol_name, volume_key)
+
+        # There is no API for getting the metadata for a netapp file, so we can't know
+        # the exact size before download. Use the configured size limit as a worst-case
+        # bound so we still reject obviously unsafe memory conditions.
+        file_size_limits.enforce(file_name, file_size_limits.DATA_FILE_SIZE_LIMIT)
 
         # TODO is there a way to check for membership via the vol_client?
         if file_name not in files:
@@ -703,7 +736,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 
             if mcp_response.status_code == 200:
                 result = mcp_response.json()
-                result['dataset'] = dataset_display_name
+                result['dataset'] = f'{vol_name}/{file_name}'
                 # Identifier fields for governance lookup. Only when the load was
                 # pinned to a specific snapshot version can this match an attachment
                 # (r/w-head files cannot be attached to a bundle).
@@ -725,6 +758,8 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
+    except ValueError as e:
+        return jsonify({'error': str(e)}), 400
     except Exception as e:
         logger.error(f"Error loading NetApp volume file: {e}")
         logger.error(traceback.format_exc())

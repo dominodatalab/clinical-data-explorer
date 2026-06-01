@@ -628,6 +628,102 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert not expected_path.parent.exists()
 
 
+def test_load_netapp_volume_file_resolves_unique_nested_path_from_basename(monkeypatch, tmp_path):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    monkeypatch.setattr(services, "clear_history", lambda session_id: None)
+
+    enforce_calls = []
+    monkeypatch.setattr(
+        services.file_size_limits,
+        "enforce",
+        lambda file_name, file_size: enforce_calls.append((file_name, file_size)),
+    )
+
+    netapp_client = install_fake_netapp_client(
+        monkeypatch,
+        {"vol-123": ["reports/visit.csv", "adsl.csv"]},
+        {
+            "reports/visit.csv": b"VISIT,VALUE\n1,10\n",
+            "adsl.csv": b"USUBJID\n01\n",
+        },
+    )
+
+    expected_path = (
+        tmp_path
+        / "domino_api_datasets"
+        / "netapp"
+        / "vol-123"
+        / "unset_snapshot_id"
+        / "reports"
+        / "visit.csv"
+    )
+
+    def fake_mcp_post(path, params, session_id=None):
+        assert path == "/dataset/load"
+        assert session_id == "sid-netapp"
+        temp_path = Path(params["file_snapshot_path"])
+        assert temp_path == expected_path
+        assert temp_path.read_bytes() == b"VISIT,VALUE\n1,10\n"
+        return _FakeResponse(200, {"loaded": True})
+
+    monkeypatch.setattr(services, "mcp_post", fake_mcp_post)
+
+    response = _call_service(
+        app,
+        services.load_netapp_volume_file,
+        "Safety Volume/visit.csv",
+        "vol-123",
+    )
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "loaded": True,
+        "dataset": "Safety Volume/reports/visit.csv",
+        "sourceType": "netapp",
+        "volumeId": "nv-1",
+        "governanceFilename": "visit.csv",
+    }
+    assert netapp_client["downloaded_files"] == ["reports/visit.csv"]
+    assert enforce_calls == [("reports/visit.csv", services.file_size_limits.DATA_FILE_SIZE_LIMIT)]
+    assert not expected_path.exists()
+    assert not expected_path.parent.exists()
+
+
+def test_load_netapp_volume_file_rejects_ambiguous_basename(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    monkeypatch.setattr(services, "clear_history", lambda session_id: None)
+
+    install_fake_netapp_client(
+        monkeypatch,
+        {"vol-123": ["reports/visit.csv", "exports/visit.csv"]},
+        {
+            "reports/visit.csv": b"VISIT,VALUE\n1,10\n",
+            "exports/visit.csv": b"VISIT,VALUE\n2,20\n",
+        },
+    )
+
+    response = _call_service(
+        app,
+        services.load_netapp_volume_file,
+        "Safety Volume/visit.csv",
+        "vol-123",
+    )
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "error": 'Multiple files named "visit.csv" found in volume "Safety Volume". Use the full file path.'
+    }
+
+
 def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_omitted(
     monkeypatch,
     tmp_path,
