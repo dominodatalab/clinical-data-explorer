@@ -45,7 +45,7 @@ export function loadColumnLabels() {
         .catch(async error => {
             console.error('Error loading column labels:', error);
             const message = await getApiErrorMessage(error, 'Friendly names will be unavailable.');
-            displayMessage(`Error loading column labels: ${message}`, 'system');
+            showErrorBanner(`Error loading column labels: ${message}`);
             state.labelsAvailable = false;
             labelToggleContainer.style.display = 'none';
         });

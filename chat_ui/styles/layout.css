@@ -18,6 +18,11 @@
     animation: slideDown 0.3s ease-out;
 }
 
+.error-banner {
+    background: red;
+    cursor: pointer;
+}
+
 .loading-banner.visible {
     display: block;
 }

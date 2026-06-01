@@ -325,10 +325,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (tableEmptyState) tableEmptyState.classList.remove('hidden');
                 } else if (error && error.response) {
                     const message = await getApiErrorMessage(error, `HTTP ${error.status}`);
-                    displayMessage(`Error loading datasets: ${message}`, 'system');
+                    showErrorBanner(`Error loading datasets: ${message}`);
                 } else {
                     const message = await getApiErrorMessage(error, 'Make sure the server is running.');
-                    displayMessage(`Error loading datasets: ${message}`, 'system');
+                    showErrorBanner(`Error loading datasets: ${message}`);
                 }
             });
     }
@@ -583,7 +583,7 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error:', error);
             const prefix = (error.status === 401 || error.status === 403) ? 'Access denied: ' : 'Error loading dataset: ';
             const message = await getApiErrorMessage(error, 'Make sure the server is running.');
-            displayMessage(`${prefix}${message}`, 'system');
+            showErrorBanner(`${prefix}${message}`);
         })
         .finally(() => {
             browseBtn.disabled = false;
@@ -591,6 +591,23 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+        // Loading banner functions
+    function showErrorBanner(message) {
+        const banner = document.getElementById('error-banner');
+        const text = document.getElementById('error-banner-text');
+        if (banner && text) {
+            text.textContent = message || 'Sorry, something went wrong...';
+            banner.classList.add('visible');
+        }
+        banner.onclick = hideErrorBanner;
+    }
+
+    function hideErrorBanner() {
+        const banner = document.getElementById('error-banner');
+        if (banner) {
+            banner.classList.remove('visible');
+        }
+    }
 
     // Loading banner functions
     function showLoadingBanner(message) {

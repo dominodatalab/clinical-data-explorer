@@ -298,7 +298,7 @@ async function fetchAutocomplete() {
     } catch (e) {
         console.error('Autocomplete error:', e);
         const message = await getApiErrorMessage(e, 'Could not load autocomplete values.');
-        displayMessage(`Autocomplete error: ${message}`, 'system');
+        showErrorBanner(`Autocomplete error: ${message}`);
     }
 }
 
