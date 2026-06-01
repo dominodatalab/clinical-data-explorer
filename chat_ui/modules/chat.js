@@ -247,13 +247,7 @@ function renderChartError(containerId, message) {
     container.replaceChildren(errorElement);
 }
 
-/**
- * @param text
- * @param sender
- * @param charts
- * @param type - The type of the message. error messages are dismissable
- */
-export function displayMessage(text, sender, charts = null, type = "info") {
+export function displayMessage(text, sender, charts = null) {
     // Lazy-resolve chatBox so callers that fire before initChat()
     // (e.g. very-early dataset-load error paths) still work.
     if (!chatBox) {
