@@ -59,7 +59,8 @@ def list_datasets():
 
     netapp_volume_id = request.args.get('netAppVolumeId')
     if netapp_volume_id:
-        return list_netapp_volume_files_by_id(netapp_volume_id)
+        netapp_snapshot_id = request.args.get('netAppVolumeSnapshotId')
+        return list_netapp_volume_files_by_id(netapp_volume_id, netapp_snapshot_id)
 
     # Normal mode: list files from local filesystem
     try:

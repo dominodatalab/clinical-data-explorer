@@ -227,6 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
             datasetsUrl = apiUrl('datasets') + '?projectId=' + encodeURIComponent(state.extensionProjectId);
         } else if (state.extensionNetAppVolumeId) {
             datasetsUrl = apiUrl('datasets') + '?netAppVolumeId=' + encodeURIComponent(state.extensionNetAppVolumeId);
+            if (state.extensionNetAppVolumeSnapshotId) {
+                datasetsUrl += '&netAppVolumeSnapshotId=' + encodeURIComponent(state.extensionNetAppVolumeSnapshotId);
+            }
         } else {
             datasetsUrl = apiUrl('datasets');
         }
