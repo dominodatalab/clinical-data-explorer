@@ -50,7 +50,7 @@ bp = Blueprint('data', __name__)
 
 
 @bp.route('/dataset/load', methods=['POST'])
-def load_dataset():
+async def load_dataset():
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
     request_json = request.get_json(silent=True) or {}
     dataset_name = request_json.get('dataset')

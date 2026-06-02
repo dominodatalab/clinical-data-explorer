@@ -834,6 +834,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 
 
 def process_dataset_load_request(load_request: DatasetLoadRequest):
+    # TODO make async?
     """Process a queued dataset-load request through the appropriate load path."""
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
