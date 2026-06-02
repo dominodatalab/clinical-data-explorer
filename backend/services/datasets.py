@@ -26,6 +26,14 @@ from pathlib import Path
 
 import requests
 from flask import jsonify
+from werkzeug.exceptions import (
+    BadGateway,
+    Forbidden,
+    HTTPException,
+    InternalServerError,
+    NotFound,
+    Unauthorized,
+)
 
 from backend import config
 from backend.auth import (
@@ -80,72 +88,65 @@ def _fetch_remotefs_volumes(token, params):
         logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
         return []
 
-    try:
-        response = requests.get(
-            f'{remotefs_host}/remotefs/v1/volumes',
-            params=params,
-            headers={'Authorization': f'Bearer {token}'},
-            timeout=30,
-        )
+    response = requests.get(
+        f'{remotefs_host}/remotefs/v1/volumes',
+        params=params,
+        headers={'Authorization': f'Bearer {token}'},
+        timeout=30,
+    )
 
-        if response.status_code != 200:
-            logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
-            return []
+    if response.status_code != 200:
+        logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
+        _raise_remotefs_http_exception(response, "NetApp volumes")
 
-        volumes_data = response.json()
-        return volumes_data if isinstance(volumes_data, list) else volumes_data.get('data', volumes_data.get('volumes', []))
-
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
-        return []
+    volumes_data = response.json()
+    return volumes_data if isinstance(volumes_data, list) else volumes_data.get('data', volumes_data.get('volumes', []))
 
 
 def _fetch_remotefs_volume(volume_id, token):
     remotefs_host = _get_remotefs_host()
     if not remotefs_host:
-        logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
-        return None
+        raise InternalServerError("RemoteFS host is not configured")
 
-    try:
-        response = requests.get(
-            f'{remotefs_host}/remotefs/v1/volumes/{volume_id}',
-            headers={'Authorization': f'Bearer {token}'},
-            timeout=30,
-        )
+    response = requests.get(
+        f'{remotefs_host}/remotefs/v1/volumes/{volume_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        timeout=30,
+    )
 
-        if response.status_code != 200:
-            logger.warning(f"NetApp volume API returned {response.status_code}: {response.text[:200]}")
-            return None
+    if response.status_code != 200:
+        logger.warning(f"NetApp volume API returned {response.status_code}: {response.text[:200]}")
+        _raise_remotefs_http_exception(response, f'NetApp volume "{volume_id}"')
 
-        return response.json()
-
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
-        return None
+    return response.json()
 
 
 def _fetch_remotefs_snapshot(snapshot_id, token):
     remotefs_host = _get_remotefs_host()
     if not remotefs_host:
-        logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp snapshot discovery")
-        return None
+        raise InternalServerError("RemoteFS host is not configured")
 
-    try:
-        response = requests.get(
-            f'{remotefs_host}/remotefs/v1/snapshots/{snapshot_id}',
-            headers={'Authorization': f'Bearer {token}'},
-            timeout=30,
-        )
+    response = requests.get(
+        f'{remotefs_host}/remotefs/v1/snapshots/{snapshot_id}',
+        headers={'Authorization': f'Bearer {token}'},
+        timeout=30,
+    )
 
-        if response.status_code != 200:
-            logger.warning(f"NetApp snapshot API returned {response.status_code}: {response.text[:200]}")
-            return None
+    if response.status_code != 200:
+        logger.warning(f"NetApp snapshot API returned {response.status_code}: {response.text[:200]}")
+        _raise_remotefs_http_exception(response, f'NetApp snapshot "{snapshot_id}"')
 
-        return response.json()
+    return response.json()
 
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to RemoteFS service for NetApp snapshot discovery")
-        return None
+
+def _raise_remotefs_http_exception(response, resource_name):
+    if response.status_code == 401:
+        raise Unauthorized(f'Authentication failed while accessing {resource_name}')
+    if response.status_code == 403:
+        raise Forbidden(f'Access denied while accessing {resource_name}')
+    if response.status_code == 404:
+        raise NotFound(f'{resource_name} not found or not accessible')
+    raise BadGateway(f'RemoteFS returned HTTP {response.status_code} while accessing {resource_name}')
 
 
 def _netapp_volume_metadata(vol):
@@ -221,6 +222,10 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
                         'volume_name': volume_meta['name'],
                         'volume_id': volume_meta['id'],
                     })
+        except HTTPException:
+            raise
+        except requests.exceptions.ConnectionError:
+            raise
         except Exception as e:
             logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
 
@@ -239,32 +244,20 @@ def discover_netapp_files_for_project(project_id, token):
         netAppVolumeId in the URL when the target file lives only in a
         non-current snapshot.
     """
-    try:
-        volumes = _fetch_remotefs_volumes(
-            token,
-            {'status': 'Active', 'project_id': project_id},
-        )
-        return _discover_netapp_files_from_volumes(volumes, token)
-
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
-        return [], []
-    except Exception as e:
-        logger.warning(f"Error discovering NetApp volumes: {e}")
-        return [], []
+    volumes = _fetch_remotefs_volumes(
+        token,
+        {'status': 'Active', 'project_id': project_id},
+    )
+    return _discover_netapp_files_from_volumes(volumes, token)
 
 
 def discover_netapp_files_for_volume(volume_id, token, snapshot_id=None):
     """Discover one accessible NetApp volume and its r/w-head supported files."""
-    try:
-        volume = _fetch_remotefs_volume(volume_id, token)
-        matching_volumes = [volume] if _volume_matches_identifier(volume, volume_id) else []
+    volume = _fetch_remotefs_volume(volume_id, token)
+    if not _volume_matches_identifier(volume, volume_id):
+        raise NotFound(f'NetApp volume "{volume_id}" not found or not accessible')
 
-        return _discover_netapp_files_from_volumes(matching_volumes, token, snapshot_id)
-
-    except Exception as e:
-        logger.warning(f"Error discovering NetApp volume {volume_id}: {e}")
-        return [], []
+    return _discover_netapp_files_from_volumes([volume], token, snapshot_id)
 
 
 def list_datasets_via_api(project_id):
@@ -333,22 +326,8 @@ def list_datasets_via_api(project_id):
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
 
-        # Also discover NetApp volume files (and the volume registry) for
-        # this project. The volume registry lets the netapp deeplink flow
-        # resolve a netAppVolumeId from the URL even when the target file
-        # only exists in a non-current snapshot.
-        netapp_files, netapp_volumes = discover_netapp_files_for_project(project_id, token)
-
-        return jsonify({
-            'datasets': file_list,
-            'dataset_info': dataset_info,
-            'netapp_files': netapp_files,
-            'netapp_volumes': netapp_volumes,
-            'current_dataset': None,
-            'extension_mode': True,
-            'project_id': project_id
-        })
-
+    except HTTPException:
+        raise
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
@@ -357,29 +336,31 @@ def list_datasets_via_api(project_id):
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Error listing datasets: {str(e)}', 'datasets': []}), 500
 
+    # Also discover NetApp volume files (and the volume registry) for this
+    # project. NetApp discovery errors should propagate so the app's exception
+    # middleware can return the standardized error shape.
+    netapp_files, netapp_volumes = discover_netapp_files_for_project(project_id, token)
+
+    return jsonify({
+        'datasets': file_list,
+        'dataset_info': dataset_info,
+        'netapp_files': netapp_files,
+        'netapp_volumes': netapp_volumes,
+        'current_dataset': None,
+        'extension_mode': True,
+        'project_id': project_id
+    })
+
 
 def list_netapp_volume_files_by_id(volume_id, snapshot_id=None):
     """List supported files for a NetApp volume opened from the global volume view."""
     token = get_passthrough_token()
     if not token:
-        return jsonify({
-            'error': 'Authentication required. Please ensure you are accessing this app through Domino.',
-            'auth_error': True,
-            'datasets': []
-        }), 401
+        raise Unauthorized("Authentication required. Please ensure you are accessing this app through Domino.")
 
     netapp_files, netapp_volumes = discover_netapp_files_for_volume(volume_id, token, snapshot_id)
     if not netapp_volumes:
-        return jsonify({
-            'error': f'NetApp volume with ID "{volume_id}" not found or not accessible',
-            'datasets': [],
-            'netapp_files': [],
-            'netapp_volumes': [],
-            'current_dataset': None,
-            'extension_mode': True,
-            'netapp_volume_id': volume_id,
-            'netapp_volume_snapshot_id': snapshot_id,
-        }), 404
+        raise NotFound(f'NetApp volume with ID "{volume_id}" not found or not accessible')
 
     return jsonify({
         'datasets': [],

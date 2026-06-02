@@ -52,7 +52,7 @@ export const state = {
     cachedDatasetListResponse: null,
     fileBrowserState: {
         isOpen: false,
-        mode: null,            // 'local' | 'extension-project' | 'extension-dataset' | 'extension-netapp'
+        mode: null,            // 'local' | 'extension-project' | 'extension-dataset'
         sources: [],           // [{id, name, type:'dataset'|'netapp'|'local', volumeKey?, volumeId?}]
         selectedSource: null,
         snapshots: [],

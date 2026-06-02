@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from flask import Flask, jsonify
+from werkzeug.exceptions import BadGateway, NotFound, Unauthorized
 
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
@@ -171,6 +172,26 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
     }
 
 
+def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
+
+    def fake_requests_get(url, headers=None, timeout=None):
+        return _FakeResponse(200, {"datasets": []})
+
+    def fake_discover(project_id, token):
+        raise BadGateway("RemoteFS returned HTTP 500 while accessing NetApp volumes")
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services, "discover_netapp_files_for_project", fake_discover)
+
+    with app.app_context(), pytest.raises(BadGateway, match="RemoteFS returned HTTP 500"):
+        services.list_datasets_via_api("proj-1")
+
+
 def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
 
@@ -323,6 +344,42 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
     }
 
 
+def test_fetch_remotefs_volumes_raises_http_exception_on_api_error(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(500, {"error": "boom"}),
+    )
+
+    with pytest.raises(BadGateway, match="RemoteFS returned HTTP 500"):
+        services._fetch_remotefs_volumes("test-token", {"status": "Active"})
+
+
+def test_discover_netapp_files_for_volume_raises_when_volume_is_missing(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(404, {"error": "not found"}),
+    )
+
+    with pytest.raises(NotFound, match='NetApp volume "nv-1" not found or not accessible'):
+        services.discover_netapp_files_for_volume("nv-1", "test-token")
+
+
 def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
@@ -380,6 +437,29 @@ def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
         "netapp_volume_snapshot_id": "snap-7",
     }
     assert discover_calls == [("nv-1", "test-token", "snap-7")]
+
+
+def test_list_netapp_volume_files_by_id_requires_authentication(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: None)
+
+    with pytest.raises(Unauthorized, match="Authentication required"):
+        services.list_netapp_volume_files_by_id("nv-1")
+
+
+def test_list_netapp_volume_files_by_id_raises_when_volume_is_not_returned(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(
+        services,
+        "discover_netapp_files_for_volume",
+        lambda *args, **kwargs: ([], []),
+    )
+
+    with pytest.raises(NotFound, match='NetApp volume with ID "nv-1" not found or not accessible'):
+        services.list_netapp_volume_files_by_id("nv-1")
 
 
 def test_list_dataset_files_by_id_uses_v1_single_dataset_endpoint(monkeypatch):

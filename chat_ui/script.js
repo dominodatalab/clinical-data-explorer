@@ -240,13 +240,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.cachedDatasetListResponse = data;
 
                 // Determine mode
+                state.fileBrowserState.mode = null;
                 if (state.extensionDatasetId) {
                     state.fileBrowserState.mode = 'extension-dataset';
                 } else if (state.extensionProjectId) {
                     state.fileBrowserState.mode = 'extension-project';
-                } else if (state.extensionNetAppVolumeId) {
-                    state.fileBrowserState.mode = 'extension-netapp';
-                } else {
+                } else if (!state.extensionNetAppVolumeId) {
                     state.fileBrowserState.mode = 'local';
                 }
 
