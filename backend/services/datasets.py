@@ -74,22 +74,6 @@ def _get_remotefs_host():
     return remotefs_host
 
 
-def _coerce_remotefs_volumes(value):
-    if isinstance(value, list):
-        return [v for v in value if isinstance(v, dict)]
-    if not isinstance(value, dict):
-        return []
-
-    for key in ('data', 'volumes', 'items', 'results', 'volume'):
-        if key in value:
-            return _coerce_remotefs_volumes(value[key])
-
-    if any(key in value for key in ('id', 'volumeId', 'volume_id', 'uniqueName', 'unique_name')):
-        return [value]
-
-    return []
-
-
 def _fetch_remotefs_volumes(token, params):
     remotefs_host = _get_remotefs_host()
     if not remotefs_host:
@@ -108,49 +92,32 @@ def _fetch_remotefs_volumes(token, params):
             logger.warning(f"NetApp volumes API returned {response.status_code}: {response.text[:200]}")
             return []
 
-        return _coerce_remotefs_volumes(response.json())
+        volumes_data = response.json()
+        return volumes_data if isinstance(volumes_data, list) else volumes_data.get('data', volumes_data.get('volumes', []))
 
     except requests.exceptions.ConnectionError:
         logger.warning("Could not connect to RemoteFS service for NetApp volume discovery")
         return []
 
 
-def _first_present(mapping, keys, default=''):
-    for key in keys:
-        value = mapping.get(key)
-        if value not in (None, ''):
-            return str(value)
-    return default
-
-
 def _netapp_volume_metadata(vol):
-    vol_id = _first_present(vol, ('id', 'volumeId', 'volume_id'))
-    vol_name = _first_present(
-        vol,
-        ('name', 'displayName', 'display_name', 'volumeName', 'volume_name'),
-        vol_id,
-    )
-    vol_unique_name = _first_present(
-        vol,
-        ('uniqueName', 'unique_name', 'apiName', 'api_name', 'volumeKey', 'volume_key'),
-    )
-
-    if not vol_unique_name and vol_name and vol_id:
-        vol_unique_name = f'netapp-volume-{vol_name}-{vol_id}'
-
-    if not vol_unique_name:
+    if not isinstance(vol, dict):
         return None
+
+    vol_name = vol.get('name', '')
+    vol_id = vol.get('id', '')
+    vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
 
     return {
         'id': vol_id,
-        'name': vol_name or vol_unique_name,
+        'name': vol_name,
         'unique_name': vol_unique_name,
     }
 
 
 def _volume_matches_identifier(vol, volume_id):
     meta = _netapp_volume_metadata(vol)
-    return bool(meta and volume_id in (meta['id'], meta['unique_name']))
+    return bool(meta and meta['id'] == volume_id)
 
 
 def _discover_netapp_files_from_volumes(volumes, token):
@@ -219,22 +186,8 @@ def discover_netapp_files_for_project(project_id, token):
 def discover_netapp_files_for_volume(volume_id, token):
     """Discover one accessible NetApp volume and its r/w-head supported files."""
     try:
-        volumes = _fetch_remotefs_volumes(
-            token,
-            {'status': 'Active', 'id': volume_id},
-        )
+        volumes = _fetch_remotefs_volumes(token, {'status': 'Active'})
         matching_volumes = [vol for vol in volumes if _volume_matches_identifier(vol, volume_id)]
-
-        if not matching_volumes:
-            volumes = _fetch_remotefs_volumes(token, {'status': 'Active'})
-            matching_volumes = [vol for vol in volumes if _volume_matches_identifier(vol, volume_id)]
-
-        if not matching_volumes and volume_id.startswith('netapp-volume-'):
-            matching_volumes = [{
-                'id': volume_id,
-                'name': volume_id,
-                'uniqueName': volume_id,
-            }]
 
         return _discover_netapp_files_from_volumes(matching_volumes, token)
 

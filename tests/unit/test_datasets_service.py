@@ -238,7 +238,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
     assert api_calls == [
         (
             "http://remotefs.example/remotefs/v1/volumes",
-            {"status": "Active", "id": "nv-1"},
+            {"status": "Active"},
             {"Authorization": "Bearer test-token"},
             30,
         )

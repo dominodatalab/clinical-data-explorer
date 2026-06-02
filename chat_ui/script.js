@@ -354,7 +354,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             const seenVolumes = new Set();
             for (const vol of netappVolumes) {
-                const volumeKey = vol.unique_name || vol.uniqueName || vol.volume_key || vol.volumeKey;
+                const volumeKey = vol.unique_name;
                 if (volumeKey && !seenVolumes.has(volumeKey)) {
                     seenVolumes.add(volumeKey);
                     sources.push({
@@ -362,7 +362,7 @@ document.addEventListener('DOMContentLoaded', () => {
                         name: vol.name || volumeKey,
                         type: 'netapp',
                         volumeKey: volumeKey,
-                        volumeId: vol.id || vol.volume_id || vol.volumeId || '',
+                        volumeId: vol.id || '',
                     });
                 }
             }
