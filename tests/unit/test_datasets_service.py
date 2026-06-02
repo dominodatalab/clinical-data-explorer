@@ -49,6 +49,25 @@ def _call_service(app, fn, *args, **kwargs):
         return app.make_response(fn(*args, **kwargs))
 
 
+def test_find_data_files_fallback_only_lists_repo_datasets_folder(monkeypatch, tmp_path):
+    services = _load_datasets_service(monkeypatch)
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    (datasets_dir / "local.csv").write_text("id\n1\n", encoding="utf-8")
+    (datasets_dir / "local.parquet").write_bytes(b"not used by discovery")
+    (datasets_dir / "notes.txt").write_text("ignore me", encoding="utf-8")
+    nested_dir = datasets_dir / "nested"
+    nested_dir.mkdir()
+    (nested_dir / "nested.csv").write_text("id\n2\n", encoding="utf-8")
+
+    monkeypatch.chdir(tmp_path)
+
+    assert sorted(services.find_data_files_fallback()) == [
+        "local.csv",
+        "local.parquet",
+    ]
+
+
 def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
