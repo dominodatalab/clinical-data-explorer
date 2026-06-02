@@ -27,13 +27,13 @@ from pathlib import Path
 import requests
 from flask import jsonify
 from werkzeug.exceptions import (
-    BadGateway,
     Forbidden,
     HTTPException,
     InternalServerError,
     NotFound,
     Unauthorized,
 )
+from werkzeug.wrappers import Response
 
 from backend import config
 from backend.auth import (
@@ -146,7 +146,12 @@ def _raise_remotefs_http_exception(response, resource_name):
         raise Forbidden(f'Access denied while accessing {resource_name}')
     if response.status_code == 404:
         raise NotFound(f'{resource_name} not found or not accessible')
-    raise BadGateway(f'RemoteFS returned HTTP {response.status_code} while accessing {resource_name}')
+    exc = HTTPException(
+        description=f'RemoteFS returned HTTP {response.status_code} while accessing {resource_name}',
+        response=Response(status=response.status_code),
+    )
+    exc.code = response.status_code
+    raise exc
 
 
 def _netapp_volume_metadata(vol):
@@ -222,10 +227,6 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
                         'volume_name': volume_meta['name'],
                         'volume_id': volume_meta['id'],
                     })
-        except HTTPException:
-            raise
-        except requests.exceptions.ConnectionError:
-            raise
         except Exception as e:
             logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
 
@@ -326,8 +327,6 @@ def list_datasets_via_api(project_id):
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
 
-    except HTTPException:
-        raise
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503

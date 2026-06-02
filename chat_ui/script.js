@@ -245,7 +245,9 @@ document.addEventListener('DOMContentLoaded', () => {
                     state.fileBrowserState.mode = 'extension-dataset';
                 } else if (state.extensionProjectId) {
                     state.fileBrowserState.mode = 'extension-project';
-                } else if (!state.extensionNetAppVolumeId) {
+                } else if (state.extensionNetAppVolumeId) {
+                    state.fileBrowserState.mode = 'extension-dataset';
+                } else {
                     state.fileBrowserState.mode = 'local';
                 }
 
