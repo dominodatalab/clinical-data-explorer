@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 from flask import Flask, jsonify
+from werkzeug.exceptions import HTTPException, NotFound, Unauthorized
 
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
@@ -169,6 +170,297 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
             "dataset-ADSL-ds-2",
         ],
     }
+
+
+def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
+
+    def fake_requests_get(url, headers=None, timeout=None):
+        return _FakeResponse(200, {"datasets": []})
+
+    def fake_discover(project_id, token):
+        raise HTTPException("RemoteFS returned HTTP 500 while accessing NetApp volumes")
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services, "discover_netapp_files_for_project", fake_discover)
+
+    with app.app_context(), pytest.raises(HTTPException, match="RemoteFS returned HTTP 500"):
+        services.list_datasets_via_api("proj-1")
+
+
+def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+
+    api_calls = []
+
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        return _FakeResponse(
+            200,
+            {
+                "id": "nv-1",
+                "name": "Safety Volume",
+                "uniqueName": "netapp-volume-Safety-Volume-nv-1",
+            },
+        )
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+
+    captured = install_fake_netapp_client(
+        monkeypatch,
+        {
+            "netapp-volume-Safety-Volume-nv-1": ["reports/adlb.csv", "notes.txt", "adam.xpt"],
+        },
+        {},
+    )
+
+    netapp_files, netapp_volumes = services.discover_netapp_files_for_volume("nv-1", "test-token")
+
+    assert netapp_files == [
+        {
+            "display_name": "Safety Volume/reports/adlb.csv",
+            "volume_key": "netapp-volume-Safety-Volume-nv-1",
+            "volume_name": "Safety Volume",
+            "volume_id": "nv-1",
+        },
+        {
+            "display_name": "Safety Volume/adam.xpt",
+            "volume_key": "netapp-volume-Safety-Volume-nv-1",
+            "volume_name": "Safety Volume",
+            "volume_id": "nv-1",
+        },
+    ]
+    assert netapp_volumes == [
+        {
+            "id": "nv-1",
+            "name": "Safety Volume",
+            "unique_name": "netapp-volume-Safety-Volume-nv-1",
+        }
+    ]
+    assert api_calls == [
+        (
+            "http://remotefs.example/remotefs/v1/volumes/nv-1",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        )
+    ]
+    assert captured == {
+        "tokens": ["test-token"],
+        "get_volume_calls": [],
+        "list_files_calls": ["netapp-volume-Safety-Volume-nv-1"],
+        "updated_snapshot_versions": [],
+        "downloaded_files": [],
+    }
+
+
+def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+
+    api_calls = []
+
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        if url.endswith("/volumes/nv-1"):
+            return _FakeResponse(
+                200,
+                {
+                    "id": "nv-1",
+                    "name": "Safety Volume",
+                    "uniqueName": "netapp-volume-Safety-Volume-nv-1",
+                },
+            )
+        if url.endswith("/snapshots/snap-2"):
+            return _FakeResponse(200, {"id": "snap-2", "version": 9})
+        return _FakeResponse(404, {"error": "not found"})
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+
+    captured = install_fake_netapp_client(
+        monkeypatch,
+        {
+            "netapp-volume-Safety-Volume-nv-1": ["reports/adlb.csv", "notes.txt"],
+        },
+        {},
+    )
+
+    netapp_files, netapp_volumes = services.discover_netapp_files_for_volume(
+        "nv-1",
+        "test-token",
+        "snap-2",
+    )
+
+    assert netapp_files == [
+        {
+            "display_name": "Safety Volume/reports/adlb.csv",
+            "volume_key": "netapp-volume-Safety-Volume-nv-1",
+            "volume_name": "Safety Volume",
+            "volume_id": "nv-1",
+        },
+    ]
+    assert netapp_volumes == [
+        {
+            "id": "nv-1",
+            "name": "Safety Volume",
+            "unique_name": "netapp-volume-Safety-Volume-nv-1",
+        }
+    ]
+    assert api_calls == [
+        (
+            "http://remotefs.example/remotefs/v1/volumes/nv-1",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "http://remotefs.example/remotefs/v1/snapshots/snap-2",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+    ]
+    assert captured == {
+        "tokens": ["test-token"],
+        "get_volume_calls": ["netapp-volume-Safety-Volume-nv-1"],
+        "list_files_calls": [],
+        "updated_snapshot_versions": ["9"],
+        "downloaded_files": [],
+    }
+
+
+def test_fetch_remotefs_volumes_raises_http_exception_on_api_error(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(500, {"error": "boom"}),
+    )
+
+    with pytest.raises(HTTPException, match="RemoteFS returned HTTP 500") as excinfo:
+        services._fetch_remotefs_volumes("test-token", {"status": "Active"})
+    assert excinfo.value.code == 500
+
+
+def test_discover_netapp_files_for_volume_raises_when_volume_is_missing(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(404, {"error": "not found"}),
+    )
+
+    with pytest.raises(NotFound, match='NetApp volume "nv-1" not found or not accessible'):
+        services.discover_netapp_files_for_volume("nv-1", "test-token")
+
+
+def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+
+    discover_calls = []
+
+    def fake_discover(volume_id, token, snapshot_id=None):
+        discover_calls.append((volume_id, token, snapshot_id))
+        return (
+            [
+                {
+                    "display_name": "Safety Volume/adsl.csv",
+                    "volume_key": "netapp-volume-Safety-Volume-nv-1",
+                    "volume_name": "Safety Volume",
+                    "volume_id": "nv-1",
+                }
+            ],
+            [
+                {
+                    "id": "nv-1",
+                    "name": "Safety Volume",
+                    "unique_name": "netapp-volume-Safety-Volume-nv-1",
+                }
+            ],
+        )
+
+    monkeypatch.setattr(services, "discover_netapp_files_for_volume", fake_discover)
+
+    response = _call_service(app, services.list_netapp_volume_files_by_id, "nv-1", "snap-7")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "datasets": [],
+        "dataset_info": [],
+        "netapp_files": [
+            {
+                "display_name": "Safety Volume/adsl.csv",
+                "volume_key": "netapp-volume-Safety-Volume-nv-1",
+                "volume_name": "Safety Volume",
+                "volume_id": "nv-1",
+            }
+        ],
+        "netapp_volumes": [
+            {
+                "id": "nv-1",
+                "name": "Safety Volume",
+                "unique_name": "netapp-volume-Safety-Volume-nv-1",
+            }
+        ],
+        "current_dataset": None,
+        "extension_mode": True,
+        "netapp_volume_id": "nv-1",
+        "netapp_volume_snapshot_id": "snap-7",
+    }
+    assert discover_calls == [("nv-1", "test-token", "snap-7")]
+
+
+def test_list_netapp_volume_files_by_id_requires_authentication(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: None)
+
+    with pytest.raises(Unauthorized, match="Authentication required"):
+        services.list_netapp_volume_files_by_id("nv-1")
+
+
+def test_list_netapp_volume_files_by_id_raises_when_volume_is_not_returned(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(
+        services,
+        "discover_netapp_files_for_volume",
+        lambda *args, **kwargs: ([], []),
+    )
+
+    with pytest.raises(NotFound, match='NetApp volume with ID "nv-1" not found or not accessible'):
+        services.list_netapp_volume_files_by_id("nv-1")
 
 
 def test_list_dataset_files_by_id_uses_v1_single_dataset_endpoint(monkeypatch):

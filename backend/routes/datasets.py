@@ -33,6 +33,7 @@ from backend.services.datasets import (
     find_data_files_fallback,
     list_dataset_files_by_id,
     list_datasets_via_api,
+    list_netapp_volume_files_by_id,
 )
 from backend.session import mcp_get
 
@@ -43,7 +44,7 @@ bp = Blueprint('datasets', __name__)
 
 @bp.route('/datasets', methods=['GET'])
 def list_datasets():
-    """List all available data files. In extension mode (projectId or datasetId param), uses Domino API."""
+    """List available data files. Extension mode uses projectId, datasetId, or netAppVolumeId."""
     # Dataset file context mode: list files from a specific dataset by ID
     # (used when opened via "Open with..." on a file)
     dataset_id = request.args.get('datasetId')
@@ -55,6 +56,11 @@ def list_datasets():
     project_id = request.args.get('projectId')
     if project_id:
         return list_datasets_via_api(project_id)
+
+    netapp_volume_id = request.args.get('netAppVolumeId')
+    if netapp_volume_id:
+        netapp_snapshot_id = request.args.get('netAppVolumeSnapshotId')
+        return list_netapp_volume_files_by_id(netapp_volume_id, netapp_snapshot_id)
 
     # Normal mode: list files from local filesystem
     try:
