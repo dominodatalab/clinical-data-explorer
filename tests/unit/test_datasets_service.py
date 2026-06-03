@@ -509,7 +509,7 @@ def test_list_dataset_files_by_id_uses_v1_single_dataset_endpoint(monkeypatch):
     }
 
 
-def test_data_file_path_builds_expected_path_and_retains_file_for_mcp_workers(monkeypatch, tmp_path):
+def test_data_file_path_builds_expected_path_and_cleans_up(monkeypatch, tmp_path):
     services = _load_datasets_service(monkeypatch)
 
     # Force the helper to build its temp tree under pytest's sandbox.
@@ -527,10 +527,9 @@ def test_data_file_path_builds_expected_path_and_retains_file_for_mcp_workers(mo
         expected_path.write_text("new dataset contents", encoding="utf-8")
         assert expected_path.read_text(encoding="utf-8") == "new dataset contents"
 
-    # The file remains available after the initial MCP load so another MCP
-    # worker can lazily reload it for the same session.
-    assert expected_path.exists()
-    assert expected_path.read_text(encoding="utf-8") == "new dataset contents"
+    # After the with-block exits, cache-backed cleanup should remove the file
+    # and prune the now-empty parent directories for this download path.
+    assert not expected_root.exists()
 
 
 def test_data_file_path_removes_clashing_file_without_touching_other_files(monkeypatch, tmp_path):
@@ -561,11 +560,10 @@ def test_data_file_path_removes_clashing_file_without_touching_other_files(monke
         assert temp_path_obj.read_text(encoding="utf-8") == "fresh contents"
 
     assert sibling_file.exists()
-    assert stale_file.exists()
-    assert stale_file.read_text(encoding="utf-8") == "fresh contents"
+    assert not stale_file.exists()
 
 
-def test_data_file_path_retains_partial_file_until_cache_expiration(monkeypatch, tmp_path):
+def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path):
     services = _load_datasets_service(monkeypatch)
 
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
@@ -580,11 +578,10 @@ def test_data_file_path_retains_partial_file_until_cache_expiration(monkeypatch,
             assert path_obj == expected_path
             assert expected_path.exists()
             # Simulate a failure after the download path has been created and
-            # partially written.
+            # partially written so we can prove the finally cleanup still runs.
             raise RuntimeError("download failed")
 
-    assert expected_path.exists()
-    assert expected_path.read_text(encoding="utf-8") == "partial contents"
+    assert not expected_root.exists()
 
 
 @pytest.mark.parametrize(
@@ -841,8 +838,8 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     assert validate_calls == [("snap-9", "reports/adsl.csv", "test-token", "https://domino.example")]
     assert clear_history_calls == ["sid-789"]
     assert mcp_paths == [expected_path]
-    assert expected_path.exists()
-    assert expected_path.read_bytes() == b"col1,col2\n1,2\n"
+    assert not expected_path.exists()
+    assert not expected_path.parent.exists()
 
 
 @pytest.mark.parametrize(
@@ -938,8 +935,8 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert clear_history_calls == ["sid-netapp"]
     assert enforce_calls == [("reports/visit.csv", services.file_size_limits.DATA_FILE_SIZE_LIMIT)]
     assert mcp_paths == [expected_path]
-    assert expected_path.exists()
-    assert expected_path.read_bytes() == b"VISIT,VALUE\n1,10\n"
+    assert not expected_path.exists()
+    assert not expected_path.parent.exists()
 
 
 def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_omitted(

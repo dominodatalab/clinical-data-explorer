@@ -89,15 +89,6 @@ def load_dataset():
         raise RequestEntityTooLarge(
             description=str(exc),
         ) from exc
-    except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
-        raise TooManyRequests(
-            description="Sorry, we can't process your dataset, this server is at capacity."
-        ) from exc
-
-    except file_size_limits.DataFileTooLarge as exc:
-        raise RequestEntityTooLarge(
-            description=str(exc),
-        ) from exc
 
 
 @bp.route('/dataset/metadata', methods=['GET'])
