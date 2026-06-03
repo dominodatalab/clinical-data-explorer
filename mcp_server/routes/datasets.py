@@ -29,7 +29,7 @@ import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
-from mcp_server.session import _get_session_dataset_name, get_current_df, get_current_metadata, load_df_for_session
+from mcp_server.session import _get_session_dataset_name, get_current_df, load_df_for_session
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
@@ -114,14 +114,6 @@ def get_dataset_info():
         "numeric_columns": numeric_cols,
         "categorical_columns": categorical_cols
     }
-
-
-@router.get("/dataset/metadata")
-def get_dataset_metadata():
-    """Return verbatim file/variable metadata embedded in the current dataset
-    file (CDISC Dataset-JSON header, or SAS .xpt/.sas7bdat labels). Returns
-    `available: False` with a message for formats that carry no metadata."""
-    return get_current_metadata()
 
 
 @router.get("/dataset/head")

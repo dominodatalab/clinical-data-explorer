@@ -1,17 +1,16 @@
 import contextvars
 from dataclasses import dataclass
 import logging
-from pathlib import Path
 import threading
 import time
-from typing import Dict, Optional
+from typing import Dict
 
 import pandas as pd
 from fastapi import HTTPException
 
 from mcp_server import dataframe_cache
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
-from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
+from mcp_server.services.data_loading import load_dataset
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +21,6 @@ _current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('sessi
 class LoadedDataEntry:
     file_snapshot_path: str
     last_accessed: float = 0
-    metadata: Optional[dict] = None
 
 
 _sessions: Dict[str, LoadedDataEntry] = {}
@@ -62,7 +60,6 @@ def set_session_dataframe(
     session_id: str,
     df: pd.DataFrame,
     file_snapshot_path: str,
-    metadata: Optional[dict] = None,
 ) -> None:
     try:
         dataframe_cache.save_to_cache(file_snapshot_path, df)
@@ -73,17 +70,16 @@ def set_session_dataframe(
         _sessions[session_id] = LoadedDataEntry(
             file_snapshot_path=file_snapshot_path,
             last_accessed=time.time(),
-            metadata=metadata,
         )
     _evict_stale_sessions()
 
 
-def get_session_entry(session_id: str) -> Optional[LoadedDataEntry]:
+def get_session_entry(session_id: str) -> LoadedDataEntry | None:
     with _sessions_lock:
         return _sessions.get(session_id)
 
 
-def get_session_dataset_name(session_id: str) -> Optional[str]:
+def get_session_dataset_name(session_id: str) -> str | None:
     session = get_session_entry(session_id)
     if session is None:
         return None
@@ -92,22 +88,12 @@ def get_session_dataset_name(session_id: str) -> Optional[str]:
 
 def load_df_for_session(session_id: str, file_snapshot_path: str) -> pd.DataFrame:
     df = load_dataset(file_snapshot_path)
-    metadata = extract_dataset_metadata(Path(file_snapshot_path))
-    set_session_dataframe(session_id, df, file_snapshot_path, metadata)
+    set_session_dataframe(session_id, df, file_snapshot_path)
     return df
 
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     return load_df_for_session(_current_session_id.get(), file_snapshot_path)
-
-
-def get_metadata_for_session(session_id: str) -> dict:
-    session = get_session_entry(session_id)
-    if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
-    if session.metadata is not None:
-        return session.metadata
-    return extract_dataset_metadata(Path(session.file_snapshot_path))
 
 
 def get_df_for_session(session_id: str) -> pd.DataFrame:

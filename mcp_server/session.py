@@ -61,11 +61,10 @@ def _cache_load_dataframe(session_id: str, file_snapshot_path: str) -> pd.DataFr
     return pickle.loads(response.content)
 
 
-def _cache_set_dataframe(session_id: str, df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None) -> None:
+def _cache_set_dataframe(session_id: str, df: pd.DataFrame, file_snapshot_path: str) -> None:
     payload = {
         "dataframe": df,
         "file_snapshot_path": file_snapshot_path,
-        "metadata": metadata,
     }
     response = requests.put(
         _cache_url(_session_path(session_id, "/dataframe")),
@@ -99,12 +98,12 @@ def _evict_stale_sessions():
     store._evict_stale_sessions()
 
 
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None = None):
+def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
     session_id = _current_session_id.get()
     if MCP_CACHE_SERVER_URL:
-        _cache_set_dataframe(session_id, df, file_snapshot_path, metadata)
+        _cache_set_dataframe(session_id, df, file_snapshot_path)
     else:
-        store.set_session_dataframe(session_id, df, file_snapshot_path, metadata)
+        store.set_session_dataframe(session_id, df, file_snapshot_path)
 
 
 def _get_session_dataset_name() -> str | None:
@@ -122,13 +121,6 @@ def load_df_for_session(session_id: str, file_snapshot_path: str) -> pd.DataFram
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     return load_df_for_session(_current_session_id.get(), file_snapshot_path)
-
-
-def get_current_metadata() -> dict:
-    session_id = _current_session_id.get()
-    if MCP_CACHE_SERVER_URL:
-        return _cache_get_json(session_id, "/metadata")
-    return store.get_metadata_for_session(session_id)
 
 
 def get_current_df() -> pd.DataFrame:
