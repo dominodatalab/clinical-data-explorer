@@ -63,9 +63,7 @@ async def load_dataset():
     if not dataset_name:
         return jsonify({'error': 'No dataset name provided'}), 400
 
-    try:
-        # TODO this could wait for a while. can we have a multi minute timeout on requests?
-        # should we have an expiration on requests?
+    async def helper():
         return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
             dataset_load_request_queue.DatasetLoadRequest(
                 dataset=dataset_name,
@@ -80,6 +78,20 @@ async def load_dataset():
             ),
             process_dataset_load_request,
         )
+
+    try:
+        # TODO this could wait for a while. can we have a multi minute timeout on requests?
+        # should we have an expiration on requests?
+        return await helper()
+    except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
+        raise TooManyRequests(
+            description="Sorry, we can't process your dataset, this server is at capacity."
+        ) from exc
+
+    except file_size_limits.DataFileTooLarge as exc:
+        raise RequestEntityTooLarge(
+            description=str(exc),
+        ) from exc
     except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
         raise TooManyRequests(
             description="Sorry, we can't process your dataset, this server is at capacity."
