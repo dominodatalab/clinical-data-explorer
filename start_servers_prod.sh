@@ -106,6 +106,7 @@ fi
 date; echo "Starting Flask App on port $FLASK_PORT..."
 uv run --locked gunicorn app:app \
     --bind "${FLASK_HOST}:${FLASK_PORT}" \
+    --worker-class gthread \
     --workers "$FLASK_WORKERS" \
     --threads "$FLASK_THREADS" \
     --timeout "$GUNICORN_TIMEOUT" \
