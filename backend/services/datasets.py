@@ -1040,20 +1040,18 @@ def validate_dataset_file_size(snapshot_id: str, file_path: str, token=None, api
 def data_file_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:
     """
     This creates a temporary path for downloading a dataset or netapp volume's file into
-    The temp dir is cleaned up after use and a file cache will handle removing any files that get orphaned while the pod
-    is still running.
+    A file cache handles removing files after its TTL expires. The file is
+    retained after the initial MCP load so other MCP worker processes can
+    lazily reload the dataset for the same browser session.
     """
     file_cache = get_file_cache()
     dataset_id = str(dataset_id)
     file_name = str(file_name)
     snapshot_id = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
 
-    try:
-        temp_path = file_cache.set(source_type, dataset_id, snapshot_id, file_name)
-        if temp_path.exists():
-            # remove the file contents that are there
-            Path(temp_path).write_text("")
+    temp_path = file_cache.set(source_type, dataset_id, snapshot_id, file_name)
+    if temp_path.exists():
+        # remove the file contents that are there
+        Path(temp_path).write_text("")
 
-        yield temp_path
-    finally:
-        file_cache.remove(source_type, dataset_id, snapshot_id, file_name)
+    yield temp_path

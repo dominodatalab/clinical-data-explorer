@@ -111,9 +111,12 @@ Configure the following environment variables in your Domino project settings:
 | `FLASK_WORKERS` | `1` | Gunicorn worker count. Keep this at `1` unless shared in-memory request state is removed or made external. |
 | `FLASK_THREADS` | `4` | Gunicorn thread count for handling concurrent web requests. |
 | `GUNICORN_TIMEOUT` | `120` | Gunicorn worker timeout in seconds. |
+| `MCP_CACHE_PORT` | `3332` | Port for the singleton MCP cache service. |
+| `MCP_CACHE_HOST` | `127.0.0.1` | Host interface for the singleton MCP cache service. |
+| `MCP_CACHE_SERVER_URL` | `http://127.0.0.1:3332` | URL used by MCP workers for shared session and DataFrame cache access. |
 | `MCP_PORT` | `3333` | Port for the MCP FastAPI/Uvicorn server. |
 | `MCP_HOST` | `0.0.0.0` | Host interface for the MCP FastAPI/Uvicorn server. |
-| `MCP_WORKERS` | `1` | Uvicorn worker count. Keep this at `1` because MCP sessions and loaded DataFrames are process-local. |
+| `MCP_WORKERS` | `1` | Uvicorn worker count. Multiple workers share session and DataFrame state through the MCP cache service. |
 | `MCP_SERVER_URL` | `http://127.0.0.1:3333` | URL used by the Flask backend when proxying requests to the MCP server. |
 
 #### Optional: Cache and Session Tuning
@@ -122,9 +125,9 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `DATA_FILE_CACHE_EXPIRATION_SECONDS` | `60` | How long backend download-file metadata entries are kept before cleanup runs. Applies to temporary files downloaded before handing them to the MCP server. |
+| `DATA_FILE_CACHE_EXPIRATION_SECONDS` | `900` | How long backend download-file metadata entries are kept before cleanup runs. Applies to temporary files downloaded before handing them to the MCP cache service. |
 | `DATA_FILE_CACHE_MAX_ITEM_COUNT` | `100` | Maximum number of backend download-file metadata entries to retain before older entries are evicted and cleaned up. |
-| `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. |
+| `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP cache service's in-memory DataFrame cache. |
 | `MCP_SESSION_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
 

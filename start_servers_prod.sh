@@ -28,6 +28,9 @@ if [ ! -d "datasets" ]; then
     mkdir -p datasets
 fi
 
+MCP_CACHE_HOST="${MCP_CACHE_HOST:-127.0.0.1}"
+MCP_CACHE_PORT="${MCP_CACHE_PORT:-3332}"
+
 MCP_HOST="${MCP_HOST:-0.0.0.0}"
 MCP_PORT="${MCP_PORT:-3333}"
 MCP_WORKERS="${MCP_WORKERS:-1}"
@@ -45,7 +48,11 @@ FORWARDED_ALLOW_IPS="${FORWARDED_ALLOW_IPS:-*}"
 if [ -z "${MCP_SERVER_URL:-}" ]; then
     export MCP_SERVER_URL="http://127.0.0.1:${MCP_PORT}"
 fi
+if [ -z "${MCP_CACHE_SERVER_URL:-}" ]; then
+    export MCP_CACHE_SERVER_URL="http://127.0.0.1:${MCP_CACHE_PORT}"
+fi
 
+CACHE_PID=""
 MCP_PID=""
 FLASK_PID=""
 
@@ -68,10 +75,12 @@ cleanup() {
     trap - INT TERM EXIT
     echo ""
     echo "Shutting down servers..."
-    terminate_tree "$MCP_PID"
     terminate_tree "$FLASK_PID"
-    wait "$MCP_PID" 2>/dev/null
+    terminate_tree "$MCP_PID"
+    terminate_tree "$CACHE_PID"
     wait "$FLASK_PID" 2>/dev/null
+    wait "$MCP_PID" 2>/dev/null
+    wait "$CACHE_PID" 2>/dev/null
     echo "Servers stopped."
     exit "$status"
 }
@@ -81,6 +90,25 @@ trap 'cleanup $?' EXIT
 
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
+
+date; echo "mcp cache start"
+echo "Starting MCP Cache Service on ${MCP_CACHE_HOST}:${MCP_CACHE_PORT}..."
+uv run --locked uvicorn mcp_cache_server.app:app \
+    --host "$MCP_CACHE_HOST" \
+    --port "$MCP_CACHE_PORT" \
+    --workers 1 \
+    --log-level "$UVICORN_LOG_LEVEL" &
+CACHE_PID=$!
+echo "MCP Cache Service started (PID: $CACHE_PID)"
+
+# Wait a moment for MCP cache service to start
+sleep 2
+
+# Check if MCP cache service is running
+if ! ps -p "$CACHE_PID" > /dev/null; then
+    echo "MCP Cache Service failed to start."
+    exit 1
+fi
 
 date; echo "mcp start"
 echo "Starting MCP Server on ${MCP_HOST}:${MCP_PORT}..."
@@ -131,6 +159,7 @@ echo "Both servers are running!"
 echo "=========================================="
 echo ""
 echo "MCP Server:     http://localhost:$MCP_PORT"
+echo "MCP Cache:      http://localhost:$MCP_CACHE_PORT"
 echo "Web Interface:  http://localhost:$FLASK_PORT"
 echo ""
 echo "MCP Server logs: console output below"
@@ -146,6 +175,10 @@ echo ""
 # xdg-open http://localhost:$FLASK_PORT  # Linux
 
 while true; do
+    if ! kill -0 "$CACHE_PID" 2>/dev/null; then
+        echo "MCP Cache Service exited unexpectedly."
+        cleanup 1
+    fi
     if ! kill -0 "$MCP_PID" 2>/dev/null; then
         echo "MCP Server exited unexpectedly."
         cleanup 1

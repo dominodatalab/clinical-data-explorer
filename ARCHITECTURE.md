@@ -11,26 +11,30 @@ services:
 ```text
 Browser UI
   -> Flask backend
-  -> MCP server
+  -> MCP server workers
+  -> MCP cache service
 ```
 
 The browser UI is the single-page app in `chat_ui/`. The Flask backend is the
 service created by `backend.app` and exposed through the top-level `app.py`
 entrypoint. It serves the UI, manages the browser session, handles
-Domino-facing work, and proxies analysis requests. The MCP server is the
+Domino-facing work, and proxies analysis requests. The MCP server workers are the
 service created by `mcp_server.app` and exposed through the top-level
-`data_analysis_mcp.py` entrypoint. It owns loaded dataset state and performs
-DataFrame-heavy operations such as filtering, summaries, and chart aggregation.
+`data_analysis_mcp.py` entrypoint. They perform DataFrame-heavy operations such as
+filtering, summaries, and chart aggregation. The MCP cache service is the
+singleton service created by `mcp_cache_server.app`; it owns loaded DataFrames
+and browser-session metadata so multiple MCP workers can serve the same session.
 
 ## Architectural Decisions
 
 ### Dataset State
 
 When a user loads a dataset, the Flask backend arranges access to the file and the
-MCP server reads it into an in-memory DataFrame.
+MCP cache service reads it into an in-memory DataFrame.
 
-Table and chart workflows then ask the MCP server for the specific
-page, summary, filtered result, or chart aggregate they need. This avoids
+Table and chart workflows then ask the MCP server workers for the specific
+page, summary, filtered result, or chart aggregate they need. The workers fetch
+the session's DataFrame from the MCP cache service. This avoids
 sending dataset files to the browser. This also means that the memory on the pod is taken up
 by datasets, so the app needs to have a large amount of memory resources and autoscaling may be helpful.
 
@@ -91,19 +95,20 @@ properties of the queue:
 
 ### Caches Are Process-Local
 
-The app uses several in-memory caches:
+The app uses several caches:
 
-- loaded DataFrames in the MCP server, to provide a database-like experience
-- browser-session metadata that maps session IDs to loaded datasets with a last used base expiration
+- loaded DataFrames in the MCP cache service, to provide a database-like experience
+- browser-session metadata in the MCP cache service that maps session IDs to loaded datasets with a last used base expiration
 - temporary downloaded file metadata used for cleanup after loading a file
 - chat message history per session
 - small browser-side UI caches for file browsing and summary stats
 
-These caches are not shared between separate backend processes, MCP server processes, or app pods.
+Loaded DataFrame and MCP session caches are shared by MCP workers through the singleton MCP cache
+service inside a pod. They are not shared across separate app pods.
 
 That decision has operational consequences:
 
-- production app worker count should be `1` until state is moved to shared storage
+- multiple MCP workers can serve the same session without duplicating the DataFrame cache
 - we rely on sticky sessions when autoscaling is turned on, so that state for each user stays on a single pod
 - cache and session limits must be sized for expected concurrent usage
 
@@ -123,7 +128,7 @@ Flask backend
   downloads or locates the file
   sends the file path to the MCP server
 
-MCP server
+MCP cache service
   reads the file into a DataFrame
   caches the DataFrame
   maps the browser session ID to the loaded dataset
@@ -188,8 +193,9 @@ means capacity planning matters.
 
 Important operational assumptions:
 
-- keep Flask backend and MCP server worker counts equal to `1`, which is aligned with the process-local
-  state model
+- keep the MCP cache service at one worker so it remains the singleton owner of session and DataFrame state
+- MCP server workers can be increased for request concurrency because they read session and DataFrame state
+  through the cache service
 - size memory for loaded DataFrames, not just raw source files. DataFrames may be ~5x bigger than source
 - configure dataset size limits according to the hardware tier
 - treat queues and caches as per-process safeguards, not global coordination

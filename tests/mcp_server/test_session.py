@@ -58,7 +58,7 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
         load_calls.append(file_snapshot_path)
         return reloaded_df
 
-    monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(session_module.store, "load_dataset", fake_load_dataset)
 
     df = session_module.get_current_df()
 
@@ -68,8 +68,8 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
 
 
 def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
-    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
-    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module.store, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.store.time, "time", lambda: 100.0)
     session_module._sessions.update(
         {
             "stale": session_module.LoadedDataEntry(file_snapshot_path="stale.csv", last_accessed=89.0),
@@ -84,9 +84,9 @@ def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
 
 
 def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
-    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
-    monkeypatch.setattr(session_module, "SESSION_MAX_COUNT", 2)
-    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module.store, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module.store, "SESSION_MAX_COUNT", 2)
+    monkeypatch.setattr(session_module.store.time, "time", lambda: 100.0)
     session_module._sessions.update(
         {
             "oldest": session_module.LoadedDataEntry(file_snapshot_path="one.csv", last_accessed=70.0),
@@ -102,7 +102,7 @@ def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
 
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
-    monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
+    monkeypatch.setattr(session_module.store.time, "time", lambda: 123.0)
     session_module._sessions["session-3"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
@@ -159,20 +159,32 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
     }
 
 
+def test_load_df_for_session_uses_explicit_session_id(monkeypatch):
+    reloaded_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_session_id.set("wrong-session")
+
+    monkeypatch.setattr(session_module.store, "load_dataset", lambda file_snapshot_path: reloaded_df)
+
+    df = session_module.load_df_for_session("right-session", "adsl.csv")
+
+    pd.testing.assert_frame_equal(df, reloaded_df)
+    assert "wrong-session" not in session_module._sessions
+    assert session_module._sessions["right-session"].file_snapshot_path == "adsl.csv"
+    pd.testing.assert_frame_equal(session_module.get_cache()["adsl.csv"], reloaded_df)
+
+
 def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app, monkeypatch, tmp_path):
     dataset = tmp_path / "slow.csv"
     dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
     load_started = threading.Event()
     release_load = threading.Event()
-    observed_session_ids = []
 
     def fake_load_dataset(file_snapshot_path):
-        observed_session_ids.append(session_module._current_session_id.get())
         load_started.set()
         assert release_load.wait(timeout=5)
         return pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
 
-    monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(session_module.store, "load_dataset", fake_load_dataset)
 
     async def run_requests():
         transport = httpx.ASGITransport(app=_mcp_app)
@@ -200,5 +212,4 @@ def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app,
     assert quick_response.status_code == 200
     assert load_was_still_running
     assert load_response.status_code == 200
-    assert observed_session_ids == ["slow-load-session"]
     assert session_module._sessions["slow-load-session"].file_snapshot_path == str(dataset)

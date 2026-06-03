@@ -1,170 +1,138 @@
-"""Per-session DataFrame storage + the middleware that wires sessions to requests.
+"""Session helpers for MCP routes.
 
-Extracted from `mcp_server/app.py` as step 2.3 of REFACTOR_PLAN.md §2
-(mirror of `backend/session.py` on the Flask side, but adapted for the
-FastAPI/Starlette middleware world).
-
-Each user session gets its own DataFrame so concurrent users don't clobber
-each other. The session ID comes from the `X-Session-Id` request header
-(set by the Flask proxy). A `"default"` session ID is used when no header
-is present (normal single-user mode). The active session ID is stored in
-a `contextvars.ContextVar` so it's correctly isolated per request even
-under concurrent async load.
-
-Per the plan watch-out for §2: the session store is module-level state that
-every route reaches via `get_current_df()`. After this extraction, every
-caller imports `get_current_df` from this module — there is no copy and
-no DataFrame-as-parameter passing.
+The authoritative session map and DataFrame cache live in
+`mcp_cache_server.store` or, in production, the separate MCP cache service
+configured by `MCP_CACHE_SERVER_URL`. MCP workers keep only request-local
+session context and fetch DataFrames from that singleton cache layer.
 """
-import contextvars
-from dataclasses import dataclass
-from functools import lru_cache
-import logging
-from pathlib import Path
-import threading
-import time
-from typing import Dict, Optional
+import pickle
+from urllib.parse import quote
 
 import pandas as pd
+import requests
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from mcp_server import dataframe_cache
-from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
-from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
+from mcp_cache_server import store
+from mcp_server.config import MCP_CACHE_SERVER_URL
 
-logger = logging.getLogger(__name__)
-
-
-# ===== SESSION-BASED DATASET STORAGE =====
-# Each user session gets its own DataFrame so concurrent users don't clobber each other.
-# Session ID comes from the X-Session-Id header (set by the Flask proxy).
-# A "default" session is used when no header is present (normal single-user mode).
-
-_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
-
-@dataclass
-class LoadedDataEntry:
-    file_snapshot_path: str
-    last_accessed: float = 0
-    # Verbatim file/variable metadata captured at load time. Stored here
-    # because Domino-sourced files are downloaded to a temp path that gets
-    # deleted right after load, so it can't be re-read on demand later.
-    metadata: Optional[dict] = None
-
-_sessions: Dict[str, LoadedDataEntry] = {}
-_sessions_lock = threading.RLock()
+_current_session_id = store._current_session_id
+LoadedDataEntry = store.LoadedDataEntry
+_sessions = store._sessions
 
 
-@lru_cache(maxsize=1)
-def _get_sessions():
-    return _sessions
+def _cache_url(path: str) -> str:
+    return f"{MCP_CACHE_SERVER_URL.rstrip('/')}{path}"
 
 
-def get_cache():
-    return dataframe_cache.get_cache()
+def _session_path(session_id: str, suffix: str) -> str:
+    return f"/sessions/{quote(session_id, safe='')}{suffix}"
+
+
+def _raise_for_cache_response(response: requests.Response) -> None:
+    if response.status_code < 400:
+        return
+    try:
+        detail = response.json().get("detail")
+    except ValueError:
+        detail = response.text
+    raise HTTPException(status_code=response.status_code, detail=detail)
+
+
+def _cache_get_json(session_id: str, suffix: str) -> dict:
+    response = requests.get(_cache_url(_session_path(session_id, suffix)), timeout=120)
+    _raise_for_cache_response(response)
+    return response.json()
+
+
+def _cache_get_dataframe(session_id: str) -> pd.DataFrame:
+    response = requests.get(_cache_url(_session_path(session_id, "/dataframe")), timeout=120)
+    _raise_for_cache_response(response)
+    return pickle.loads(response.content)
+
+
+def _cache_load_dataframe(session_id: str, file_snapshot_path: str) -> pd.DataFrame:
+    response = requests.post(
+        _cache_url(_session_path(session_id, "/load")),
+        params={"file_snapshot_path": file_snapshot_path},
+        timeout=120,
+    )
+    _raise_for_cache_response(response)
+    return pickle.loads(response.content)
+
+
+def _cache_set_dataframe(session_id: str, df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None) -> None:
+    payload = {
+        "dataframe": df,
+        "file_snapshot_path": file_snapshot_path,
+        "metadata": metadata,
+    }
+    response = requests.put(
+        _cache_url(_session_path(session_id, "/dataframe")),
+        data=pickle.dumps(payload, protocol=pickle.HIGHEST_PROTOCOL),
+        timeout=120,
+    )
+    _raise_for_cache_response(response)
+
 
 class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
         session_id = request.headers.get("x-session-id", "default")
         _current_session_id.set(session_id)
-        with _sessions_lock:
-            session = _get_sessions().get(session_id)
-            if session is not None:
-                session.last_accessed = time.time()
+        if MCP_CACHE_SERVER_URL:
+            try:
+                requests.post(_cache_url(_session_path(session_id, "/touch")), timeout=5)
+            except requests.RequestException:
+                pass
+        else:
+            store.touch_session(session_id)
         response = await call_next(request)
         return response
 
 
+def get_cache():
+    return store.get_cache()
+
+
 def _evict_stale_sessions():
-    """Remove sessions that haven't been accessed recently."""
-    sessions = _get_sessions()
-    now = time.time()
-    with _sessions_lock:
-        stale = [sid for sid, s in sessions.items()
-                 if now - s.last_accessed > SESSION_MAX_AGE]
-        for sid in stale:
-            logger.info(f"Evicting stale session: {sid}")
-            del sessions[sid]
-        # If still over limit, evict oldest
-        if len(sessions) > SESSION_MAX_COUNT:
-            by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
-            for sid, _ in by_age[:len(sessions) - SESSION_MAX_COUNT]:
-                logger.info(f"Evicting session (over limit): {sid}")
-                del sessions[sid]
+    store._evict_stale_sessions()
 
 
-def _set_session_entry(session_id: str, entry: LoadedDataEntry) -> None:
-    with _sessions_lock:
-        _get_sessions()[session_id] = entry
-
-
-def _get_session_entry(session_id: str) -> Optional[LoadedDataEntry]:
-    with _sessions_lock:
-        return _get_sessions().get(session_id)
-
-
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
-    """Store a DataFrame for the current session."""
+def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None = None):
     session_id = _current_session_id.get()
-    try:
-        dataframe_cache.save_to_cache(file_snapshot_path, df)
-    except dataframe_cache.DataFrameCacheValueTooLarge as exc:
-        raise HTTPException(status_code=413, detail=str(exc)) from exc
-
-    _set_session_entry(
-        session_id,
-        LoadedDataEntry(
-            file_snapshot_path=file_snapshot_path,
-            last_accessed=time.time(),
-            metadata=metadata,
-        ),
-    )
-    _evict_stale_sessions()
+    if MCP_CACHE_SERVER_URL:
+        _cache_set_dataframe(session_id, df, file_snapshot_path, metadata)
+    else:
+        store.set_session_dataframe(session_id, df, file_snapshot_path, metadata)
 
 
-def _get_session_dataset_name() -> Optional[str]:
-    """Get the dataset name for the current session."""
+def _get_session_dataset_name() -> str | None:
     session_id = _current_session_id.get()
-    session = _get_session_entry(session_id)
-    if session:
-        return session.file_snapshot_path
-    return None
+    if MCP_CACHE_SERVER_URL:
+        return _cache_get_json(session_id, "/dataset_name").get("dataset")
+    return store.get_session_dataset_name(session_id)
+
+
+def load_df_for_session(session_id: str, file_snapshot_path: str) -> pd.DataFrame:
+    if MCP_CACHE_SERVER_URL:
+        return _cache_load_dataframe(session_id, file_snapshot_path)
+    return store.load_df_for_session(session_id, file_snapshot_path)
 
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
-    """Load a dataset file for the current session and cache it."""
-    df = load_dataset(file_snapshot_path)
-    # Capture verbatim file metadata while the file is still on disk (Domino
-    # temp files are deleted right after load).
-    metadata = extract_dataset_metadata(Path(file_snapshot_path))
-    _set_current_df(df, file_snapshot_path, metadata)
-    return df
+    return load_df_for_session(_current_session_id.get(), file_snapshot_path)
 
 
 def get_current_metadata() -> dict:
-    """Return the verbatim file metadata captured for the current session."""
     session_id = _current_session_id.get()
-    session = _get_session_entry(session_id)
-    if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
-    if session.metadata is not None:
-        return session.metadata
-    # Fallback for sessions loaded before metadata capture existed: extract
-    # now if the source file is still present (no-op safe — never raises).
-    return extract_dataset_metadata(Path(session.file_snapshot_path))
+    if MCP_CACHE_SERVER_URL:
+        return _cache_get_json(session_id, "/metadata")
+    return store.get_metadata_for_session(session_id)
 
 
 def get_current_df() -> pd.DataFrame:
-    """Get the current dataframe for this session, reloading on cache miss."""
     session_id = _current_session_id.get()
-    session = _get_session_entry(session_id)
-    if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
-
-    df = dataframe_cache.get_from_cache(session.file_snapshot_path)
-    if df is None:
-        logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
-        return load_current_df(session.file_snapshot_path)
-    return df
+    if MCP_CACHE_SERVER_URL:
+        return _cache_get_dataframe(session_id)
+    return store.get_df_for_session(session_id)
