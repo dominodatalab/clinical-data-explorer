@@ -55,7 +55,10 @@ async def load_dataset_endpoint(
     file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
 ):
     """Load a specific dataset file and return column metadata."""
-    df = load_current_df(file_snapshot_path)
+    async def helper():
+        return load_current_df(file_snapshot_path)
+
+    df = await helper()
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)

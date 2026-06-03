@@ -318,7 +318,9 @@ async def get_histogram_data(request: HistogramRequest):
     Returns bin edges and counts suitable for rendering a standard histogram.
     For categorical columns, returns value counts instead.
     """
-    df = get_current_df()
+    async def helper():
+        return get_current_df()
+    df = await helper()
 
     if request.column not in df.columns:
         raise HTTPException(status_code=404, detail=f"Column '{request.column}' not found")
