@@ -26,6 +26,7 @@ and `data` tracks the plan's target layout, not the URL pluralization.
 """
 import logging
 
+import time
 import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
@@ -51,6 +52,7 @@ bp = Blueprint('data', __name__)
 
 @bp.route('/dataset/load', methods=['POST'])
 async def load_dataset():
+    s = time.time()
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
     request_json = request.get_json(silent=True) or {}
     dataset_name = request_json.get('dataset')
@@ -64,7 +66,8 @@ async def load_dataset():
         return jsonify({'error': 'No dataset name provided'}), 400
 
     async def helper():
-        return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
+        s = time.time()
+        res = dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
             dataset_load_request_queue.DatasetLoadRequest(
                 dataset=dataset_name,
                 session_id=get_session_id(),
@@ -78,6 +81,8 @@ async def load_dataset():
             ),
             process_dataset_load_request,
         )
+        print("LOAD DATASET", time.time() - s)
+        return res
 
     try:
         # TODO this could wait for a while. can we have a multi minute timeout on requests?

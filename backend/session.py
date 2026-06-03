@@ -15,6 +15,7 @@ import uuid
 
 import requests
 from flask import session
+import time
 
 from backend import config
 
@@ -32,16 +33,22 @@ def get_session_id():
 
 
 def mcp_get(path, session_id=None, **kwargs):
+    s = time.time()
     """GET request to MCP server with session ID header."""
     headers = dict(kwargs.pop('headers', None) or {})
     headers['X-Session-Id'] = session_id or get_session_id()
     kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
-    return requests.get(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    res = requests.get(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    print(f"mcp_get {path} took {time.time() - s} seconds")
+    return res
 
 
 def mcp_post(path, session_id=None, **kwargs):
+    s = time.time()
     """POST request to MCP server with session ID header."""
     headers = dict(kwargs.pop('headers', None) or {})
     headers['X-Session-Id'] = session_id or get_session_id()
     kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
-    return requests.post(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    res = requests.post(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    print(f"mcp_post {path} took {time.time() - s} seconds")
+    return res
