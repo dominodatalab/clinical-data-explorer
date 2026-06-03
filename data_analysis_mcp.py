@@ -8,7 +8,10 @@ keep working unchanged.
 
 See REFACTOR_PLAN.md §2 for the target layout.
 """
-from mcp_server.app import app, _sessions, _convert_arrow_types  # re-exported for back-compat
+from mcp_server.app import app, _convert_arrow_types  # re-exported for back-compat
+# Test/back-compat only. Production MCP workers must not use this in-process
+# session dict; they must use the MCP cache service through MCP_CACHE_SERVER_URL.
+from mcp_cache_server.store import _sessions  # re-exported for back-compat
 
 __all__ = ["app", "_sessions", "_convert_arrow_types"]
 

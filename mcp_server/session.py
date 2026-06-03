@@ -1,11 +1,13 @@
 """Session helpers for MCP routes.
 
-The authoritative session map and DataFrame cache live in
-`mcp_cache_server.store` or, in production, the separate MCP cache service
-configured by `MCP_CACHE_SERVER_URL`. MCP workers keep only request-local
-session context and fetch DataFrames from that singleton cache layer.
+In production, the authoritative session map and DataFrame cache live in the
+separate MCP cache service configured by `MCP_CACHE_SERVER_URL`. MCP workers
+keep only request-local session context and fetch DataFrames from that
+singleton cache layer.
 """
+import contextvars
 import pickle
+import warnings
 from urllib.parse import quote
 
 import pandas as pd
@@ -13,12 +15,23 @@ import requests
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
-from mcp_cache_server import store
 from mcp_server.config import MCP_CACHE_SERVER_URL
 
-_current_session_id = store._current_session_id
-LoadedDataEntry = store.LoadedDataEntry
-_sessions = store._sessions
+_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
+
+
+def _get_local_store():
+    # Single-worker dev/test fallback only. Production MCP workers must use the
+    # singleton MCP cache service so session and DataFrame state is shared
+    # across worker processes.
+    warnings.warn(
+        "Using in-process MCP cache store fallback. Do not use this path in production; "
+        "set MCP_CACHE_SERVER_URL so MCP workers share cache state through the cache service.",
+        RuntimeWarning,
+        stacklevel=2,
+    )
+    from mcp_cache_server import store
+    return store
 
 
 def _cache_url(path: str) -> str:
@@ -85,17 +98,11 @@ class SessionMiddleware(BaseHTTPMiddleware):
             except requests.RequestException:
                 pass
         else:
-            store.touch_session(session_id)
+            # Single-worker dev/test fallback only; production must use the
+            # cache-service branch above.
+            _get_local_store().touch_session(session_id)
         response = await call_next(request)
         return response
-
-
-def get_cache():
-    return store.get_cache()
-
-
-def _evict_stale_sessions():
-    store._evict_stale_sessions()
 
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
@@ -103,20 +110,26 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
     if MCP_CACHE_SERVER_URL:
         _cache_set_dataframe(session_id, df, file_snapshot_path)
     else:
-        store.set_session_dataframe(session_id, df, file_snapshot_path)
+        # Single-worker dev/test fallback only; production must use the
+        # cache-service branch above.
+        _get_local_store().set_session_dataframe(session_id, df, file_snapshot_path)
 
 
 def _get_session_dataset_name() -> str | None:
     session_id = _current_session_id.get()
     if MCP_CACHE_SERVER_URL:
         return _cache_get_json(session_id, "/dataset_name").get("dataset")
-    return store.get_session_dataset_name(session_id)
+    # Single-worker dev/test fallback only; production must use the
+    # cache-service branch above.
+    return _get_local_store().get_session_dataset_name(session_id)
 
 
 def load_df_for_session(session_id: str, file_snapshot_path: str) -> pd.DataFrame:
     if MCP_CACHE_SERVER_URL:
         return _cache_load_dataframe(session_id, file_snapshot_path)
-    return store.load_df_for_session(session_id, file_snapshot_path)
+    # Single-worker dev/test fallback only; production must use the
+    # cache-service branch above.
+    return _get_local_store().load_df_for_session(session_id, file_snapshot_path)
 
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
@@ -127,4 +140,6 @@ def get_current_df() -> pd.DataFrame:
     session_id = _current_session_id.get()
     if MCP_CACHE_SERVER_URL:
         return _cache_get_dataframe(session_id)
-    return store.get_df_for_session(session_id)
+    # Single-worker dev/test fallback only; production must use the
+    # cache-service branch above.
+    return _get_local_store().get_df_for_session(session_id)

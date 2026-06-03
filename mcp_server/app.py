@@ -18,8 +18,7 @@ constructs a fresh FastAPI instance, wires middleware, includes all five
 per-area routers, attaches `FastApiMCP`, and mounts the MCP transport.
 The module-level `app = create_app()` call below preserves the legacy
 import path (`from mcp_server.app import app`) and the
-`data_analysis_mcp.py` shim contract (`app`, `_sessions`,
-`_convert_arrow_types`).
+`data_analysis_mcp.py` shim contract (`app`, `_convert_arrow_types`).
 
 Per the §2 watch-out documented in REFACTOR_PROGRESS.md (P8), the MCP
 mount() call snapshots `app.routes` at construction time, so all
@@ -41,9 +40,7 @@ from mcp_server import config
 from mcp_server.session import (
     SessionMiddleware,
     _current_session_id,
-    _evict_stale_sessions,
     _get_session_dataset_name,
-    _sessions,
     _set_current_df,
     get_current_df,
 )
@@ -67,6 +64,15 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+def _validate_cache_service_configuration() -> None:
+    if config.MCP_WORKERS > 1 and not config.MCP_CACHE_SERVER_URL:
+        raise RuntimeError(
+            "MCP_WORKERS is greater than 1, but MCP_CACHE_SERVER_URL is not set. "
+            "Multiple MCP worker processes require the singleton MCP cache service "
+            "for shared session and DataFrame state."
+        )
+
+
 def create_app() -> FastAPI:
     """Construct and fully wire a fresh MCP server FastAPI instance.
 
@@ -79,6 +85,8 @@ def create_app() -> FastAPI:
     exposed as an MCP tool. See the P8 session log in
     REFACTOR_PROGRESS.md for the discovery.
     """
+    _validate_cache_service_configuration()
+
     app = FastAPI(
         title="Generic Dataset Analysis API",
         description="API for analyzing any CSV or Parquet dataset",

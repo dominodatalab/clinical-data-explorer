@@ -9,18 +9,19 @@ from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 import mcp_server.dataframe_cache as dataframe_cache
+import mcp_cache_server.store as cache_store
 import mcp_server.session as session_module
 
 
 @pytest.fixture(autouse=True)
 def clear_session_state():
-    session_module._sessions.clear()
+    cache_store._sessions.clear()
     session_module._current_session_id.set("default")
-    session_module.get_cache().clear()
+    dataframe_cache.get_cache().clear()
     yield
-    session_module._sessions.clear()
+    cache_store._sessions.clear()
     session_module._current_session_id.set("default")
-    session_module.get_cache().clear()
+    dataframe_cache.get_cache().clear()
 
 
 def test_set_current_df_stores_dataframe_and_session_metadata():
@@ -30,7 +31,7 @@ def test_set_current_df_stores_dataframe_and_session_metadata():
     session_module._set_current_df(df, "adsl.csv")
 
     assert session_module._get_session_dataset_name() == "adsl.csv"
-    assert session_module._sessions["session-1"].file_snapshot_path == "adsl.csv"
+    assert cache_store._sessions["session-1"].file_snapshot_path == "adsl.csv"
     pd.testing.assert_frame_equal(session_module.get_current_df(), df)
 
 
@@ -48,7 +49,7 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [99], "arm": ["Reloaded"]})
     session_module._current_session_id.set("session-2")
-    session_module._sessions["session-2"] = session_module.LoadedDataEntry(
+    cache_store._sessions["session-2"] = cache_store.LoadedDataEntry(
         file_snapshot_path="adae.csv",
         last_accessed=50.0,
     )
@@ -58,52 +59,52 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
         load_calls.append(file_snapshot_path)
         return reloaded_df
 
-    monkeypatch.setattr(session_module.store, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(cache_store, "load_dataset", fake_load_dataset)
 
     df = session_module.get_current_df()
 
     assert load_calls == ["adae.csv"]
     pd.testing.assert_frame_equal(df, reloaded_df)
-    pd.testing.assert_frame_equal(session_module.get_cache()["adae.csv"], reloaded_df)
+    pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adae.csv"], reloaded_df)
 
 
 def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
-    monkeypatch.setattr(session_module.store, "SESSION_MAX_AGE", 10)
-    monkeypatch.setattr(session_module.store.time, "time", lambda: 100.0)
-    session_module._sessions.update(
+    monkeypatch.setattr(cache_store, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(cache_store.time, "time", lambda: 100.0)
+    cache_store._sessions.update(
         {
-            "stale": session_module.LoadedDataEntry(file_snapshot_path="stale.csv", last_accessed=89.0),
-            "fresh": session_module.LoadedDataEntry(file_snapshot_path="fresh.csv", last_accessed=95.0),
+            "stale": cache_store.LoadedDataEntry(file_snapshot_path="stale.csv", last_accessed=89.0),
+            "fresh": cache_store.LoadedDataEntry(file_snapshot_path="fresh.csv", last_accessed=95.0),
         }
     )
 
-    session_module._evict_stale_sessions()
+    cache_store._evict_stale_sessions()
 
-    assert "stale" not in session_module._sessions
-    assert "fresh" in session_module._sessions
+    assert "stale" not in cache_store._sessions
+    assert "fresh" in cache_store._sessions
 
 
 def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
-    monkeypatch.setattr(session_module.store, "SESSION_MAX_AGE", 1000)
-    monkeypatch.setattr(session_module.store, "SESSION_MAX_COUNT", 2)
-    monkeypatch.setattr(session_module.store.time, "time", lambda: 100.0)
-    session_module._sessions.update(
+    monkeypatch.setattr(cache_store, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(cache_store, "SESSION_MAX_COUNT", 2)
+    monkeypatch.setattr(cache_store.time, "time", lambda: 100.0)
+    cache_store._sessions.update(
         {
-            "oldest": session_module.LoadedDataEntry(file_snapshot_path="one.csv", last_accessed=70.0),
-            "middle": session_module.LoadedDataEntry(file_snapshot_path="two.csv", last_accessed=80.0),
-            "newest": session_module.LoadedDataEntry(file_snapshot_path="three.csv", last_accessed=90.0),
+            "oldest": cache_store.LoadedDataEntry(file_snapshot_path="one.csv", last_accessed=70.0),
+            "middle": cache_store.LoadedDataEntry(file_snapshot_path="two.csv", last_accessed=80.0),
+            "newest": cache_store.LoadedDataEntry(file_snapshot_path="three.csv", last_accessed=90.0),
         }
     )
 
-    session_module._evict_stale_sessions()
+    cache_store._evict_stale_sessions()
 
-    assert "oldest" not in session_module._sessions
-    assert set(session_module._sessions) == {"middle", "newest"}
+    assert "oldest" not in cache_store._sessions
+    assert set(cache_store._sessions) == {"middle", "newest"}
 
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
-    monkeypatch.setattr(session_module.store.time, "time", lambda: 123.0)
-    session_module._sessions["session-3"] = session_module.LoadedDataEntry(
+    monkeypatch.setattr(cache_store.time, "time", lambda: 123.0)
+    cache_store._sessions["session-3"] = cache_store.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
     )
@@ -121,7 +122,7 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
 
     assert response.status_code == 200
     assert response.json() == {"session_id": "session-3"}
-    assert session_module._sessions["session-3"].last_accessed == 123.0
+    assert cache_store._sessions["session-3"].last_accessed == 123.0
 
 
 def test_session_middleware_defaults_session_id_when_header_is_missing():
@@ -163,14 +164,14 @@ def test_load_df_for_session_uses_explicit_session_id(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
     session_module._current_session_id.set("wrong-session")
 
-    monkeypatch.setattr(session_module.store, "load_dataset", lambda file_snapshot_path: reloaded_df)
+    monkeypatch.setattr(cache_store, "load_dataset", lambda file_snapshot_path: reloaded_df)
 
     df = session_module.load_df_for_session("right-session", "adsl.csv")
 
     pd.testing.assert_frame_equal(df, reloaded_df)
-    assert "wrong-session" not in session_module._sessions
-    assert session_module._sessions["right-session"].file_snapshot_path == "adsl.csv"
-    pd.testing.assert_frame_equal(session_module.get_cache()["adsl.csv"], reloaded_df)
+    assert "wrong-session" not in cache_store._sessions
+    assert cache_store._sessions["right-session"].file_snapshot_path == "adsl.csv"
+    pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adsl.csv"], reloaded_df)
 
 
 def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app, monkeypatch, tmp_path):
@@ -184,7 +185,7 @@ def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app,
         assert release_load.wait(timeout=5)
         return pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
 
-    monkeypatch.setattr(session_module.store, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(cache_store, "load_dataset", fake_load_dataset)
 
     async def run_requests():
         transport = httpx.ASGITransport(app=_mcp_app)
@@ -212,4 +213,4 @@ def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app,
     assert quick_response.status_code == 200
     assert load_was_still_running
     assert load_response.status_code == 200
-    assert session_module._sessions["slow-load-session"].file_snapshot_path == str(dataset)
+    assert cache_store._sessions["slow-load-session"].file_snapshot_path == str(dataset)
