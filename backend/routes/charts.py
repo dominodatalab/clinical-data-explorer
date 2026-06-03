@@ -74,12 +74,10 @@ def get_time_series_data():
 
 
 @bp.route('/chart/histogram', methods=['POST'])
-async def get_histogram_data():
+def get_histogram_data():
     """Get histogram data for a single column"""
-    async def helper():
-        return mcp_post("/chart/histogram", json=request.json)
     try:
-        response = await helper()
+        response = mcp_post("/chart/histogram", json=request.json)
         if response.status_code == 200:
             return jsonify(response.json())
         else:

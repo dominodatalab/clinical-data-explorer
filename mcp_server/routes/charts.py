@@ -18,7 +18,6 @@ Request models live in `mcp_server/types.py`.
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException
-import time
 
 from mcp_server.session import get_current_df
 from mcp_server.types import (
@@ -309,29 +308,17 @@ async def get_time_series_data(request: TimeSeriesRequest):
 
 @router.post("/chart/histogram")
 async def get_histogram_data(request: HistogramRequest):
-    print('-----------')
-    print('')
-    print('CHART HISTOGRAM')
-    s = time.time()
     """Get histogram data for a numeric column with optional filter support.
 
     Returns bin edges and counts suitable for rendering a standard histogram.
     For categorical columns, returns value counts instead.
     """
-    async def helper():
-        return get_current_df()
-    df = await helper()
+    df = get_current_df()
 
     if request.column not in df.columns:
         raise HTTPException(status_code=404, detail=f"Column '{request.column}' not found")
 
-    print("before chart filter", time.time() - s)
-
-    s2 = time.time()
-
     df = _apply_chart_filter(df, request.filter)
-
-    print("after chart filter", time.time() - s2)
 
     col_data = df[request.column].dropna()
 
@@ -341,7 +328,6 @@ async def get_histogram_data(request: HistogramRequest):
     is_numeric = pd.api.types.is_numeric_dtype(col_data)
 
     if is_numeric:
-        s3 = time.time()
         # Standard numeric histogram using numpy
         counts, bin_edges = np.histogram(col_data, bins=min(request.get_bins(), len(col_data.unique())))
 
@@ -353,8 +339,6 @@ async def get_histogram_data(request: HistogramRequest):
                 "count": int(counts[i])
             })
 
-        print("Numeric block", time.time() - s3)
-        print("total Numeric block", time.time() - s)
         return {
             "chart_data": chart_data,
             "column": request.column,
@@ -373,8 +357,6 @@ async def get_histogram_data(request: HistogramRequest):
         # Categorical: return value counts as a bar-style histogram
         value_counts = col_data.astype(str).value_counts().head(50)
         chart_data = [{"label": str(k), "count": int(v)} for k, v in value_counts.items()]
-
-        print("total non Numeric block", time.time() - s)
 
         return {
             "chart_data": chart_data,
