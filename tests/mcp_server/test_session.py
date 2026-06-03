@@ -1,3 +1,7 @@
+import asyncio
+import threading
+
+import httpx
 import pandas as pd
 import pytest
 from cachetools import LRUCache
@@ -153,3 +157,48 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
             "Try a smaller file or ask your administrator to increase the amount of memory available."
         )
     }
+
+
+def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app, monkeypatch, tmp_path):
+    dataset = tmp_path / "slow.csv"
+    dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
+    load_started = threading.Event()
+    release_load = threading.Event()
+    observed_session_ids = []
+
+    def fake_load_dataset(file_snapshot_path):
+        observed_session_ids.append(session_module._current_session_id.get())
+        load_started.set()
+        assert release_load.wait(timeout=5)
+        return pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
+
+    monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+
+    async def run_requests():
+        transport = httpx.ASGITransport(app=_mcp_app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
+            load_task = asyncio.create_task(
+                client.post(
+                    "/dataset/load",
+                    params={"file_snapshot_path": str(dataset)},
+                    headers={"X-Session-Id": "slow-load-session"},
+                )
+            )
+            assert await asyncio.to_thread(load_started.wait, 5)
+
+            quick_response = await client.get(
+                "/datasets/list",
+                headers={"X-Session-Id": "quick-session"},
+            )
+            load_was_still_running = not release_load.is_set()
+            release_load.set()
+            load_response = await load_task
+            return quick_response, load_response, load_was_still_running
+
+    quick_response, load_response, load_was_still_running = asyncio.run(run_requests())
+
+    assert quick_response.status_code == 200
+    assert load_was_still_running
+    assert load_response.status_code == 200
+    assert observed_session_ids == ["slow-load-session"]
+    assert session_module._sessions["slow-load-session"].file_snapshot_path == str(dataset)

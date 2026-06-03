@@ -27,6 +27,7 @@ import logging
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query
+from starlette.concurrency import run_in_threadpool
 
 from mcp_server.session import _get_session_dataset_name, get_current_df, get_current_metadata, load_current_df
 from mcp_server.services.columns import (
@@ -55,10 +56,7 @@ async def load_dataset_endpoint(
     file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
 ):
     """Load a specific dataset file and return column metadata."""
-    async def helper():
-        return load_current_df(file_snapshot_path)
-
-    df = await helper()
+    df = await run_in_threadpool(load_current_df, file_snapshot_path)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)

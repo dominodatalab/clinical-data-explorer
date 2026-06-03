@@ -53,6 +53,7 @@ class LoadedDataEntry:
     metadata: Optional[dict] = None
 
 _sessions: Dict[str, LoadedDataEntry] = {}
+_sessions_lock = threading.RLock()
 
 
 @lru_cache(maxsize=1)
@@ -68,10 +69,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         session_id = request.headers.get("x-session-id", "default")
         _current_session_id.set(session_id)
-        # Touch the session so it stays alive
-        sessions = _get_sessions()
-        if session_id in sessions:
-            sessions[session_id].last_accessed = time.time()
+        with _sessions_lock:
+            session = _get_sessions().get(session_id)
+            if session is not None:
+                session.last_accessed = time.time()
         response = await call_next(request)
         return response
 
@@ -80,33 +81,45 @@ def _evict_stale_sessions():
     """Remove sessions that haven't been accessed recently."""
     sessions = _get_sessions()
     now = time.time()
-    stale = [sid for sid, s in sessions.items()
-             if now - s.last_accessed > SESSION_MAX_AGE]
-    for sid in stale:
-        logger.info(f"Evicting stale session: {sid}")
-        del sessions[sid]
-    # If still over limit, evict oldest
-    if len(sessions) > SESSION_MAX_COUNT:
-        by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
-        for sid, _ in by_age[:len(sessions) - SESSION_MAX_COUNT]:
-            logger.info(f"Evicting session (over limit): {sid}")
+    with _sessions_lock:
+        stale = [sid for sid, s in sessions.items()
+                 if now - s.last_accessed > SESSION_MAX_AGE]
+        for sid in stale:
+            logger.info(f"Evicting stale session: {sid}")
             del sessions[sid]
+        # If still over limit, evict oldest
+        if len(sessions) > SESSION_MAX_COUNT:
+            by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
+            for sid, _ in by_age[:len(sessions) - SESSION_MAX_COUNT]:
+                logger.info(f"Evicting session (over limit): {sid}")
+                del sessions[sid]
+
+
+def _set_session_entry(session_id: str, entry: LoadedDataEntry) -> None:
+    with _sessions_lock:
+        _get_sessions()[session_id] = entry
+
+
+def _get_session_entry(session_id: str) -> Optional[LoadedDataEntry]:
+    with _sessions_lock:
+        return _get_sessions().get(session_id)
 
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
     """Store a DataFrame for the current session."""
     session_id = _current_session_id.get()
-    sessions = _get_sessions()
-
     try:
         dataframe_cache.save_to_cache(file_snapshot_path, df)
     except dataframe_cache.DataFrameCacheValueTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
 
-    sessions[session_id] = LoadedDataEntry(
-        file_snapshot_path=file_snapshot_path,
-        last_accessed=time.time(),
-        metadata=metadata,
+    _set_session_entry(
+        session_id,
+        LoadedDataEntry(
+            file_snapshot_path=file_snapshot_path,
+            last_accessed=time.time(),
+            metadata=metadata,
+        ),
     )
     _evict_stale_sessions()
 
@@ -114,7 +127,7 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
 def _get_session_dataset_name() -> Optional[str]:
     """Get the dataset name for the current session."""
     session_id = _current_session_id.get()
-    session = _get_sessions().get(session_id)
+    session = _get_session_entry(session_id)
     if session:
         return session.file_snapshot_path
     return None
@@ -133,7 +146,7 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
 def get_current_metadata() -> dict:
     """Return the verbatim file metadata captured for the current session."""
     session_id = _current_session_id.get()
-    session = _get_sessions().get(session_id)
+    session = _get_session_entry(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
     if session.metadata is not None:
@@ -146,12 +159,11 @@ def get_current_metadata() -> dict:
 def get_current_df() -> pd.DataFrame:
     """Get the current dataframe for this session, reloading on cache miss."""
     session_id = _current_session_id.get()
-    session = _get_sessions().get(session_id)
+    session = _get_session_entry(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
 
-    df_cache = get_cache()
-    df = df_cache.get(session.file_snapshot_path)
+    df = dataframe_cache.get_from_cache(session.file_snapshot_path)
     if df is None:
         logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
         return load_current_df(session.file_snapshot_path)

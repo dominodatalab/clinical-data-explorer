@@ -1,5 +1,6 @@
 import sys
 from functools import lru_cache
+import threading
 import pandas as pd
 
 from cachetools import LRUCache
@@ -8,6 +9,7 @@ from mcp_server import config
 
 DEFAULT_MAX_CACHE_SIZE_BYTES = config.DEFAULT_DATAFRAME_CACHE_SIZE_BYTES
 MAX_CACHE_SIZE = config.DATAFRAME_CACHE_SIZE_BYTES
+_cache_lock = threading.RLock()
 
 """
 This is for caching pandas dataframes
@@ -38,8 +40,15 @@ def save_to_cache(file_snapshot_path: str, dataframe: pd.DataFrame) -> None:
     """Save a dataframe to the cache, reporting oversized values clearly."""
     target_cache = get_cache()
     try:
-        target_cache[file_snapshot_path] = dataframe
+        with _cache_lock:
+            target_cache[file_snapshot_path] = dataframe
     except ValueError as exc:
         if str(exc) == "value too large":
             raise DataFrameCacheValueTooLarge(file_snapshot_path) from exc
         raise
+
+
+def get_from_cache(file_snapshot_path: str) -> pd.DataFrame | None:
+    """Read a dataframe from the singleton cache."""
+    with _cache_lock:
+        return get_cache().get(file_snapshot_path)
