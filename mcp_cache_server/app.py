@@ -39,6 +39,7 @@ async def set_session_dataframe(session_id: str, request: Request):
         session_id,
         payload["dataframe"],
         payload["file_snapshot_path"],
+        payload.get("metadata"),
     )
     return {"ok": True}
 
@@ -52,6 +53,11 @@ def get_session_dataframe(session_id: str):
 @app.get("/sessions/{session_id}/dataset_name")
 def get_session_dataset_name(session_id: str):
     return {"dataset": store.get_session_dataset_name(session_id)}
+
+
+@app.get("/sessions/{session_id}/metadata")
+def get_session_metadata(session_id: str):
+    return store.get_session_metadata(session_id)
 
 
 @app.post("/sessions/{session_id}/touch")

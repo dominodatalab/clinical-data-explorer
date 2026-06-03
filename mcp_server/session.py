@@ -74,10 +74,11 @@ def _cache_load_dataframe(session_id: str, file_snapshot_path: str) -> pd.DataFr
     return pickle.loads(response.content)
 
 
-def _cache_set_dataframe(session_id: str, df: pd.DataFrame, file_snapshot_path: str) -> None:
+def _cache_set_dataframe(session_id: str, df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None = None) -> None:
     payload = {
         "dataframe": df,
         "file_snapshot_path": file_snapshot_path,
+        "metadata": metadata,
     }
     response = requests.put(
         _cache_url(_session_path(session_id, "/dataframe")),
@@ -105,14 +106,14 @@ class SessionMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str):
+def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: dict | None = None):
     session_id = _current_session_id.get()
     if MCP_CACHE_SERVER_URL:
-        _cache_set_dataframe(session_id, df, file_snapshot_path)
+        _cache_set_dataframe(session_id, df, file_snapshot_path, metadata)
     else:
         # Single-worker dev/test fallback only; production must use the
         # cache-service branch above.
-        _get_local_store().set_session_dataframe(session_id, df, file_snapshot_path)
+        _get_local_store().set_session_dataframe(session_id, df, file_snapshot_path, metadata)
 
 
 def _get_session_dataset_name() -> str | None:
@@ -134,6 +135,15 @@ def load_df_for_session(session_id: str, file_snapshot_path: str) -> pd.DataFram
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     return load_df_for_session(_current_session_id.get(), file_snapshot_path)
+
+
+def get_current_metadata() -> dict:
+    session_id = _current_session_id.get()
+    if MCP_CACHE_SERVER_URL:
+        return _cache_get_json(session_id, "/metadata")
+    # Single-worker dev/test fallback only; production must use the
+    # cache-service branch above.
+    return _get_local_store().get_session_metadata(session_id)
 
 
 def get_current_df() -> pd.DataFrame:
