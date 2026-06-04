@@ -9,7 +9,7 @@ from typing import Dict, Optional
 import pandas as pd
 from fastapi import HTTPException
 
-from mcp_server import dataframe_cache
+from mcp_cache_server import dataframe_cache
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 

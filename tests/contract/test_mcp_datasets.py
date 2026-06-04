@@ -5,7 +5,7 @@ assert that load succeeded with the expected metadata and that /dataset/info
 reports the same facts back.
 """
 
-from mcp_server.dataframe_cache import get_cache
+from mcp_cache_server.dataframe_cache import get_cache
 
 
 def test_loads_csv_dataset(mcp_client):

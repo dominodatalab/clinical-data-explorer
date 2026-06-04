@@ -1,7 +1,7 @@
 import importlib
 
 import mcp_server.config as config_module
-import mcp_server.dataframe_cache as dataframe_cache_module
+import mcp_cache_server.dataframe_cache as dataframe_cache_module
 
 
 def test_dataframe_cache_size_environment_value_is_int(monkeypatch):

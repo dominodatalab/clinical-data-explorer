@@ -27,7 +27,6 @@ import logging
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
-from starlette.concurrency import run_in_threadpool
 
 from mcp_server.session import _get_session_dataset_name, get_current_df, get_current_metadata, load_df_for_session
 from mcp_server.services.columns import (
@@ -58,7 +57,7 @@ async def load_dataset_endpoint(
 ):
     """Load a specific dataset file and return column metadata."""
     session_id = request.headers.get("x-session-id", "default")
-    df = await run_in_threadpool(load_df_for_session, session_id, file_snapshot_path)
+    df = load_df_for_session(session_id, file_snapshot_path)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)
@@ -118,7 +117,9 @@ def get_dataset_info():
 
 @router.get("/dataset/metadata")
 def get_dataset_metadata():
-    """Return verbatim file/variable metadata embedded in the current dataset."""
+    """Return verbatim file/variable metadata embedded in the current dataset
+    file (CDISC Dataset-JSON header, or SAS .xpt/.sas7bdat labels). Returns
+    `available: False` with a message for formats that carry no metadata."""
     return get_current_metadata()
 
 

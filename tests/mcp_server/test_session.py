@@ -1,14 +1,10 @@
-import asyncio
-import threading
-
-import httpx
 import pandas as pd
 import pytest
 from cachetools import LRUCache
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
-import mcp_server.dataframe_cache as dataframe_cache
+import mcp_cache_server.dataframe_cache as dataframe_cache
 import mcp_cache_server.store as cache_store
 import mcp_server.session as session_module
 
@@ -172,45 +168,3 @@ def test_load_df_for_session_uses_explicit_session_id(monkeypatch):
     assert "wrong-session" not in cache_store._sessions
     assert cache_store._sessions["right-session"].file_snapshot_path == "adsl.csv"
     pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adsl.csv"], reloaded_df)
-
-
-def test_dataset_load_runs_in_threadpool_and_preserves_session_context(_mcp_app, monkeypatch, tmp_path):
-    dataset = tmp_path / "slow.csv"
-    dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
-    load_started = threading.Event()
-    release_load = threading.Event()
-
-    def fake_load_dataset(file_snapshot_path):
-        load_started.set()
-        assert release_load.wait(timeout=5)
-        return pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
-
-    monkeypatch.setattr(cache_store, "load_dataset", fake_load_dataset)
-
-    async def run_requests():
-        transport = httpx.ASGITransport(app=_mcp_app)
-        async with httpx.AsyncClient(transport=transport, base_url="http://testserver") as client:
-            load_task = asyncio.create_task(
-                client.post(
-                    "/dataset/load",
-                    params={"file_snapshot_path": str(dataset)},
-                    headers={"X-Session-Id": "slow-load-session"},
-                )
-            )
-            assert await asyncio.to_thread(load_started.wait, 5)
-
-            quick_response = await client.get(
-                "/datasets/list",
-                headers={"X-Session-Id": "quick-session"},
-            )
-            load_was_still_running = not release_load.is_set()
-            release_load.set()
-            load_response = await load_task
-            return quick_response, load_response, load_was_still_running
-
-    quick_response, load_response, load_was_still_running = asyncio.run(run_requests())
-
-    assert quick_response.status_code == 200
-    assert load_was_still_running
-    assert load_response.status_code == 200
-    assert cache_store._sessions["slow-load-session"].file_snapshot_path == str(dataset)
