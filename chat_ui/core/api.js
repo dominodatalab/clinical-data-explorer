@@ -6,8 +6,8 @@
 //      reverse proxy (`/<workspace-prefix>/<deployment-id>/`).
 //   2. `apiUrl(endpoint)` — prefix a relative endpoint with that base URL.
 //   3. `fetchWithStatusCheck(input, init)` — shared response-level wrapper
-//      around `fetch()` that returns the original Response, reloads the UI on
-//      302 redirects, and rejects on HTTP error statuses.
+//      around `fetch()` that returns the original Response, refreshes the UI
+//      on manual redirects, and rejects on HTTP error statuses.
 //   4. `getApiErrorMessage(error, fallback)` — extract `error`, `message`,
 //      and `description` fields from failed API responses for UI messages.
 //   5. `fetchJson(input, init)` — convenience wrapper for the common
@@ -75,29 +75,20 @@ export async function getApiErrorMessage(error, fallback = 'Request failed') {
     return primary;
 }
 
-function getHeader(response, name) {
-    if (!response.headers || typeof response.headers.get !== 'function') {
-        return null;
+function refreshUi() {
+    if (typeof window === 'undefined' || !window.location || typeof window.location.reload !== 'function') {
+        return;
     }
-    return response.headers.get(name);
-}
-
-function reloadUi(location) {
-    if (typeof window.location.assign === 'function') {
-        window.location.assign(location);
-    } else {
-        window.location.href = location;
-    }
+    window.location.reload();
 }
 
 export async function fetchWithStatusCheck(input, init) {
-    const response = await fetch(input, init);
+    const response = await fetch(input, { ...init, redirect: 'manual' });
+    if (response.type === 'opaqueredirect') {
+        refreshUi();
+        throw new ApiError('Redirecting', { response });
+    }
     if (response.status === 302) {
-        const location = getHeader(response, 'Location');
-        if (location) {
-            reloadUi(location);
-            throw new ApiError(`Redirecting to ${location}`, { response });
-        }
         throw new ApiError('HTTP 302', { response });
     }
     if (response.status >= 400) {
