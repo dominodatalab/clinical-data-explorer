@@ -17,6 +17,7 @@ caller imports `get_current_df` from this module — there is no copy and
 no DataFrame-as-parameter passing.
 """
 import contextvars
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
@@ -51,6 +52,13 @@ class LoadedDataEntry:
     # because Domino-sourced files are downloaded to a temp path that gets
     # deleted right after load, so it can't be re-read on demand later.
     metadata: Optional[dict] = None
+
+
+@dataclass
+class DataFrameLoadResult:
+    dataframe: pd.DataFrame
+    metadata: dict
+
 
 _sessions: Dict[str, LoadedDataEntry] = {}
 
@@ -120,14 +128,22 @@ def _get_session_dataset_name() -> Optional[str]:
     return None
 
 
+def _create_dataframe_entry(file_snapshot_path: str) -> DataFrameLoadResult:
+    df = load_dataset(file_snapshot_path)
+    metadata = extract_dataset_metadata(Path(file_snapshot_path))
+    return DataFrameLoadResult(dataframe=df, metadata=metadata)
+
+
+def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadResult:
+    with ThreadPoolExecutor(max_workers=1, thread_name_prefix="mcp-dataframe-loader") as executor:
+        return executor.submit(_create_dataframe_entry, file_snapshot_path).result()
+
+
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
-    df = load_dataset(file_snapshot_path)
-    # Capture verbatim file metadata while the file is still on disk (Domino
-    # temp files are deleted right after load).
-    metadata = extract_dataset_metadata(Path(file_snapshot_path))
-    _set_current_df(df, file_snapshot_path, metadata)
-    return df
+    result = _create_dataframe_entry_in_thread(file_snapshot_path)
+    _set_current_df(result.dataframe, file_snapshot_path, result.metadata)
+    return result.dataframe
 
 
 def get_current_metadata() -> dict:

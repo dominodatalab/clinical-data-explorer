@@ -1,3 +1,5 @@
+import threading
+
 import pandas as pd
 import pytest
 from cachetools import LRUCache
@@ -153,3 +155,25 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
             "Try a smaller file or ask your administrator to increase the amount of memory available."
         )
     }
+
+
+def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
+    reloaded_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_session_id.set("session-4")
+    caller_thread_name = threading.current_thread().name
+    loader_thread_names = []
+
+    def fake_load_dataset(file_snapshot_path):
+        loader_thread_names.append(threading.current_thread().name)
+        return reloaded_df
+
+    monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+
+    df = session_module.load_current_df("adsl.csv")
+
+    assert loader_thread_names
+    assert loader_thread_names[0] != caller_thread_name
+    assert loader_thread_names[0].startswith("mcp-dataframe-loader")
+    pd.testing.assert_frame_equal(df, reloaded_df)
+    assert session_module._sessions["session-4"].file_snapshot_path == "adsl.csv"
+    pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adsl.csv"], reloaded_df)
