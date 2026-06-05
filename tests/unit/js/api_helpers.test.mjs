@@ -9,7 +9,7 @@ const apiSource = await readFile(apiSourcePath, 'utf8');
 async function loadApiModule({
     pathname = '/',
     fetchImpl = async () => ({ status: 200 }),
-    assignLocation = () => {},
+    reloadPage = () => {},
 } = {}) {
     const context = vm.createContext({
         console: { log() {} },
@@ -17,7 +17,7 @@ async function loadApiModule({
         window: {
             location: {
                 pathname,
-                assign: assignLocation,
+                reload: reloadPage,
             },
         },
     });
@@ -36,6 +36,7 @@ function jsonResponse(status, data, extra = {}) {
     const headers = extra.headers || {};
     return {
         status,
+        type: extra.type || 'basic',
         statusText: extra.statusText || '',
         bodyUsed: extra.bodyUsed || false,
         headers: {
@@ -164,7 +165,8 @@ test('fetchWithStatusCheck returns successful responses and throws ApiError on H
     const api = await loadApiModule({
         fetchImpl: async (input, init) => {
             assert.equal(input, '/ok');
-            assert.deepEqual(init, { method: 'POST' });
+            assert.equal(init.method, 'POST');
+            assert.equal(init.redirect, 'manual');
             return okResponse;
         },
     });
@@ -189,15 +191,15 @@ test('fetchWithStatusCheck returns successful responses and throws ApiError on H
     );
 });
 
-test('fetchWithStatusCheck reloads the UI when a 302 response has a Location header', async () => {
-    let assignedLocation = null;
-    const redirectResponse = jsonResponse(302, null, {
-        headers: { Location: '/login?next=/app/workspace/' },
+test('fetchWithStatusCheck refreshes the UI when manual redirect returns an opaque redirect', async () => {
+    let reloadCount = 0;
+    const redirectResponse = jsonResponse(0, null, {
+        type: 'opaqueredirect',
     });
     const api = await loadApiModule({
         fetchImpl: async () => redirectResponse,
-        assignLocation: location => {
-            assignedLocation = location;
+        reloadPage: () => {
+            reloadCount += 1;
         },
     });
 
@@ -205,22 +207,22 @@ test('fetchWithStatusCheck reloads the UI when a 302 response has a Location hea
         api.fetchWithStatusCheck('/chat/status'),
         error => {
             assert.ok(error instanceof api.ApiError);
-            assert.equal(error.message, 'Redirecting to /login?next=/app/workspace/');
+            assert.equal(error.message, 'Redirecting');
             assert.equal(error.response, redirectResponse);
-            assert.equal(error.status, 302);
+            assert.equal(error.status, 0);
             return true;
         },
     );
-    assert.equal(assignedLocation, '/login?next=/app/workspace/');
+    assert.equal(reloadCount, 1);
 });
 
-test('fetchWithStatusCheck rejects 302 responses without a Location header', async () => {
-    let assignedLocation = null;
+test('fetchWithStatusCheck rejects 302 responses without refreshing', async () => {
+    let reloadCount = 0;
     const redirectResponse = jsonResponse(302, null);
     const api = await loadApiModule({
         fetchImpl: async () => redirectResponse,
-        assignLocation: location => {
-            assignedLocation = location;
+        reloadPage: () => {
+            reloadCount += 1;
         },
     });
 
@@ -234,7 +236,7 @@ test('fetchWithStatusCheck rejects 302 responses without a Location header', asy
             return true;
         },
     );
-    assert.equal(assignedLocation, null);
+    assert.equal(reloadCount, 0);
 });
 
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {
