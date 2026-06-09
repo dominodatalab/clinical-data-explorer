@@ -77,10 +77,44 @@ that belongs to a user.
 Dataset loading is expensive because it includes file downloading,
 file download and conversion into a DataFrame.
 
-For that reason, dataset load requests go through a bounded in-memory FIFO
-queue before they enter the load path. This removes the possibility of the app crashing
-because of processing large files simultaneously. The queue serializes load processing
-within one app process.
+For that reason, dataset load requests go through a bounded in-memory
+admission queue before they enter the load path. When the first request in
+a busy period arrives, the app snapshots current memory and uses that as
+projected used RAM. Each additional admitted request increments projected
+used RAM by its estimated loaded DataFrame size. The projection resets only
+after the queue drains.
+
+That tradeoff is acceptable today because DataFrame loading is the only
+RAM-intensive operation this app currently performs. In the future, the app
+should be refactored to avoid storing loaded DataFrames in process memory.
+Busy periods are also expected to be short rather than lasting multiple
+minutes. If long busy periods become common, this design should be revised
+to refresh memory baselines more often.
+
+This projection ignores live RAM usage changes after the first request in a
+busy period is admitted. The queue does not refresh the baseline for every
+request because earlier requests may be partially downloaded when later
+requests arrive. A fresh live snapshot would include that memory increase
+while the queue also counts the same request's projected DataFrame size,
+artificially inflating projected RAM and rejecting more load requests than
+necessary.
+
+```mermaid
+flowchart TD
+    A["/dataset/load request arrives"] --> B{"Queue empty?"}
+    B -->|Yes| C["Snapshot current RAM as busy-period baseline"]
+    B -->|No| D["Reuse existing busy-period baseline"]
+    C --> E["Resolve source file size"]
+    D --> E
+    E --> F["Estimate DataFrame size"]
+    F --> G{"Baseline + admitted projections + new estimate fits?"}
+    G -->|No| H["Reject request"]
+    G -->|Yes| I["Admit request and run load concurrently"]
+    I --> J["Add estimate to admitted projections"]
+    J --> K{"Queue drained?"}
+    K -->|No| D
+    K -->|Yes| L["Reset baseline and projections"]
+```
 
 properties of the queue:
 

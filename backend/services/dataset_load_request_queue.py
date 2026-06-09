@@ -1,8 +1,8 @@
-"""Thread-safe in-memory queue for serialized dataset-load requests.
+"""Thread-safe in-memory queue for dataset-load requests.
 
 This module is responsible for accepting dataset-load requests from the Flask
-route layer and ensuring that only one request is actively executing the
-load/download path at a time.
+route layer and ensuring that the aggregate projected load size can fit in
+memory before requests execute concurrently.
 """
 
 from collections import deque
@@ -13,6 +13,8 @@ import time
 from typing import Callable, Deque, Optional
 
 from backend import config
+from backend.services.dataset_load_request_file_size_resolver import resolve_dataset_load_request_file_size
+import backend.services.file_size_limits as file_size_limits
 
 # Hard cap for queued load requests. When the queue reaches this size, new
 # requests are rejected so the server does not accumulate unbounded work.
@@ -54,12 +56,6 @@ class DatasetLoadRequestQueueFullError(RuntimeError):
     pass
 
 
-class DatasetLoadRequestQueueClearedError(RuntimeError):
-    """Raised when a waiting dataset-load request is removed by ``clear()``."""
-
-    pass
-
-
 @dataclass(eq=False)
 class _QueuedDatasetLoadRequest:
     """Internal queue wrapper used for identity-based coordination."""
@@ -68,29 +64,35 @@ class _QueuedDatasetLoadRequest:
 
 
 class DatasetLoadRequestQueue:
-    """Thread-safe FIFO queue that serializes dataset-load execution.
+    """Thread-safe queue that admits concurrent dataset-load execution.
 
     The queue serves two purposes:
     1. It retains the metadata needed to execute a dataset load.
-    2. It ensures that only one queued request is actively running the load
-       processor at a time.
+    2. It tracks projected memory use so concurrent requests are only admitted
+       when all loads in a contiguous busy period fit in memory together.
 
     ``submit_and_wait(...)`` is the main API used by the route layer. It
-    enqueues the request, blocks until that request reaches the head of the
-    queue, runs the provided processor, and then wakes the next waiting
-    request.
+    resolves the request size, initializes projected memory from real memory
+    when the queue is empty, admits the request, runs the provided processor,
+    and removes the request when processing finishes.
     """
 
     def __init__(self, max_length: int = MAX_QUEUE_LENGTH):
         """Initialize a queue with a maximum number of queued requests."""
-        # FIFO storage for queued requests. Entries are wrapped so individual
-        # waiting threads can compare object identity against the queue head.
+        # FIFO storage for admitted requests. Entries are wrapped so active
+        # processors can remove their own request by object identity.
         self._entries: Deque[_QueuedDatasetLoadRequest] = deque()
         # Condition variable protecting queue state and coordinating wait/notify
         # between queued request threads.
         self._condition = threading.Condition()
         # Maximum number of requests allowed to be queued at once.
         self.max_length = max_length
+        # None means no requests are active. The first admitted request sets
+        # this to a real memory snapshot, and the value is reused until drain.
+        self._memory_usage_baseline_bytes: Optional[int] = None
+        # None means no requests are active. During a busy period, this tracks
+        # the cumulative projected DataFrame memory for every admitted request.
+        self._projected_dataframe_size_bytes: Optional[int] = None
 
     def put(self, entry: DatasetLoadRequest):
         """Append a request without processing it.
@@ -118,22 +120,41 @@ class DatasetLoadRequestQueue:
                 raise IndexError("dataset load request queue is empty")
             return self._entries.popleft().entry
 
-    def submit_and_wait(self, entry: DatasetLoadRequest, processor: Callable[[DatasetLoadRequest], object]):
-        """Queue a request and process it when it reaches the head of the queue.
+    def submit_and_wait(
+        self,
+        entry: DatasetLoadRequest,
+        processor: Callable[[DatasetLoadRequest], object],
+    ):
+        """Queue a request and process it when aggregate memory allows.
 
         This method blocks the calling thread until:
         1. the request has been enqueued,
-        2. all earlier requests have finished, and
-        3. ``processor(entry)`` has run.
+        2. ``processor(entry)`` has run.
 
-        Only one thread may be inside ``processor(...)`` at a time.
+        Multiple threads may be inside ``processor(...)`` at a time when their
+        projected combined DataFrame size fits within the memory limit.
 
         Raises:
             DatasetLoadRequestQueueFullError: if the queue has reached
                 ``max_length`` before the request can be added.
-            DatasetLoadRequestQueueClearedError: if the request is removed from
-                the queue before it reaches the head.
+            DataFileTooLarge: if active loads plus this request would exceed
+                the memory limit.
         """
+        file_size = resolve_dataset_load_request_file_size(entry)
+        projected_dataframe_size_bytes = file_size_limits.estimate_dataframe_size_bytes(file_size)
+
+        entry = DatasetLoadRequest(
+            dataset=entry.dataset,
+            session_id=entry.session_id,
+            authorization_header=entry.authorization_header,
+            project_id=entry.project_id,
+            dataset_id=entry.dataset_id,
+            snapshot_id=entry.snapshot_id,
+            source_type=entry.source_type,
+            volume_key=entry.volume_key,
+            snapshot_version=entry.snapshot_version,
+            enqueued_at=entry.enqueued_at,
+        )
         queued_entry = _QueuedDatasetLoadRequest(entry)
 
         with self._condition:
@@ -141,20 +162,27 @@ class DatasetLoadRequestQueue:
                 raise DatasetLoadRequestQueueFullError(
                     f"dataset load request queue is full (max_length={self.max_length})"
                 )
-            self._entries.append(queued_entry)
-            self._condition.notify_all()
 
-            while True:
-                if not any(queued is queued_entry for queued in self._entries):
-                    raise DatasetLoadRequestQueueClearedError(
-                        "dataset load request was removed from the queue before it could be processed"
-                    )
-                if self._entries[0] is queued_entry:
-                    break
-                # blocks here until
-                # this entry is the first one
-                # in the queue
-                self._condition.wait()
+            if not self._entries:
+                # Empty queue means a new busy period. Capture real memory once,
+                # then keep using that stable baseline until every admitted load
+                # finishes and the queue drains.
+                self._memory_usage_baseline_bytes = file_size_limits.get_memory_usage_snapshot_bytes()
+                self._projected_dataframe_size_bytes = 0
+
+            # The admission check intentionally ignores later real-RAM changes.
+            # It uses baseline + already admitted DataFrame projections, then
+            # adds this request's projection only after the request is admitted.
+            file_size_limits.enforce(
+                entry.dataset,
+                file_size,
+                additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
+                used_memory_bytes=self._memory_usage_baseline_bytes,
+            )
+
+            self._entries.append(queued_entry)
+            self._increment_projected_memory_usage(projected_dataframe_size_bytes)
+            self._condition.notify_all()
 
         try:
             return processor(entry)
@@ -172,6 +200,16 @@ class DatasetLoadRequestQueue:
                     except ValueError:
                         pass
                 self._condition.notify_all()
+                if not self._entries:
+                    self._reset_projected_memory_usage()
+
+    def _increment_projected_memory_usage(self, projected_dataframe_size_bytes: int):
+        if self._projected_dataframe_size_bytes is not None:
+            self._projected_dataframe_size_bytes += projected_dataframe_size_bytes
+
+    def _reset_projected_memory_usage(self):
+        self._memory_usage_baseline_bytes = None
+        self._projected_dataframe_size_bytes = None
 
     def peek_all(self) -> list[DatasetLoadRequest]:
         """Return a snapshot of the queued requests in FIFO order."""
@@ -182,6 +220,7 @@ class DatasetLoadRequestQueue:
         """Remove all queued requests and wake any waiters."""
         with self._condition:
             self._entries.clear()
+            self._reset_projected_memory_usage()
             self._condition.notify_all()
 
     def qsize(self) -> int:

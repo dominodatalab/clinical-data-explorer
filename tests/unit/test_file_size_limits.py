@@ -8,7 +8,12 @@ import backend.services.file_size_limits as file_size_limits_module
 
 def test_enforce_raises_when_file_exceeds_configured_limit():
     try:
-        file_size_limits_module.enforce("too-big.csv", file_size_limits_module.DATA_FILE_SIZE_LIMIT + 1)
+        file_size_limits_module.enforce(
+            "too-big.csv",
+            file_size_limits_module.DATA_FILE_SIZE_LIMIT + 1,
+            additional_projected_dataframe_size_b=0,
+            used_memory_bytes=0,
+        )
         assert False, "expected DataFileTooLarge"
     except file_size_limits_module.DataFileTooLarge as exc:
         assert str(exc) == (
@@ -21,7 +26,12 @@ def test_enforce_raises_when_estimated_dataframe_would_exceed_remaining_memory(m
     monkeypatch.setattr(file_size_limits_module, "_get_container_memory_limit_bytes", lambda: 1000)
 
     try:
-        file_size_limits_module.enforce("tight.csv", 300)
+        file_size_limits_module.enforce(
+            "tight.csv",
+            300,
+            additional_projected_dataframe_size_b=0,
+            used_memory_bytes=90,
+        )
         assert False, "expected DataFileTooLarge"
     except file_size_limits_module.DataFileTooLarge as exc:
         assert "There's not enough space to process tight.csv." in str(exc)
@@ -31,7 +41,12 @@ def test_enforce_returns_when_memory_cgroup_values_are_unavailable(monkeypatch):
     monkeypatch.setattr(file_size_limits_module, "_get_container_memory_usage_bytes", lambda: None)
     monkeypatch.setattr(file_size_limits_module, "_get_container_memory_limit_bytes", lambda: None)
 
-    assert file_size_limits_module.enforce("ok.csv", 1024) is None
+    assert file_size_limits_module.enforce(
+        "ok.csv",
+        1024,
+        additional_projected_dataframe_size_b=0,
+        used_memory_bytes=None,
+    ) is None
 
 
 def test_file_size_limit_module_uses_environment_configuration(monkeypatch):

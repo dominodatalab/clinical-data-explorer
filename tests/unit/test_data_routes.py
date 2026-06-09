@@ -34,6 +34,7 @@ def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     captured_requests = []
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-1")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
         data_routes,
         "process_dataset_load_request",
@@ -71,6 +72,7 @@ def test_load_dataset_enqueues_netapp_request(monkeypatch):
     captured_requests = []
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-2")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
         data_routes,
         "process_dataset_load_request",
@@ -122,6 +124,7 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     app = _create_test_app(testing=True)
 
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     with app.test_client() as client:
         response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
@@ -134,6 +137,7 @@ def test_load_dataset_returns_413_when_processor_rejects_large_file(monkeypatch)
     app = _create_test_app(testing=True)
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-too-large")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
         data_routes,
         "process_dataset_load_request",
@@ -160,6 +164,7 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
     )
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-mcp-failure")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     def fake_mcp_post(path, params, session_id=None):
         mcp_calls.append((path, params, session_id))
@@ -182,10 +187,11 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
     assert queue.peek_all() == []
 
 
-def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
+def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypatch):
     queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=10)
     app = _create_test_app()
     first_started = threading.Event()
+    second_started = threading.Event()
     allow_first_to_finish = threading.Event()
     state_lock = threading.Lock()
     active_processors = {"count": 0, "max": 0}
@@ -194,6 +200,7 @@ def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
 
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: queue)
     monkeypatch.setattr(data_routes, "get_session_id", lambda: data_routes.request.headers["X-Test-Session-Id"])
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     def fake_process_dataset_load_request(load_request):
         with state_lock:
@@ -202,10 +209,11 @@ def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
             processed.append((load_request.dataset, load_request.session_id))
             if load_request.dataset == "datasets/one.csv":
                 first_started.set()
+            if load_request.dataset == "datasets/two.csv":
+                second_started.set()
 
         try:
-            if load_request.dataset == "datasets/one.csv":
-                allow_first_to_finish.wait(timeout=1)
+            allow_first_to_finish.wait(timeout=1)
             time.sleep(0.01)
             return jsonify({"loaded": True, "dataset": load_request.dataset})
         finally:
@@ -232,10 +240,10 @@ def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
     assert first_started.wait(timeout=1)
 
     second_thread.start()
-    time.sleep(0.02)
+    assert second_started.wait(timeout=1)
 
     assert queue.qsize() == 2
-    assert active_processors["max"] == 1
+    assert active_processors["max"] == 2
 
     allow_first_to_finish.set()
     first_thread.join(timeout=1)
@@ -245,9 +253,9 @@ def test_load_dataset_serializes_concurrent_requests_through_queue(monkeypatch):
     assert responses["datasets/two.csv"].status_code == 200
     assert responses["datasets/one.csv"].get_json() == {"loaded": True, "dataset": "datasets/one.csv"}
     assert responses["datasets/two.csv"].get_json() == {"loaded": True, "dataset": "datasets/two.csv"}
-    assert processed == [
+    assert set(processed) == {
         ("datasets/one.csv", "sid-1"),
         ("datasets/two.csv", "sid-2"),
-    ]
-    assert active_processors["max"] == 1
+    }
+    assert active_processors["max"] == 2
     assert queue.qsize() == 0

@@ -99,7 +99,7 @@ Configure the following environment variables in your Domino project settings:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `MCP_REQUEST_TIMEOUT_SECONDS` | `120` | Maximum time, in seconds, for backend HTTP calls to the MCP server before timing out. |
-| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of /dataset/load requests to the backend that can be processed in the per-pod queue. |
+| `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` | `10` | Maximum number of concurrent /dataset/load requests admitted by the per-pod queue. |
 | `DATA_FILE_SIZE_LIMIT_B` | `524288000` | Maximum size in bytes for individual files downloaded into the app. |
 
 #### Optional: Production Server Tuning

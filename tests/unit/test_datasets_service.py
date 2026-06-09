@@ -650,39 +650,6 @@ def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, 
     assert captured == [(expected_args, expected_kwargs)]
 
 
-def test_validate_dataset_file_size_fetches_metadata_and_enforces_limit(monkeypatch):
-    services = _load_datasets_service(monkeypatch)
-
-    monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
-
-    http_calls = []
-
-    def fake_httpclient_get(url, params=None, headers=None):
-        http_calls.append((url, params, headers))
-        return {"fileSize": 1234}
-
-    monkeypatch.setattr(services.httpclient, "get", fake_httpclient_get)
-
-    enforce_calls = []
-    monkeypatch.setattr(
-        services.file_size_limits,
-        "enforce",
-        lambda file_name, file_size: enforce_calls.append((file_name, file_size)),
-    )
-
-    services.validate_dataset_file_size("snap-1", "reports/adsl.csv")
-
-    assert http_calls == [
-        (
-            "https://domino.example/v4/datasetrw/snapshot/snap-1/file/meta",
-            {"path": "reports/adsl.csv"},
-            {"Authorization": "Bearer test-token"},
-        )
-    ]
-    assert enforce_calls == [("reports/adsl.csv", 1234)]
-
-
 def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
@@ -776,12 +743,6 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-789")
-    validate_calls = []
-    monkeypatch.setattr(
-        services,
-        "validate_dataset_file_size",
-        lambda snapshot_id, file_path, token=None, api_host=None: validate_calls.append((snapshot_id, file_path, token, api_host)),
-    )
 
     clear_history_calls = []
     monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
@@ -835,7 +796,6 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
             True,
         )
     ]
-    assert validate_calls == [("snap-9", "reports/adsl.csv", "test-token", "https://domino.example")]
     assert clear_history_calls == ["sid-789"]
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
@@ -863,12 +823,6 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
     monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
     monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
-    enforce_calls = []
-    monkeypatch.setattr(
-        services.file_size_limits,
-        "enforce",
-        lambda file_name, file_size: enforce_calls.append((file_name, file_size)),
-    )
 
     clear_history_calls = []
     monkeypatch.setattr(services, "clear_history", lambda session_id: clear_history_calls.append(session_id))
@@ -933,7 +887,6 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
         "downloaded_files": ["reports/visit.csv"],
     }
     assert clear_history_calls == ["sid-netapp"]
-    assert enforce_calls == [("reports/visit.csv", services.file_size_limits.DATA_FILE_SIZE_LIMIT)]
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
     assert not expected_path.parent.exists()

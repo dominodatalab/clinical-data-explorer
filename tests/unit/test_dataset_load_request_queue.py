@@ -7,7 +7,6 @@ import backend.services.dataset_load_request_queue as dataset_load_request_queue
 
 from backend.services.dataset_load_request_queue import (
     DatasetLoadRequest,
-    DatasetLoadRequestQueueClearedError,
     DatasetLoadRequestQueue,
     DatasetLoadRequestQueueFullError,
     get_dataset_load_request_queue,
@@ -58,10 +57,12 @@ def test_dataset_load_request_queue_raises_when_full():
     assert queue.peek_all()[0].dataset == "one.csv"
 
 
-def test_dataset_load_request_queue_submit_and_wait_processes_one_request_at_a_time():
+def test_dataset_load_request_queue_submit_and_wait_processes_allowed_requests_concurrently(monkeypatch):
     queue = DatasetLoadRequestQueue(max_length=10)
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 1)
     first_started = threading.Event()
     allow_first_to_finish = threading.Event()
+    second_started = threading.Event()
     state_lock = threading.Lock()
     active_processors = {"count": 0, "max": 0}
     processed = []
@@ -74,9 +75,10 @@ def test_dataset_load_request_queue_submit_and_wait_processes_one_request_at_a_t
             processed.append(entry.dataset)
             if entry.dataset == "one.csv":
                 first_started.set()
+            if entry.dataset == "two.csv":
+                second_started.set()
 
-        if entry.dataset == "one.csv":
-            allow_first_to_finish.wait(timeout=1)
+        allow_first_to_finish.wait(timeout=1)
         time.sleep(0.01)
 
         with state_lock:
@@ -97,8 +99,9 @@ def test_dataset_load_request_queue_submit_and_wait_processes_one_request_at_a_t
     assert first_started.wait(timeout=1)
 
     second_thread.start()
-    time.sleep(0.02)
+    assert second_started.wait(timeout=1)
     assert queue.qsize() == 2
+    assert active_processors["max"] == 2
 
     allow_first_to_finish.set()
     first_thread.join(timeout=1)
@@ -108,13 +111,14 @@ def test_dataset_load_request_queue_submit_and_wait_processes_one_request_at_a_t
         "one.csv": "loaded:one.csv",
         "two.csv": "loaded:two.csv",
     }
-    assert processed == ["one.csv", "two.csv"]
-    assert active_processors["max"] == 1
+    assert set(processed) == {"one.csv", "two.csv"}
+    assert active_processors["max"] == 2
     assert queue.qsize() == 0
 
 
-def test_dataset_load_request_queue_submit_and_wait_preserves_order_for_three_waiters():
+def test_dataset_load_request_queue_submit_and_wait_processes_three_allowed_requests_concurrently(monkeypatch):
     queue = DatasetLoadRequestQueue(max_length=10)
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 1)
     allow_first_to_finish = threading.Event()
     state_lock = threading.Lock()
     active_processors = {"count": 0, "max": 0}
@@ -127,8 +131,7 @@ def test_dataset_load_request_queue_submit_and_wait_preserves_order_for_three_wa
             active_processors["max"] = max(active_processors["max"], active_processors["count"])
             processed.append(entry.dataset)
 
-        if entry.dataset == "one.csv":
-            allow_first_to_finish.wait(timeout=1)
+        allow_first_to_finish.wait(timeout=1)
         time.sleep(0.01)
 
         with state_lock:
@@ -165,13 +168,14 @@ def test_dataset_load_request_queue_submit_and_wait_preserves_order_for_three_wa
         "two.csv": "loaded:two.csv",
         "three.csv": "loaded:three.csv",
     }
-    assert processed == ["one.csv", "two.csv", "three.csv"]
-    assert active_processors["max"] == 1
+    assert set(processed) == {"one.csv", "two.csv", "three.csv"}
+    assert active_processors["max"] == 3
     assert queue.qsize() == 0
 
 
-def test_dataset_load_request_queue_submit_and_wait_unblocks_next_request_when_processor_raises():
+def test_dataset_load_request_queue_submit_and_wait_unblocks_next_request_when_processor_raises(monkeypatch):
     queue = DatasetLoadRequestQueue(max_length=10)
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 1)
     first_started = threading.Event()
     allow_first_to_finish = threading.Event()
     active_processors = {"count": 0, "max": 0}
@@ -221,18 +225,144 @@ def test_dataset_load_request_queue_submit_and_wait_unblocks_next_request_when_p
 
     assert str(errors["one.csv"]) == "first failed"
     assert results["two.csv"] == "loaded:two.csv"
-    assert processed == ["one.csv", "two.csv"]
-    assert active_processors["max"] == 1
+    assert set(processed) == {"one.csv", "two.csv"}
+    assert active_processors["max"] == 2
     assert queue.qsize() == 0
 
 
-def test_dataset_load_request_queue_clear_wakes_waiting_request_with_explicit_error():
+def test_dataset_load_request_queue_rejects_request_when_projected_loads_exceed_memory(monkeypatch):
     queue = DatasetLoadRequestQueue(max_length=10)
     first_started = threading.Event()
     allow_first_to_finish = threading.Event()
-    waiter_ready = threading.Event()
+
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 100)
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 100)
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+
+    def processor(entry):
+        first_started.set()
+        allow_first_to_finish.wait(timeout=1)
+        return f"loaded:{entry.dataset}"
+
+    first_thread = threading.Thread(
+        target=lambda: queue.submit_and_wait(
+            DatasetLoadRequest(
+                dataset="one.csv",
+                session_id="sid-1",
+            ),
+            processor,
+        )
+    )
+
+    first_thread.start()
+    assert first_started.wait(timeout=1)
+
+    try:
+        queue.submit_and_wait(
+            DatasetLoadRequest(
+                dataset="two.csv",
+                session_id="sid-2",
+            ),
+            lambda entry: "unexpected",
+        )
+        assert False, "expected DataFileTooLarge"
+    except dataset_load_request_queue_module.file_size_limits.DataFileTooLarge as exc:
+        assert "There's not enough space to process two.csv." in str(exc)
+
+    allow_first_to_finish.set()
+    first_thread.join(timeout=1)
+    assert queue.qsize() == 0
+
+
+def test_dataset_load_request_queue_snapshots_memory_once_until_queue_drains(monkeypatch):
+    queue = DatasetLoadRequestQueue(max_length=10)
+    memory_snapshots = iter([100, 900])
+    first_started = threading.Event()
+    allow_first_to_finish = threading.Event()
+
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 40)
+    monkeypatch.setattr(
+        dataset_load_request_queue_module.file_size_limits,
+        "get_memory_usage_snapshot_bytes",
+        lambda: next(memory_snapshots),
+    )
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+
+    def processor(entry):
+        if entry.dataset == "one.csv":
+            first_started.set()
+            allow_first_to_finish.wait(timeout=1)
+        return f"loaded:{entry.dataset}"
+
+    first_thread = threading.Thread(
+        target=lambda: queue.submit_and_wait(
+            DatasetLoadRequest(
+                dataset="one.csv",
+                session_id="sid-1",
+            ),
+            processor,
+        )
+    )
+
+    first_thread.start()
+    assert first_started.wait(timeout=1)
+
+    result = queue.submit_and_wait(
+        DatasetLoadRequest(
+            dataset="two.csv",
+            session_id="sid-2",
+        ),
+        processor,
+    )
+
+    allow_first_to_finish.set()
+    first_thread.join(timeout=1)
+
+    assert result == "loaded:two.csv"
+    assert queue.qsize() == 0
+
+
+def test_dataset_load_request_queue_resets_memory_snapshot_after_queue_drains(monkeypatch):
+    queue = DatasetLoadRequestQueue(max_length=10)
+    memory_snapshots = iter([100, 900])
+
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 40)
+    monkeypatch.setattr(
+        dataset_load_request_queue_module.file_size_limits,
+        "get_memory_usage_snapshot_bytes",
+        lambda: next(memory_snapshots),
+    )
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+
+    assert queue.submit_and_wait(
+        DatasetLoadRequest(
+            dataset="one.csv",
+            session_id="sid-1",
+        ),
+        lambda entry: f"loaded:{entry.dataset}",
+    ) == "loaded:one.csv"
+
+    try:
+        queue.submit_and_wait(
+            DatasetLoadRequest(
+                dataset="two.csv",
+                session_id="sid-2",
+            ),
+            lambda entry: "unexpected",
+        )
+        assert False, "expected DataFileTooLarge"
+    except dataset_load_request_queue_module.file_size_limits.DataFileTooLarge as exc:
+        assert "There's not enough space to process two.csv." in str(exc)
+
+    assert queue.qsize() == 0
+
+
+def test_dataset_load_request_queue_clear_removes_active_request_accounting(monkeypatch):
+    queue = DatasetLoadRequestQueue(max_length=10)
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 1)
+    first_started = threading.Event()
+    allow_first_to_finish = threading.Event()
     results = {}
-    errors = {}
 
     def processor(entry):
         if entry.dataset == "one.csv":
@@ -246,35 +376,19 @@ def test_dataset_load_request_queue_clear_wakes_waiting_request_with_explicit_er
             processor,
         )
 
-    def run_second():
-        waiter_ready.set()
-        try:
-            results["two.csv"] = queue.submit_and_wait(
-                DatasetLoadRequest(dataset="two.csv", session_id="sid-2"),
-                processor,
-            )
-        except Exception as exc:  # pragma: no cover - assertion inspects captured error
-            errors["two.csv"] = exc
-
     first_thread = threading.Thread(target=run_first)
-    second_thread = threading.Thread(target=run_second)
 
     first_thread.start()
     assert first_started.wait(timeout=1)
-
-    second_thread.start()
-    assert waiter_ready.wait(timeout=1)
-    time.sleep(0.02)
+    assert queue.qsize() == 1
 
     queue.clear()
+    assert queue.qsize() == 0
     allow_first_to_finish.set()
 
     first_thread.join(timeout=1)
-    second_thread.join(timeout=1)
 
     assert results["one.csv"] == "loaded:one.csv"
-    assert isinstance(errors["two.csv"], DatasetLoadRequestQueueClearedError)
-    assert str(errors["two.csv"]) == "dataset load request was removed from the queue before it could be processed"
     assert queue.qsize() == 0
 
 
