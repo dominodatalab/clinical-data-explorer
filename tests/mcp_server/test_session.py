@@ -68,6 +68,10 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
 def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    stale_df = pd.DataFrame({"subject_id": [1]})
+    fresh_df = pd.DataFrame({"subject_id": [2]})
+    session_module.get_cache()["stale.csv"] = stale_df
+    session_module.get_cache()["fresh.csv"] = fresh_df
     session_module._sessions.update(
         {
             "stale": session_module.LoadedDataEntry(file_snapshot_path="stale.csv", last_accessed=89.0),
@@ -79,12 +83,20 @@ def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
 
     assert "stale" not in session_module._sessions
     assert "fresh" in session_module._sessions
+    assert "stale.csv" not in session_module.get_cache()
+    pd.testing.assert_frame_equal(session_module.get_cache()["fresh.csv"], fresh_df)
 
 
 def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
     monkeypatch.setattr(session_module, "SESSION_MAX_COUNT", 2)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    oldest_df = pd.DataFrame({"subject_id": [1]})
+    middle_df = pd.DataFrame({"subject_id": [2]})
+    newest_df = pd.DataFrame({"subject_id": [3]})
+    session_module.get_cache()["one.csv"] = oldest_df
+    session_module.get_cache()["two.csv"] = middle_df
+    session_module.get_cache()["three.csv"] = newest_df
     session_module._sessions.update(
         {
             "oldest": session_module.LoadedDataEntry(file_snapshot_path="one.csv", last_accessed=70.0),
@@ -97,6 +109,67 @@ def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
 
     assert "oldest" not in session_module._sessions
     assert set(session_module._sessions) == {"middle", "newest"}
+    assert "one.csv" not in session_module.get_cache()
+    pd.testing.assert_frame_equal(session_module.get_cache()["two.csv"], middle_df)
+    pd.testing.assert_frame_equal(session_module.get_cache()["three.csv"], newest_df)
+
+
+def test_evict_stale_sessions_keeps_cache_entries_used_by_active_sessions(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    shared_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["shared.csv"] = shared_df
+    session_module._sessions.update(
+        {
+            "stale": session_module.LoadedDataEntry(file_snapshot_path="shared.csv", last_accessed=89.0),
+            "fresh": session_module.LoadedDataEntry(file_snapshot_path="shared.csv", last_accessed=95.0),
+        }
+    )
+
+    session_module._evict_stale_sessions()
+
+    assert "stale" not in session_module._sessions
+    assert "fresh" in session_module._sessions
+    pd.testing.assert_frame_equal(session_module.get_cache()["shared.csv"], shared_df)
+
+
+def test_set_current_df_evicts_previous_dataset_for_same_session():
+    first_df = pd.DataFrame({"subject_id": [1]})
+    second_df = pd.DataFrame({"subject_id": [2]})
+    session_module._current_session_id.set("session-5")
+
+    session_module._set_current_df(first_df, "first.csv")
+    session_module._set_current_df(second_df, "second.csv")
+
+    assert "first.csv" not in session_module.get_cache()
+    pd.testing.assert_frame_equal(session_module.get_cache()["second.csv"], second_df)
+    assert session_module._sessions["session-5"].file_snapshot_path == "second.csv"
+
+
+def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    old_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["old.csv"] = old_df
+    session_module._sessions["session-6"] = session_module.LoadedDataEntry(
+        file_snapshot_path="old.csv",
+        last_accessed=89.0,
+    )
+
+    app = FastAPI()
+    app.add_middleware(session_module.SessionMiddleware)
+
+    @app.get("/session")
+    async def read_session():
+        return {"has_session": "session-6" in session_module._sessions}
+
+    client = TestClient(app)
+
+    response = client.get("/session", headers={"X-Session-Id": "session-6"})
+
+    assert response.status_code == 200
+    assert response.json() == {"has_session": False}
+    assert "old.csv" not in session_module.get_cache()
 
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
