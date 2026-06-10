@@ -1,5 +1,6 @@
 import { state } from './core/state.js';
 import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
+import { showErrorBanner } from './core/error-banner.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -589,24 +590,6 @@ document.addEventListener('DOMContentLoaded', () => {
             browseBtn.disabled = false;
             hideLoadingBanner();
         });
-    }
-
-        // Loading banner functions
-    function showErrorBanner(message) {
-        const banner = document.getElementById('error-banner');
-        const text = document.getElementById('error-banner-text');
-        if (banner && text) {
-            text.textContent = message || 'Sorry, something went wrong...';
-            banner.classList.add('visible');
-        }
-        banner.onclick = hideErrorBanner;
-    }
-
-    function hideErrorBanner() {
-        const banner = document.getElementById('error-banner');
-        if (banner) {
-            banner.classList.remove('visible');
-        }
     }
 
     // Loading banner functions

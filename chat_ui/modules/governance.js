@@ -41,8 +41,8 @@
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { showToast } from '../core/dom.js';
+import { showErrorBanner } from '../core/error-banner.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
-import { displayMessage } from './chat.js';
 
 const governanceIndicator = document.getElementById('governance-indicator');
 const governanceBadge = document.getElementById('governance-badge');
@@ -158,7 +158,7 @@ export async function checkGovernanceBundles(ctx) {
     } catch (error) {
         console.error('Error checking governance bundles:', error);
         const message = await getApiErrorMessage(error, 'Could not check governance bundles.');
-        displayMessage(`Error checking governance bundles: ${message}`, 'system');
+        showErrorBanner(`Error checking governance bundles: ${message}`);
         showUngovernedIndicator();
     }
 }
@@ -334,7 +334,7 @@ async function loadBundleStages(bundleId) {
     } catch (error) {
         console.error('Error loading bundle stages:', error);
         const message = await getApiErrorMessage(error, 'Could not load governance bundle stages.');
-        displayMessage(`Error loading governance bundle stages: ${message}`, 'system');
+        showErrorBanner(`Error loading governance bundle stages: ${message}`);
     }
 }
 
@@ -348,7 +348,7 @@ async function loadProjectCollaborators() {
     } catch (error) {
         console.error('Error loading project collaborators:', error);
         const message = await getApiErrorMessage(error, 'Could not load project collaborators.');
-        displayMessage(`Error loading project collaborators: ${message}`, 'system');
+        showErrorBanner(`Error loading project collaborators: ${message}`);
     }
 }
 
@@ -359,7 +359,7 @@ async function loadCurrentUser() {
     } catch (error) {
         console.error('Error loading current user:', error);
         const message = await getApiErrorMessage(error, 'Could not load current governance user.');
-        displayMessage(`Error loading current governance user: ${message}`, 'system');
+        showErrorBanner(`Error loading current governance user: ${message}`);
     }
 }
 

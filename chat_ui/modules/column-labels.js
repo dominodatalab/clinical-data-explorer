@@ -24,7 +24,7 @@
 
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
-import { displayMessage } from './chat.js';
+import { showErrorBanner } from '../core/error-banner.js';
 
 const labelToggleContainer = document.getElementById('label-toggle-container');
 
