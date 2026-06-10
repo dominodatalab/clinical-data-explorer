@@ -338,8 +338,9 @@ Governance features require:
 Run `make test` before committing. Run `make test-all` before opening a PR.
 
 - `make test` — MCP contract tests (FastAPI `TestClient`, no servers needed, ~3s)
-- `make test-e2e` — Playwright smoke test that walks the whole app (~60–90s)
-- `make test-all` — both layers
+- `make test-mocked-integration` — Playwright browser tests with mocked backend responses; no Flask/MCP servers needed
+- `make test-e2e` — Playwright smoke test that walks the whole app with local Flask/MCP servers (~60–90s)
+- `make test-all` — contract, real e2e, unit/MCP, and mocked integration layers
 - `make test-external` — tests that hit real external services (governance, chat). Run these before shipping a change that touches governance or chat.
 
 First-time setup:

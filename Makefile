@@ -1,4 +1,4 @@
-.PHONY: test test-unit test-frontend test-e2e test-all test-external
+.PHONY: test test-unit test-frontend test-mocked-integration test-e2e test-all test-external
 
 test:
 	uv run --locked pytest tests/contract
@@ -9,8 +9,11 @@ test-unit:
 test-frontend:
 	node --experimental-vm-modules --test tests/unit/js/*.test.mjs
 
+test-mocked-integration:
+	uv run --locked pytest -m mocked_integration
+
 test-e2e:
-	uv run --locked pytest tests/e2e
+	uv run --locked pytest tests/e2e -m "not mocked_integration"
 
 test-all:
 	uv run --locked pytest tests/contract tests/e2e tests/unit tests/mcp_server

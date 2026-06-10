@@ -13,6 +13,8 @@ pytest.importorskip("playwright.sync_api")
 
 from playwright.sync_api import expect  # noqa: E402
 
+pytestmark = pytest.mark.mocked_integration
+
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SAMPLE_DATASET = "sample.csv"
 SAMPLE_COLUMNS = ["subject_id", "treatment"]
