@@ -43,7 +43,6 @@ from backend.auth import (
 )
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import get_file_cache
-import backend.services.file_size_limits as file_size_limits
 import backend.services.httpclient as httpclient
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
@@ -655,8 +654,6 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
 
     ds_name, file_path = parts
 
-    validate_dataset_file_size(snapshot_id, file_path, token=token, api_host=api_host)
-
     try:
 
         headers = {'Authorization': f'Bearer {token}'}
@@ -739,11 +736,6 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         return jsonify({'error': f'Invalid volume file reference: {dataset_display_name}'}), 400
 
     vol_name, file_name = parts
-
-    # There is no API for getting the metadata for a netapp file, so we can't know
-    # the exact size before download. Use the configured size limit as a worst-case
-    # bound so we still reject obviously unsafe memory conditions.
-    file_size_limits.enforce(file_name, file_size_limits.DATA_FILE_SIZE_LIMIT)
 
     try:
         from domino_data.netapp_volumes import NetAppVolumeClient
@@ -1013,27 +1005,6 @@ def _parse_datasetrw_rows(rows, subpath):
     entries.sort(key=lambda e: (0 if e['isDir'] else 1, e['name'].lower()))
     return entries
 
-
-def validate_dataset_file_size(snapshot_id: str, file_path: str, token=None, api_host=None):
-    """Fetch dataset file metadata and enforce file-size limits before download."""
-    api_host = api_host or get_domino_api_host()
-    token = token or get_passthrough_token()
-    if not api_host:
-        raise RuntimeError('Domino API host not configured')
-    if not token:
-        raise RuntimeError('Authentication required.')
-
-    headers = {'Authorization': f'Bearer {token}'}
-    metadata_url = f"{api_host}/v4/datasetrw/snapshot/{snapshot_id}/file/meta"
-    metadata = httpclient.get(
-        metadata_url,
-        params={'path': file_path},
-        headers=headers,
-    )
-    file_size = metadata.get("fileSize")
-    if file_size is None:
-        raise RuntimeError(f'Missing fileSize in metadata for {file_path}')
-    file_size_limits.enforce(file_path, file_size)
 
 @contextmanager
 def data_file_path(dataset_id: str, file_name: str, source_type: SourceType = 'dataset', snapshot_id: str = "unset_snapshot_id") -> str:

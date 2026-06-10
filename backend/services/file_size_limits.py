@@ -19,7 +19,24 @@ class DataFileTooLarge(RuntimeError):
     pass
 
 
-def enforce(file_name: str, file_size: int):
+def estimate_dataframe_size_bytes(file_size: int) -> int:
+    return file_size * DATA_TO_DATAFRAME_SIZE_MULTIPLIER
+
+
+def get_memory_usage_snapshot_bytes():
+    return _get_container_memory_usage_bytes()
+
+
+def get_memory_limit_bytes():
+    return _get_container_memory_limit_bytes()
+
+
+def enforce(
+    file_name: str,
+    file_size: int,
+    additional_projected_dataframe_size_b: int,
+    used_memory_bytes: int | None,
+):
     """
     This raises if the size of the file is larger than the limits
     And also verifies that the pandas dataframe can fit in memory
@@ -30,13 +47,12 @@ def enforce(file_name: str, file_size: int):
             f'{file_name} must be less than or equal to {DATA_FILE_SIZE_LIMIT} bytes to be processable'
         )
 
-    # this is the estimated size that the dataframe will be when it's created
-    estimated_df_size_b = file_size * DATA_TO_DATAFRAME_SIZE_MULTIPLIER
+    estimated_df_size_b = estimate_dataframe_size_bytes(file_size)
 
     # There is a danger with these memory estimators that k8s may change its implementation of
     # how memory limits are implemented. This currently works. These will return None if run locally
-    used_b = _get_container_memory_usage_bytes()
-    limit_b = _get_container_memory_limit_bytes()
+    used_b = used_memory_bytes
+    limit_b = get_memory_limit_bytes()
     if used_b is None:
         logger.warning("Couldn't get used memory estimate when validating file size limits")
 
@@ -46,7 +62,7 @@ def enforce(file_name: str, file_size: int):
     if used_b is None or limit_b is None:
         return
 
-    remaining_bytes = limit_b - used_b
+    remaining_bytes = limit_b - used_b - additional_projected_dataframe_size_b
     if remaining_bytes < estimated_df_size_b:
         used_mb = used_b / ONE_MB
         limit_mb = limit_b / ONE_MB
