@@ -163,7 +163,8 @@ class DatasetLoadRequestQueue:
                     f"dataset load request queue is full (max_length={self.max_length})"
                 )
 
-            if not self._entries:
+            started_busy_period = not self._entries
+            if started_busy_period:
                 # Empty queue means a new busy period. Capture real memory once,
                 # then keep using that stable baseline until every admitted load
                 # finishes and the queue drains.
@@ -173,12 +174,17 @@ class DatasetLoadRequestQueue:
             # The admission check intentionally ignores later real-RAM changes.
             # It uses baseline + already admitted DataFrame projections, then
             # adds this request's projection only after the request is admitted.
-            file_size_limits.enforce(
-                entry.dataset,
-                file_size,
-                additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
-                used_memory_bytes=self._memory_usage_baseline_bytes,
-            )
+            try:
+                file_size_limits.enforce(
+                    entry.dataset,
+                    file_size,
+                    additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
+                    used_memory_bytes=self._memory_usage_baseline_bytes,
+                )
+            except Exception:
+                if started_busy_period:
+                    self._reset_projected_memory_usage()
+                raise
 
             self._entries.append(queued_entry)
             self._increment_projected_memory_usage(projected_dataframe_size_bytes)
