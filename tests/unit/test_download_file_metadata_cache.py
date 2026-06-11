@@ -59,6 +59,27 @@ def test_popitem_removes_file_when_cache_exceeds_maxsize(tmp_path):
     assert surviving_file.parent.exists()
 
 
+def test_nested_files_with_same_basename_get_distinct_paths(tmp_path):
+    cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=10, ttl=60)
+
+    reports_file = cache.set(
+        source_type="dataset",
+        dataset_id="ds-1",
+        snapshot_id="snap-1",
+        file_name="reports/adsl.csv",
+    )
+    archive_file = cache.set(
+        source_type="dataset",
+        dataset_id="ds-1",
+        snapshot_id="snap-1",
+        file_name="archive/adsl.csv",
+    )
+
+    assert reports_file != archive_file
+    assert reports_file == Path(tmp_path) / "domino_api_datasets" / "dataset" / "ds-1" / "snap-1" / "reports" / "adsl.csv"
+    assert archive_file == Path(tmp_path) / "domino_api_datasets" / "dataset" / "ds-1" / "snap-1" / "archive" / "adsl.csv"
+
+
 def test_get_file_cache_uses_cache_config_environment_variables(monkeypatch):
     monkeypatch.setenv("DATA_FILE_CACHE_EXPIRATION_SECONDS", "7")
     monkeypatch.setenv("DATA_FILE_CACHE_MAX_ITEM_COUNT", "3")

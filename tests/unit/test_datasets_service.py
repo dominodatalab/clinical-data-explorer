@@ -755,7 +755,7 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
 
     monkeypatch.setattr(services.requests, "get", fake_requests_get)
 
-    expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-9" / "snap-9" / "adsl.csv"
+    expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-9" / "snap-9" / "reports" / "adsl.csv"
     mcp_paths = []
 
     def fake_mcp_post(path, params, session_id=None):
