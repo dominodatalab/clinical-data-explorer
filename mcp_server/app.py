@@ -116,7 +116,7 @@ def create_app() -> FastAPI:
         app,
         name="Generic dataset analysis MCP server",
         description="MCP server for generic dataset analysis API - works with any CSV dataset",
-        exclude_operations=["load_dataset"],
+        exclude_operations=["load_dataset", "evict_stale_dataframes"],
         # Forward session ID so MCP tool calls hit the right DataFrame
         headers=["authorization", "x-session-id"],
     )

@@ -76,7 +76,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         session_id = request.headers.get("x-session-id", "default")
         _current_session_id.set(session_id)
-        _evict_stale_sessions()
+        request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive
         sessions = _get_sessions()
         if session_id in sessions:
@@ -85,16 +85,19 @@ class SessionMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def _drop_unreferenced_cache_entries(file_snapshot_paths: list[str]) -> None:
+def _drop_unreferenced_cache_entries(file_snapshot_paths: list[str]) -> int:
     """Remove cached DataFrames that no active session references."""
     if not file_snapshot_paths:
-        return
+        return 0
 
     sessions = _get_sessions()
     referenced_paths = {session.file_snapshot_path for session in sessions.values()}
     cache = get_cache()
+    evicted_count = 0
     for file_snapshot_path in set(file_snapshot_paths) - referenced_paths:
-        cache.pop(file_snapshot_path, None)
+        if cache.pop(file_snapshot_path, None) is not None:
+            evicted_count += 1
+    return evicted_count
 
 
 def _evict_stale_sessions():
@@ -115,7 +118,10 @@ def _evict_stale_sessions():
             logger.info(f"Evicting session (over limit): {sid}")
             evicted_paths.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
-    _drop_unreferenced_cache_entries(evicted_paths)
+    return {
+        "evicted_sessions": len(evicted_paths),
+        "evicted_dataframes": _drop_unreferenced_cache_entries(evicted_paths),
+    }
 
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
