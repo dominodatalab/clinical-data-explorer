@@ -12,6 +12,7 @@ from werkzeug.exceptions import HTTPException, NotFound, Unauthorized
 
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import DownloadFileMetadataCache
+import backend.services.local_dataset_paths as local_dataset_paths
 from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
 
@@ -635,6 +636,7 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
 )
 def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, load_request, handler_name, expected_args, expected_kwargs):
     services = _load_datasets_service(monkeypatch)
+    monkeypatch.setattr(services.config, "is_domino_environment", lambda: True)
 
     captured = []
 
@@ -648,6 +650,49 @@ def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, 
 
     assert result == "ok"
     assert captured == [(expected_args, expected_kwargs)]
+
+
+def test_process_dataset_load_request_uses_local_loader_outside_domino(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    monkeypatch.setattr(services.config, "is_domino_environment", lambda: False)
+
+    captured = []
+
+    def fake_local_loader(*args, **kwargs):
+        captured.append((args, kwargs))
+        return "ok"
+
+    monkeypatch.setattr(services, "load_local_dataset_file", fake_local_loader)
+    monkeypatch.setattr(services, "load_dataset_via_api", lambda *args, **kwargs: pytest.fail("should not call Domino API"))
+    monkeypatch.setattr(services, "load_netapp_volume_file", lambda *args, **kwargs: pytest.fail("should not call NetApp loader"))
+
+    load_request = DatasetLoadRequest(
+        dataset="adsl.sas7bdat",
+        session_id="sid-local",
+        authorization_header="Bearer token-123",
+        project_id="proj-1",
+        source_type="netapp",
+        volume_key="vol-1",
+    )
+
+    result = services.process_dataset_load_request(load_request)
+
+    assert result == "ok"
+    assert captured == [(("adsl.sas7bdat",), {"session_id": "sid-local"})]
+
+
+def test_resolve_local_dataset_path_finds_bare_filename_in_repo_datasets(monkeypatch, tmp_path):
+    services = _load_datasets_service(monkeypatch)
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    sample_file = datasets_dir / "adsl.sas7bdat"
+    sample_file.write_bytes(b"sample")
+
+    monkeypatch.setattr(local_dataset_paths, "get_datasets_folder", lambda: datasets_dir)
+
+    resolved = services.resolve_local_dataset_path("adsl.sas7bdat")
+
+    assert resolved == sample_file.resolve()
 
 
 def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):

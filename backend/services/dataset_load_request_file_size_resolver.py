@@ -5,6 +5,7 @@ from typing import TYPE_CHECKING
 
 from werkzeug.exceptions import NotFound
 
+from backend import config
 import backend.services.file_size_limits as file_size_limits
 import backend.services.httpclient as httpclient
 from backend.auth import (
@@ -12,6 +13,7 @@ from backend.auth import (
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
+from backend.services.local_dataset_paths import resolve_local_dataset_path
 
 if TYPE_CHECKING:
     from backend.services.dataset_load_request_queue import DatasetLoadRequest
@@ -19,6 +21,9 @@ if TYPE_CHECKING:
 
 def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -> int:
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
+
+    if not config.is_domino_environment():
+        return os.path.getsize(resolve_local_dataset_path(load_request.dataset))
 
     if load_request.source_type == 'netapp':
         return file_size_limits.DATA_FILE_SIZE_LIMIT
@@ -47,7 +52,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
             token=token,
         )
 
-    return os.path.getsize(load_request.dataset)
+    return os.path.getsize(resolve_local_dataset_path(load_request.dataset))
 
 
 def _split_dataset_file_path(dataset_display_name: str) -> str:

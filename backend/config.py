@@ -77,6 +77,11 @@ def get_domino_remote_file_system_hostport():
     return os.environ.get("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT")
 
 
+def is_domino_environment() -> bool:
+    """True when running inside Domino Data Lab (DOMINO_API_HOST is set)."""
+    return bool(get_domino_api_host())
+
+
 def get_vscode_proxy_uri():
     return os.environ.get("VSCODE_PROXY_URI")
 

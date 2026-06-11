@@ -56,13 +56,16 @@ logger = logging.getLogger(__name__)
 SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt', '.json', '.ndjson', '.dsjc'}
 
 
+from backend.services.local_dataset_paths import get_datasets_folder, resolve_local_dataset_path
+
+
 def find_data_files_fallback():
     """
     Fallback function to find data files when MCP server is unavailable.
     Searches only the repo datasets/ folder used for bundled local data.
     """
     data_files = []
-    datasets_folder = Path('datasets')
+    datasets_folder = get_datasets_folder()
 
     if datasets_folder.exists():
         for ext in SUPPORTED_EXTENSIONS:
@@ -828,6 +831,9 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 def process_dataset_load_request(load_request: DatasetLoadRequest):
     """Process a queued dataset-load request through the appropriate load path."""
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
+
+    if not config.is_domino_environment():
+        return load_local_dataset_file(load_request.dataset, session_id=load_request.session_id)
 
     if load_request.source_type == 'netapp' and load_request.volume_key:
         return load_netapp_volume_file(
