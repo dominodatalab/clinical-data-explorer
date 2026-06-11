@@ -102,6 +102,8 @@ async def load_dataset_endpoint(
 @router.post("/dataframes/evict-stale", operation_id="evict_stale_dataframes")
 def evict_stale_dataframes(request: Request):
     """Evict idle session metadata and unreferenced cached DataFrames."""
+    # SessionMiddleware evicts before this route runs; include its counts
+    # so the maintenance endpoint reports all cleanup triggered by this request.
     middleware_result = getattr(
         request.state,
         "session_eviction_result",
