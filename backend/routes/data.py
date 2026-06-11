@@ -6,6 +6,7 @@ the active dataset, paginate it, and proxy filter/summary/expression
 queries to the MCP server:
 
 - `POST /dataset/load`
+- internal pre-load call to MCP `POST /dataframes/evict-stale`
 - `GET  /dataset/data`
 - `POST /table/data`
 - `GET  /table/column_values/<column>`
@@ -49,6 +50,17 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('data', __name__)
 
 
+def _evict_stale_dataframes_before_load():
+    try:
+        response = mcp_post("/dataframes/evict-stale")
+        if response.status_code != 200:
+            logger.warning("MCP stale DataFrame eviction returned HTTP %s", response.status_code)
+    except requests.exceptions.ConnectionError:
+        logger.warning("Could not connect to MCP server to evict stale DataFrames before dataset load")
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
+
+
 @bp.route('/dataset/load', methods=['POST'])
 def load_dataset():
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
@@ -64,6 +76,7 @@ def load_dataset():
         return jsonify({'error': 'No dataset name provided'}), 400
 
     try:
+        _evict_stale_dataframes_before_load()
         # TODO this could wait for a while. can we have a multi minute timeout on requests?
         # should we have an expiration on requests?
         return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(

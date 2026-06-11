@@ -3,6 +3,7 @@
 Routes (moved verbatim from `mcp_server/app.py` as step 2.5e):
 - GET  /datasets/list
 - POST /dataset/load
+- POST /dataframes/evict-stale
 - GET  /dataset/info
 - GET  /dataset/head
 - GET  /dataset/describe
@@ -26,10 +27,16 @@ import logging
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
 from starlette.concurrency import run_in_threadpool
 
-from mcp_server.session import _get_session_dataset_name, get_current_df, get_current_metadata, load_current_df
+from mcp_server.session import (
+    _evict_stale_sessions,
+    _get_session_dataset_name,
+    get_current_df,
+    get_current_metadata,
+    load_current_df,
+)
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
@@ -89,6 +96,23 @@ async def load_dataset_endpoint(
         "date_columns": date_cols,
         "column_types": column_types,
         "num_rows": len(df)
+    }
+
+
+@router.post("/dataframes/evict-stale", operation_id="evict_stale_dataframes")
+def evict_stale_dataframes(request: Request):
+    """Evict idle session metadata and unreferenced cached DataFrames."""
+    # SessionMiddleware evicts before this route runs; include its counts
+    # so the maintenance endpoint reports all cleanup triggered by this request.
+    middleware_result = getattr(
+        request.state,
+        "session_eviction_result",
+        {"evicted_sessions": 0, "evicted_dataframes": 0},
+    )
+    route_result = _evict_stale_sessions()
+    return {
+        "evicted_sessions": middleware_result["evicted_sessions"] + route_result["evicted_sessions"],
+        "evicted_dataframes": middleware_result["evicted_dataframes"] + route_result["evicted_dataframes"],
     }
 
 

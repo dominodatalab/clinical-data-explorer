@@ -119,6 +119,42 @@ def test_load_dataset_does_not_enqueue_invalid_request():
     assert queue.peek_all() == []
 
 
+def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+    order = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-evict-first")
+
+    def fake_mcp_post(path, **kwargs):
+        order.append(("evict", path))
+        return _FakeMcpResponse(200, {"evicted_sessions": 1, "evicted_dataframes": 1})
+
+    def fake_resolve(load_request):
+        order.append(("resolve", load_request.dataset))
+        return 1
+
+    def fake_process(load_request):
+        order.append(("process", load_request.dataset))
+        return jsonify({"loaded": True, "dataset": load_request.dataset})
+
+    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", fake_resolve)
+    monkeypatch.setattr(data_routes, "process_dataset_load_request", fake_process)
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
+
+    assert response.status_code == 200
+    assert order == [
+        ("evict", "/dataframes/evict-stale"),
+        ("resolve", "datasets/adsl.csv"),
+        ("process", "datasets/adsl.csv"),
+    ]
+    assert queue.peek_all() == []
+
+
 def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     full_queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=0)
     app = _create_test_app(testing=True)

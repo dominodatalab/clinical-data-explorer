@@ -76,6 +76,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         session_id = request.headers.get("x-session-id", "default")
         _current_session_id.set(session_id)
+        request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive
         sessions = _get_sessions()
         if session_id in sessions:
@@ -84,27 +85,51 @@ class SessionMiddleware(BaseHTTPMiddleware):
         return response
 
 
+def _drop_unreferenced_cache_entries(file_snapshot_paths: list[str]) -> int:
+    """Remove cached DataFrames that no active session references."""
+    if not file_snapshot_paths:
+        return 0
+
+    sessions = _get_sessions()
+    referenced_paths = {session.file_snapshot_path for session in sessions.values()}
+    cache = get_cache()
+    evicted_count = 0
+    for file_snapshot_path in set(file_snapshot_paths) - referenced_paths:
+        if cache.pop(file_snapshot_path, None) is not None:
+            evicted_count += 1
+    return evicted_count
+
+
 def _evict_stale_sessions():
     """Remove sessions that haven't been accessed recently."""
     sessions = _get_sessions()
     now = time.time()
     stale = [sid for sid, s in sessions.items()
              if now - s.last_accessed > SESSION_MAX_AGE]
+    evicted_paths = []
     for sid in stale:
         logger.info(f"Evicting stale session: {sid}")
+        evicted_paths.append(sessions[sid].file_snapshot_path)
         del sessions[sid]
     # If still over limit, evict oldest
     if len(sessions) > SESSION_MAX_COUNT:
         by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
         for sid, _ in by_age[:len(sessions) - SESSION_MAX_COUNT]:
             logger.info(f"Evicting session (over limit): {sid}")
+            evicted_paths.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
+    return {
+        "evicted_sessions": len(evicted_paths),
+        "evicted_dataframes": _drop_unreferenced_cache_entries(evicted_paths),
+    }
 
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
     """Store a DataFrame for the current session."""
     session_id = _current_session_id.get()
     sessions = _get_sessions()
+    previous_session = sessions.get(session_id)
+    previous_file_snapshot_path = previous_session.file_snapshot_path if previous_session else None
 
     try:
         dataframe_cache.save_to_cache(file_snapshot_path, df)
@@ -116,6 +141,8 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
         last_accessed=time.time(),
         metadata=metadata,
     )
+    if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
+        _drop_unreferenced_cache_entries([previous_file_snapshot_path])
     _evict_stale_sessions()
 
 

@@ -674,8 +674,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
             return jsonify({'error': f'Failed to download file from snapshot (HTTP {response.status_code})'}), response.status_code
 
         # Save to session-specific temp directory
-        file_name = file_path.split('/')[-1]
-        with data_file_path(dataset_id, file_name, 'dataset', snapshot_id) as temp_path:
+        with data_file_path(dataset_id, file_path, 'dataset', snapshot_id) as temp_path:
             logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
             with open(temp_path, 'wb') as f:
                 for chunk in response.iter_content(chunk_size=8192):
