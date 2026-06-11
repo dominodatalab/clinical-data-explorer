@@ -440,11 +440,12 @@ def extract_dataset_metadata(path: Path) -> dict:
     files, or non-Dataset-JSON `.json`).
     """
     try:
-        ext = path.suffix.lower()
+        resolved = _resolve_dataset_path(str(path))
+        ext = resolved.suffix.lower()
         if ext in DATASET_JSON_EXTENSIONS:
-            return _build_dataset_json_metadata(path)
+            return _build_dataset_json_metadata(resolved)
         if ext in {'.xpt', '.sas7bdat'}:
-            return _build_sas_metadata(path)
+            return _build_sas_metadata(resolved)
         return {'available': False, 'message': _NO_METADATA_MESSAGE}
     except Exception as e:
         logger.debug(f"Could not extract metadata for {path}: {e}")
