@@ -57,9 +57,9 @@
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
+import { showErrorBanner } from '../core/error-banner.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 import { getDisplayName } from './column-labels.js';
-import { displayMessage } from './chat.js';
 
 // Injected dependencies (populated at initFilters)
 let tableStateRef = null;
@@ -298,7 +298,7 @@ async function fetchAutocomplete() {
     } catch (e) {
         console.error('Autocomplete error:', e);
         const message = await getApiErrorMessage(e, 'Could not load autocomplete values.');
-        displayMessage(`Autocomplete error: ${message}`, 'system');
+        showErrorBanner(`Autocomplete error: ${message}`);
     }
 }
 

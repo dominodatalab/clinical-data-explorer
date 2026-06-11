@@ -111,9 +111,9 @@
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from '../core/api.js';
 import { escapeHtml, showToast } from '../core/dom.js';
+import { showErrorBanner } from '../core/error-banner.js';
 import { getDisplayName, getDisplayNameWithOriginal } from './column-labels.js';
 import { renderActiveFilters } from './filters.js';
-import { displayMessage } from './chat.js';
 
 // ===== Shared mutable singleton =====
 export const tableState = {
@@ -309,7 +309,7 @@ function parsePermalinkFromUrl() {
             tableState.filters = JSON.parse(decodeURIComponent(filtersParam));
         } catch (e) {
             console.error('Failed to parse filters from URL:', e);
-            displayMessage(`Failed to parse filters from URL: ${e.message}`, 'system');
+            showErrorBanner(`Failed to parse filters from URL: ${e.message}`);
         }
     }
     
@@ -979,7 +979,7 @@ export async function updateDistinctValuesCard() {
     } catch (e) {
         console.error('Error getting distinct values:', e);
         const message = await getApiErrorMessage(e, 'Could not load distinct values.');
-        displayMessage(`Error loading distinct values: ${message}`, 'system');
+        showErrorBanner(`Error loading distinct values: ${message}`);
         valueEl.textContent = 'Error';
         valueEl.title = message;
         listEl.innerHTML = '';
@@ -1692,7 +1692,7 @@ export async function loadSummaryData() {
     } catch (e) {
         console.error('Error loading summary:', e);
         const message = await getApiErrorMessage(e, 'Could not load summary data.');
-        displayMessage(`Error loading summary: ${message}`, 'system');
+        showErrorBanner(`Error loading summary: ${message}`);
     }
 }
 

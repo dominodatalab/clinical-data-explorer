@@ -1,5 +1,6 @@
 import { state } from './core/state.js';
 import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
+import { showErrorBanner } from './core/error-banner.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -325,10 +326,10 @@ document.addEventListener('DOMContentLoaded', () => {
                     if (tableEmptyState) tableEmptyState.classList.remove('hidden');
                 } else if (error && error.response) {
                     const message = await getApiErrorMessage(error, `HTTP ${error.status}`);
-                    displayMessage(`Error loading datasets: ${message}`, 'system');
+                    showErrorBanner(`Error loading datasets: ${message}`);
                 } else {
                     const message = await getApiErrorMessage(error, 'Make sure the server is running.');
-                    displayMessage(`Error loading datasets: ${message}`, 'system');
+                    showErrorBanner(`Error loading datasets: ${message}`);
                 }
             });
     }
@@ -583,14 +584,13 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Error:', error);
             const prefix = (error.status === 401 || error.status === 403) ? 'Access denied: ' : 'Error loading dataset: ';
             const message = await getApiErrorMessage(error, 'Make sure the server is running.');
-            displayMessage(`${prefix}${message}`, 'system');
+            showErrorBanner(`${prefix}${message}`);
         })
         .finally(() => {
             browseBtn.disabled = false;
             hideLoadingBanner();
         });
     }
-
 
     // Loading banner functions
     function showLoadingBanner(message) {

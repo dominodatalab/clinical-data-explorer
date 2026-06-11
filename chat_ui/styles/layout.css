@@ -22,6 +22,11 @@
     display: block;
 }
 
+.error-banner {
+    background: #b42318;
+    cursor: pointer;
+}
+
 @keyframes slideDown {
     from {
         transform: translateY(-100%);

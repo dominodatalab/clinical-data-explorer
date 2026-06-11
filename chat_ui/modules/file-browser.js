@@ -37,8 +37,8 @@
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
+import { showErrorBanner } from '../core/error-banner.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
-import { displayMessage } from './chat.js';
 
 let performDatasetLoadFn = null;
 let allFilesCache = null;
@@ -247,7 +247,7 @@ async function onSourceSelected() {
             console.error('Error fetching snapshots:', error);
             const message = await getApiErrorMessage(error, 'Failed to load snapshots');
             snapshotSelect.innerHTML = '<option value="">Failed to load snapshots</option>';
-            displayMessage(`Error loading snapshots: ${message}`, 'system');
+            showErrorBanner(`Error loading snapshots: ${message}`);
             // Fall back: try loading files without snapshot info
             if (source.type === 'netapp') {
                 loadNetAppFilesForBrowser(source.volumeKey || source.id);

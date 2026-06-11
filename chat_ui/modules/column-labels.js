@@ -24,7 +24,7 @@
 
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
-import { displayMessage } from './chat.js';
+import { showErrorBanner } from '../core/error-banner.js';
 
 const labelToggleContainer = document.getElementById('label-toggle-container');
 
@@ -45,7 +45,7 @@ export function loadColumnLabels() {
         .catch(async error => {
             console.error('Error loading column labels:', error);
             const message = await getApiErrorMessage(error, 'Friendly names will be unavailable.');
-            displayMessage(`Error loading column labels: ${message}`, 'system');
+            showErrorBanner(`Error loading column labels: ${message}`);
             state.labelsAvailable = false;
             labelToggleContainer.style.display = 'none';
         });
