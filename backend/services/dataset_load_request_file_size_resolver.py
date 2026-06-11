@@ -5,10 +5,10 @@ from typing import TYPE_CHECKING
 
 from werkzeug.exceptions import NotFound
 
-import backend.services.file_size_limits as file_size_limits
 import backend.services.httpclient as httpclient
 from backend.auth import (
     get_domino_api_host,
+    get_domino_external_url,
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
@@ -21,7 +21,11 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
     if load_request.source_type == 'netapp':
-        return file_size_limits.DATA_FILE_SIZE_LIMIT
+        return _get_netapp_volume_file_size(
+            load_request.dataset,
+            load_request.volume_id,
+            token=token,
+        )
 
     if load_request.dataset_id and load_request.snapshot_id:
         return _get_dataset_snapshot_file_size(
@@ -55,6 +59,37 @@ def _split_dataset_file_path(dataset_display_name: str) -> str:
     if len(parts) != 2:
         raise RuntimeError(f'Invalid dataset reference: {dataset_display_name}')
     return parts[1]
+
+
+def _get_netapp_volume_file_size(
+    volume_file_display_name: str,
+    volume_id: str | None,
+    token=None,
+) -> int:
+    if not volume_id:
+        raise RuntimeError(f'Missing NetApp volume ID for {volume_file_display_name}')
+
+    file_path = _split_dataset_file_path(volume_file_display_name)
+    metadata = get_netapp_volume_file_metadata(volume_id, file_path, token=token)
+    file_size = metadata.get("fileSize")
+    if file_size is None:
+        raise NotFound(f'Missing fileSize in metadata for {file_path}')
+    return file_size
+
+
+def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
+    external_url = external_url or get_domino_external_url()
+    if not external_url:
+        raise RuntimeError('Domino external URL not configured')
+
+    return httpclient.get(
+        f"{external_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
+        params={'path': file_path},
+        headers={
+            'accept': 'application/json',
+            'Authorization': f'Bearer {token}',
+        },
+    )
 
 
 def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, token=None) -> str:

@@ -34,6 +34,7 @@ class DatasetLoadRequest:
         snapshot_id: Snapshot identifier for snapshot-specific loads.
         source_type: Logical source type, such as ``"netapp"``.
         volume_key: NetApp volume key for NetApp-backed loads.
+        volume_id: NetApp volume UUID for WebVFS-backed metadata requests.
         snapshot_version: NetApp snapshot version when applicable.
         enqueued_at: Timestamp recording when the request entered the queue.
     """
@@ -46,6 +47,7 @@ class DatasetLoadRequest:
     snapshot_id: Optional[str] = None
     source_type: Optional[str] = None
     volume_key: Optional[str] = None
+    volume_id: Optional[str] = None
     snapshot_version: Optional[int | str] = None
     enqueued_at: float = field(default_factory=time.time)
 
@@ -152,6 +154,7 @@ class DatasetLoadRequestQueue:
             snapshot_id=entry.snapshot_id,
             source_type=entry.source_type,
             volume_key=entry.volume_key,
+            volume_id=entry.volume_id,
             snapshot_version=entry.snapshot_version,
             enqueued_at=entry.enqueued_at,
         )

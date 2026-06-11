@@ -86,6 +86,7 @@ def test_load_dataset_enqueues_netapp_request(monkeypatch):
                 "dataset": "Safety Volume/reports/adlb.csv",
                 "sourceType": "netapp",
                 "volumeKey": "vol-123",
+                "volumeId": "vol-id-123",
                 "snapshotVersion": 7,
                 "snapshotId": "snap-7",
             },
@@ -102,6 +103,7 @@ def test_load_dataset_enqueues_netapp_request(monkeypatch):
     assert captured_requests[0].authorization_header == "Bearer token-2"
     assert captured_requests[0].source_type == "netapp"
     assert captured_requests[0].volume_key == "vol-123"
+    assert captured_requests[0].volume_id == "vol-id-123"
     assert captured_requests[0].snapshot_version == 7
     assert captured_requests[0].snapshot_id == "snap-7"
 
