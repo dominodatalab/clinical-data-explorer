@@ -73,6 +73,10 @@ def get_domino_project_id():
     return os.environ.get("DOMINO_PROJECT_ID")
 
 
+def get_domino_run_id():
+    return os.environ.get("DOMINO_RUN_ID")
+
+
 def get_domino_remote_file_system_hostport():
     return os.environ.get("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT")
 
@@ -99,6 +103,7 @@ DOMINO_API_HOST_OVERRIDE = get_domino_api_host_override()
 DOMINO_API_HOST = get_domino_api_host()
 DOMINO_EXTERNAL_URL = get_domino_external_url()
 DOMINO_PROJECT_ID = get_domino_project_id()
+DOMINO_RUN_ID = get_domino_run_id()
 DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT = get_domino_remote_file_system_hostport()
 VSCODE_PROXY_URI = get_vscode_proxy_uri()
 

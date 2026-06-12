@@ -23,6 +23,7 @@ from backend.routes.chat import bp as chat_bp
 from backend.routes.data import bp as data_bp
 from backend.routes.datasets import bp as datasets_bp
 from backend.routes.governance import bp as governance_bp
+from backend.routes.launch_context import bp as launch_context_bp
 from backend.session import ensure_session_id
 
 logger = logging.getLogger(__name__)
@@ -96,6 +97,7 @@ def create_app():
     app.register_blueprint(data_bp)
     app.register_blueprint(datasets_bp)
     app.register_blueprint(governance_bp)
+    app.register_blueprint(launch_context_bp)
 
 
     @app.errorhandler(HTTPException)

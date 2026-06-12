@@ -22,8 +22,11 @@ def get(*args, is_json: bool = True, **kwargs):
         stream=True
     )
 
-    if response.status_code in (401, 403):
-        raise HTTPClientError(response.status_code, 'Access denied. Your session may have expired.')
+    if response.status_code == 401:
+        raise HTTPClientError(response.status_code, 'Authentication failed. Your session may have expired.')
+
+    if response.status_code == 403:
+        raise HTTPClientError(response.status_code, 'Access denied. You do not have permission to access this resource.')
 
     if response.status_code > 399:
         raise HTTPClientError(response.status_code, response.text)

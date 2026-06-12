@@ -25,7 +25,11 @@ import {
     resortSummaryStatsForLabels,
 } from './modules/table-view.js';
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
+    if (await redirectBareAppLaunchToExtensionContext()) {
+        return;
+    }
+
     // Chat tab DOM lookups, send/clear/keypress wiring, status probe,
     // displayMessage, thinking animation, renderChart and the 8
     // type-specific renderers all live in modules/chat.js
@@ -213,6 +217,50 @@ document.addEventListener('DOMContentLoaded', () => {
     // here even though it's defined further down). It will move out when
     // dataset loading itself is extracted in a later refactor pass.
     initFileBrowser({ performDatasetLoad });
+
+    async function redirectBareAppLaunchToExtensionContext() {
+        if (hasDominoLaunchContext()) {
+            return false;
+        }
+
+        try {
+            const response = await fetchWithStatusCheck(apiUrl('launch-context'));
+            const data = await response.json();
+            if (data && data.redirectUrl) {
+                redirectToLaunchContext(data.redirectUrl);
+                return true;
+            }
+            if (data && data.reason && data.reason !== 'DOMINO_RUN_ID is not set') {
+                console.error('Launch context unavailable:', data.reason);
+            }
+        } catch (error) {
+            console.error('Error resolving launch context:', error);
+        }
+
+        return false;
+    }
+
+    function redirectToLaunchContext(redirectUrl) {
+        try {
+            if (window.top && window.top !== window) {
+                window.top.location.assign(redirectUrl);
+                return;
+            }
+        } catch (error) {
+            console.debug('Could not redirect the parent window, redirecting the current frame instead:', error);
+        }
+        window.location.assign(redirectUrl);
+    }
+
+    function hasDominoLaunchContext() {
+        const params = new URLSearchParams(window.location.search);
+        return Boolean(
+            params.get('projectId') ||
+            params.get('datasetId') ||
+            params.get('netAppVolumeId') ||
+            params.get('mountPointType') === 'projectSidebar'
+        );
+    }
 
     function loadDatasets() {
         let datasetsUrl;
