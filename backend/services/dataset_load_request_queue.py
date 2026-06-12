@@ -12,6 +12,8 @@ import threading
 import time
 from typing import Callable, Deque, Optional
 
+import requests
+
 from backend import config
 from backend.services.dataset_load_request_file_size_resolver import resolve_dataset_load_request_file_size
 import backend.services.file_size_limits as file_size_limits
@@ -96,6 +98,23 @@ class DatasetLoadRequestQueue:
         # the cumulative projected DataFrame memory for every admitted request.
         self._projected_dataframe_size_bytes: Optional[int] = None
 
+    def _get_current_session_dataframe_size_bytes(self, session_id: str) -> int:
+        response = requests.get(
+            f"{config.MCP_SERVER_URL}/dataframe/size",
+            headers={"X-Session-Id": session_id},
+            timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+        return int(response.json()["dataframe_size_bytes"])
+
+    def _evict_current_session_dataframe(self, session_id: str) -> None:
+        response = requests.post(
+            f"{config.MCP_SERVER_URL}/dataframe/evict-current-session",
+            headers={"X-Session-Id": session_id},
+            timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
+        )
+        response.raise_for_status()
+
     def put(self, entry: DatasetLoadRequest):
         """Append a request without processing it.
 
@@ -174,6 +193,14 @@ class DatasetLoadRequestQueue:
                 self._memory_usage_baseline_bytes = file_size_limits.get_memory_usage_snapshot_bytes()
                 self._projected_dataframe_size_bytes = 0
 
+            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(entry.session_id)
+            adjusted_memory_usage_baseline_bytes = self._memory_usage_baseline_bytes
+            if adjusted_memory_usage_baseline_bytes is not None:
+                adjusted_memory_usage_baseline_bytes = max(
+                    0,
+                    adjusted_memory_usage_baseline_bytes - current_session_dataframe_size_bytes,
+                )
+
             # The admission check intentionally ignores later real-RAM changes.
             # It uses baseline + already admitted DataFrame projections, then
             # adds this request's projection only after the request is admitted.
@@ -182,8 +209,9 @@ class DatasetLoadRequestQueue:
                     entry.dataset,
                     file_size,
                     additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
-                    used_memory_bytes=self._memory_usage_baseline_bytes,
+                    used_memory_bytes=adjusted_memory_usage_baseline_bytes,
                 )
+                self._evict_current_session_dataframe(entry.session_id)
             except Exception:
                 if started_busy_period:
                     self._reset_projected_memory_usage()

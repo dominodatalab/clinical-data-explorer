@@ -28,14 +28,18 @@ import logging
 import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.encoders import jsonable_encoder
 from starlette.concurrency import run_in_threadpool
 
 from mcp_server.session import (
+    evict_current_session_dataframe,
     _evict_stale_sessions,
     _get_session_dataset_name,
+    get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
     load_current_df,
+    SessionEvictionResult,
 )
 from mcp_server.services.columns import (
     _get_categorical_columns,
@@ -107,13 +111,25 @@ def evict_stale_dataframes(request: Request):
     middleware_result = getattr(
         request.state,
         "session_eviction_result",
-        {"evicted_sessions": 0, "evicted_dataframes": 0},
+        SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0),
     )
     route_result = _evict_stale_sessions()
-    return {
-        "evicted_sessions": middleware_result["evicted_sessions"] + route_result["evicted_sessions"],
-        "evicted_dataframes": middleware_result["evicted_dataframes"] + route_result["evicted_dataframes"],
-    }
+    return SessionEvictionResult(
+        evicted_sessions=middleware_result.evicted_sessions + route_result.evicted_sessions,
+        evicted_dataframes=middleware_result.evicted_dataframes + route_result.evicted_dataframes,
+    )
+
+
+@router.get("/dataframe/size", operation_id="get_current_dataframe_size")
+def get_current_dataframe_size():
+    """Return the cached DataFrame size for the current session."""
+    return {"dataframe_size_bytes": get_current_dataframe_size_bytes()}
+
+
+@router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe")
+def evict_current_session_dataframe_endpoint():
+    """Evict the current session's DataFrame cache entry."""
+    return jsonable_encoder(evict_current_session_dataframe())
 
 
 @router.get("/dataset/info", response_model=DatasetInfo)

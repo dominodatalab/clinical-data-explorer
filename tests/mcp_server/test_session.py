@@ -1,4 +1,5 @@
 import threading
+import time
 
 import pandas as pd
 import pytest
@@ -29,7 +30,19 @@ def test_set_current_df_stores_dataframe_and_session_metadata():
 
     assert session_module._get_session_dataset_name() == "adsl.csv"
     assert session_module._sessions["session-1"].file_snapshot_path == "adsl.csv"
+    assert session_module._sessions["session-1"].dataframe_size_bytes > 0
     pd.testing.assert_frame_equal(session_module.get_current_df(), df)
+
+
+def test_set_current_df_stores_loaded_dataframe_deep_size(monkeypatch):
+    df = pd.DataFrame({"subject_id": [1]})
+    session_module._current_session_id.set("session-size")
+
+    monkeypatch.setattr(session_module.objsize, "get_deep_size", lambda dataframe: 1234)
+
+    session_module._set_current_df(df, "adsl.csv")
+
+    assert session_module._sessions["session-size"].dataframe_size_bytes == 1234
 
 
 def test_get_current_df_raises_when_no_dataset_is_loaded():
@@ -83,7 +96,7 @@ def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
 
     assert "stale" not in session_module._sessions
     assert "fresh" in session_module._sessions
-    assert result == {"evicted_sessions": 1, "evicted_dataframes": 1}
+    assert result == session_module.SessionEvictionResult(evicted_sessions=1, evicted_dataframes=1)
     assert "stale.csv" not in session_module.get_cache()
     pd.testing.assert_frame_equal(session_module.get_cache()["fresh.csv"], fresh_df)
 
@@ -110,7 +123,7 @@ def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
 
     assert "oldest" not in session_module._sessions
     assert set(session_module._sessions) == {"middle", "newest"}
-    assert result == {"evicted_sessions": 1, "evicted_dataframes": 1}
+    assert result == session_module.SessionEvictionResult(evicted_sessions=1, evicted_dataframes=1)
     assert "one.csv" not in session_module.get_cache()
     pd.testing.assert_frame_equal(session_module.get_cache()["two.csv"], middle_df)
     pd.testing.assert_frame_equal(session_module.get_cache()["three.csv"], newest_df)
@@ -132,7 +145,7 @@ def test_evict_stale_sessions_keeps_cache_entries_used_by_active_sessions(monkey
 
     assert "stale" not in session_module._sessions
     assert "fresh" in session_module._sessions
-    assert result == {"evicted_sessions": 1, "evicted_dataframes": 0}
+    assert result == session_module.SessionEvictionResult(evicted_sessions=1, evicted_dataframes=0)
     pd.testing.assert_frame_equal(session_module.get_cache()["shared.csv"], shared_df)
 
 
@@ -193,6 +206,81 @@ def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkey
     assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
     assert "session-7" not in session_module._sessions
     assert "old.csv" not in session_module.get_cache()
+
+
+def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
+    current_df = pd.DataFrame({"subject_id": [1]})
+    other_df = pd.DataFrame({"subject_id": [2]})
+    session_module.get_cache()["current.csv"] = current_df
+    session_module.get_cache()["other.csv"] = other_df
+    session_module._sessions["session-size"] = session_module.LoadedDataEntry(
+        file_snapshot_path="current.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=1234,
+    )
+    session_module._sessions["other-session"] = session_module.LoadedDataEntry(
+        file_snapshot_path="other.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=5678,
+    )
+
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataframe/size", headers={"X-Session-Id": "session-size"})
+
+    assert response.status_code == 200
+    assert response.json() == {"dataframe_size_bytes": 1234}
+
+
+def test_get_current_dataframe_size_logs_warning_when_session_is_missing(caplog):
+    session_module._current_session_id.set("missing-session")
+
+    with caplog.at_level("WARNING", logger=session_module.__name__):
+        size = session_module.get_current_dataframe_size_bytes()
+
+    assert size == 0
+    assert "No loaded DataFrame found for session missing-session" in caplog.text
+
+
+def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_mcp_app):
+    current_df = pd.DataFrame({"subject_id": [1]})
+    other_df = pd.DataFrame({"subject_id": [2]})
+    session_module.get_cache()["current.csv"] = current_df
+    session_module.get_cache()["other.csv"] = other_df
+    session_module._sessions["session-current"] = session_module.LoadedDataEntry(
+        file_snapshot_path="current.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=1234,
+    )
+    session_module._sessions["session-other"] = session_module.LoadedDataEntry(
+        file_snapshot_path="other.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=5678,
+    )
+
+    client = TestClient(_mcp_app)
+
+    response = client.post(
+        "/dataframe/evict-current-session",
+        headers={"X-Session-Id": "session-current"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
+    assert "session-current" not in session_module._sessions
+    assert "session-other" in session_module._sessions
+    assert "current.csv" not in session_module.get_cache()
+    pd.testing.assert_frame_equal(session_module.get_cache()["other.csv"], other_df)
+
+
+def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(caplog):
+    session_module._current_session_id.set("missing-session")
+
+    with caplog.at_level("WARNING", logger=session_module.__name__):
+        result = session_module.evict_current_session_dataframe()
+
+    assert result == session_module.SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
+    assert "No loaded DataFrame found for session missing-session" in caplog.text
 
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
@@ -264,6 +352,7 @@ def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
         return reloaded_df
 
     monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(session_module.objsize, "get_deep_size", lambda dataframe: 4321)
 
     df = session_module.load_current_df("adsl.csv")
 
@@ -272,4 +361,5 @@ def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
     assert loader_thread_names[0].startswith("mcp-dataframe-loader")
     pd.testing.assert_frame_equal(df, reloaded_df)
     assert session_module._sessions["session-4"].file_snapshot_path == "adsl.csv"
+    assert session_module._sessions["session-4"].dataframe_size_bytes == 4321
     pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adsl.csv"], reloaded_df)

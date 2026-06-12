@@ -1,4 +1,5 @@
 from flask import Flask, jsonify
+import pytest
 import threading
 import time
 
@@ -24,6 +25,23 @@ def _create_test_app(testing=False):
     app.secret_key = "test-secret"
     app.register_blueprint(data_routes.bp)
     return app
+
+
+@pytest.fixture(autouse=True)
+def stub_queue_mcp_dataframe_hooks(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    monkeypatch.setattr(
+        dataset_load_request_queue_module.DatasetLoadRequestQueue,
+        "_get_current_session_dataframe_size_bytes",
+        lambda self, session_id: 0,
+    )
+    monkeypatch.setattr(
+        dataset_load_request_queue_module.DatasetLoadRequestQueue,
+        "_evict_current_session_dataframe",
+        lambda self, session_id: None,
+    )
+    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 0)
+    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: None)
 
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
