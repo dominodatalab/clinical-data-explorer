@@ -201,22 +201,27 @@ export function invalidateMetadataCache() {
 
 // ===== Permalink machinery =====
 
-// Build a permalink to the current view. Used by script.js's
-// finding-submit-btn click handler (passed into governance.createFinding)
-// and shares its URL-building shape with copyPermalink — but they're
-// kept as separate functions because copyPermalink also writes to the
-// clipboard and clears the row param.
-export function generatePermalink() {
+export function buildPermalinkUrl() {
     const url = new URL(window.location.href);
 
     if (state.currentDataset) {
         url.searchParams.set('dataset', state.currentDataset);
+    } else {
+        url.searchParams.delete('dataset');
     }
 
     if (tableState.filters.length > 0) {
         url.searchParams.set('filters', JSON.stringify(tableState.filters));
     } else {
         url.searchParams.delete('filters');
+    }
+
+    if (tableState.expressionFilter) {
+        url.searchParams.set('expr', tableState.expressionFilter.expression);
+        url.searchParams.set('exprSyntax', tableState.expressionFilter.syntax);
+    } else {
+        url.searchParams.delete('expr');
+        url.searchParams.delete('exprSyntax');
     }
 
     // Preserve extension params so permalinks work within extension context
@@ -252,37 +257,17 @@ export function generatePermalink() {
     }
 
     url.searchParams.delete('row');
-    return url.toString();
+    return url;
+}
+
+// Build a permalink to the current view. Used by script.js's
+// finding-submit-btn click handler (passed into governance.createFinding).
+export function generatePermalink() {
+    return buildPermalinkUrl().toString();
 }
 
 function copyPermalink() {
-    const url = new URL(window.location.href);
-    
-    // Include dataset name
-    if (state.currentDataset) {
-        url.searchParams.set('dataset', state.currentDataset);
-    } else {
-        url.searchParams.delete('dataset');
-    }
-    
-    // Include filters
-    if (tableState.filters.length > 0) {
-        url.searchParams.set('filters', JSON.stringify(tableState.filters));
-    } else {
-        url.searchParams.delete('filters');
-    }
-    
-    // Include expression filter
-    if (tableState.expressionFilter) {
-        url.searchParams.set('expr', tableState.expressionFilter.expression);
-        url.searchParams.set('exprSyntax', tableState.expressionFilter.syntax);
-    } else {
-        url.searchParams.delete('expr');
-        url.searchParams.delete('exprSyntax');
-    }
-    
-    // Clear any row parameter - this is for table view, not row detail
-    url.searchParams.delete('row');
+    const url = buildPermalinkUrl();
 
     navigator.clipboard.writeText(url.toString()).then(() => {
         showToast('Link copied to clipboard!');
