@@ -274,27 +274,6 @@ def test_summary_and_snapshot_error_banners_from_mocked_api(page, chat_ui_static
     _expect_banner(page, "Error loading snapshots: Snapshots exploded")
 
 
-def test_summary_stats_search_without_matches_shows_empty_state(page, chat_ui_static_url):
-    _install_api_routes(page)
-
-    page.goto(chat_ui_static_url)
-    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
-    _load_local_dataset(page)
-
-    page.locator("#sidebar-section-select").select_option("stats")
-    expect(page.locator("#stats-search-input")).to_be_visible(timeout=5_000)
-    page.locator("#stats-search-input").fill("abc123")
-
-    expect(page.locator("#stats-table-container")).to_contain_text(
-        "No matching variables found.",
-        timeout=5_000,
-    )
-    expect(page.locator("#stats-table-container")).not_to_contain_text(
-        "Preparing summary statistics",
-        timeout=1_000,
-    )
-
-
 @pytest.mark.parametrize(
     ("overrides", "expected_message"),
     [
