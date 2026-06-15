@@ -101,7 +101,27 @@ def test_non_dataset_json_rejected(json_client, tmp_path):
 
     resp = json_client.post("/dataset/load", params={"file_snapshot_path": str(bogus)})
     assert resp.status_code == 400, resp.text
-    assert "not a CDISC Dataset-JSON file" in resp.json()["detail"]
+    assert "not a supported CDISC Dataset-JSON file" in resp.json()["detail"]
+
+
+def test_malformed_json_rejected_with_clear_error(json_client, tmp_path):
+    bad = tmp_path / "broken.json"
+    bad.write_text('{"rows": [', encoding="utf-8")
+
+    resp = json_client.post("/dataset/load", params={"file_snapshot_path": str(bad)})
+    assert resp.status_code == 400, resp.text
+    assert "not a supported CDISC Dataset-JSON file" in resp.json()["detail"]
+    assert "not valid JSON" in resp.json()["detail"]
+
+
+def test_non_dataset_ndjson_rejected_with_clear_error(json_client, tmp_path):
+    bad = tmp_path / "events.ndjson"
+    bad.write_text('{"event": "started"}\n{"event": "finished"}\n', encoding="utf-8")
+
+    resp = json_client.post("/dataset/load", params={"file_snapshot_path": str(bad)})
+    assert resp.status_code == 400, resp.text
+    assert "not a supported CDISC Dataset-JSON file" in resp.json()["detail"]
+    assert "datasetJSONVersion" in resp.json()["detail"]
 
 
 def test_corrupt_dsjc_rejected(json_client, tmp_path):

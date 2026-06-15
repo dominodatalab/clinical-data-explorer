@@ -66,6 +66,12 @@ DATASET_JSON_EXTENSIONS = {'.json', '.ndjson', '.dsjc'}
 # Supported file extensions
 SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt'} | DATASET_JSON_EXTENSIONS
 
+UNSUPPORTED_DATASET_JSON_DETAIL = (
+    "This JSON file is not a supported CDISC Dataset-JSON file. "
+    "Clinical Data Explorer supports CDISC Dataset-JSON v1.1, "
+    "Dataset-NDJSON v1.1, and DSJC files for JSON data."
+)
+
 
 def _read_dsjc_bytes(path: Path) -> bytes:
     """Decompress a .dsjc file. The CDISC spec says raw zLib, but vendor
@@ -81,6 +87,24 @@ def _read_dsjc_bytes(path: Path) -> bytes:
         )
 
 
+def _unsupported_dataset_json(path: Path, detail: str = "") -> HTTPException:
+    suffix = f" {detail}" if detail else ""
+    return HTTPException(
+        status_code=400,
+        detail=f"{path.name}: {UNSUPPORTED_DATASET_JSON_DETAIL}{suffix}",
+    )
+
+
+def _parse_dataset_json_line(line: str, path: Path, line_number: int):
+    try:
+        return json.loads(line)
+    except json.JSONDecodeError as exc:
+        raise _unsupported_dataset_json(
+            path,
+            f"Line {line_number} is not valid JSON: {exc.msg}.",
+        ) from exc
+
+
 def _validate_dataset_json_shape(obj: dict, path: Path) -> None:
     """Fail fast with a clear error if a .json/.ndjson file isn't actually
     Dataset-JSON (since .json is a generic extension — could be a
@@ -90,14 +114,20 @@ def _validate_dataset_json_shape(obj: dict, path: Path) -> None:
     if (not isinstance(obj, dict)
             or 'columns' not in obj
             or 'datasetJSONVersion' not in obj):
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                f"{path.name} is not a CDISC Dataset-JSON file "
-                f"(missing 'datasetJSONVersion' or 'columns' metadata). "
-                f"Supported JSON encodings: Dataset-JSON v1.1, "
-                f"Dataset-NDJSON v1.1, DSJC."
-            ),
+        raise _unsupported_dataset_json(path, "Missing 'datasetJSONVersion' or 'columns' metadata.")
+
+    columns = obj.get('columns')
+    if not isinstance(columns, list) or not all(isinstance(c, dict) and c.get('name') for c in columns):
+        raise _unsupported_dataset_json(path, "The 'columns' metadata must be a list of named columns.")
+
+
+def _validate_dataset_json_rows(rows, path: Path, expected_width: int, row_context: str) -> None:
+    if not isinstance(rows, list):
+        raise _unsupported_dataset_json(path, f"{row_context} must be a row array.")
+    if len(rows) != expected_width:
+        raise _unsupported_dataset_json(
+            path,
+            f"{row_context} has {len(rows)} values, but the metadata declares {expected_width} columns.",
         )
 
 
@@ -113,11 +143,18 @@ def _load_dataset_json(path: Path) -> pd.DataFrame:
 
     if ext == '.json':
         # Compact: one object with `columns` and `rows`.
-        with open(path, 'r', encoding='utf-8') as f:
-            obj = json.load(f)
+        try:
+            with open(path, 'r', encoding='utf-8') as f:
+                obj = json.load(f)
+        except json.JSONDecodeError as exc:
+            raise _unsupported_dataset_json(path, f"The file is not valid JSON: {exc.msg}.") from exc
         _validate_dataset_json_shape(obj, path)
         col_names = [c['name'] for c in obj['columns']]
         rows = obj.get('rows', [])
+        if not isinstance(rows, list):
+            raise _unsupported_dataset_json(path, "The 'rows' value must be a list of row arrays.")
+        for index, row in enumerate(rows, start=1):
+            _validate_dataset_json_rows(row, path, len(col_names), f"Row {index}")
         df = pd.DataFrame(rows, columns=col_names)
     else:
         # NDJSON or DSJC: line 1 = metadata, lines 2..N = row arrays.
@@ -131,10 +168,16 @@ def _load_dataset_json(path: Path) -> pd.DataFrame:
         if not lines:
             raise HTTPException(status_code=400, detail=f"Empty Dataset-JSON file: {path.name}")
 
-        meta = json.loads(lines[0])
+        meta = _parse_dataset_json_line(lines[0], path, 1)
         _validate_dataset_json_shape(meta, path)
         col_names = [c['name'] for c in meta['columns']]
-        rows = [json.loads(line) for line in lines[1:] if line.strip()]
+        rows = []
+        for line_number, line in enumerate(lines[1:], start=2):
+            if not line.strip():
+                continue
+            row = _parse_dataset_json_line(line, path, line_number)
+            _validate_dataset_json_rows(row, path, len(col_names), f"Line {line_number}")
+            rows.append(row)
         df = pd.DataFrame(rows, columns=col_names)
 
     return df
