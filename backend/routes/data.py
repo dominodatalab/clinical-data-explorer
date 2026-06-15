@@ -71,6 +71,7 @@ def load_dataset():
     snapshot_id = request_json.get('snapshotId')
     source_type = request_json.get('sourceType')
     volume_key = request_json.get('volumeKey')
+    volume_id = request_json.get('volumeId')
     snapshot_version = request_json.get('snapshotVersion')
     if not dataset_name:
         return jsonify({'error': 'No dataset name provided'}), 400
@@ -89,6 +90,7 @@ def load_dataset():
                 snapshot_id=snapshot_id,
                 source_type=source_type,
                 volume_key=volume_key,
+                volume_id=volume_id,
                 snapshot_version=snapshot_version,
             ),
             process_dataset_load_request,

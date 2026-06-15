@@ -21,6 +21,7 @@ dependencies = [
     "pyreadstat>=1.2.0",
     "dominodatalab[data]==2.0.0",
     "gunicorn>=25.3.0",
+    "objsize>=0.8.0",
 ]
 
 [dependency-groups]

@@ -4,6 +4,7 @@ import time
 
 import backend.config as config_module
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
+import pytest
 
 from backend.services.dataset_load_request_queue import (
     DatasetLoadRequest,
@@ -11,6 +12,70 @@ from backend.services.dataset_load_request_queue import (
     DatasetLoadRequestQueueFullError,
     get_dataset_load_request_queue,
 )
+
+_GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES = DatasetLoadRequestQueue._get_current_session_dataframe_size_bytes
+
+
+class _FakeMcpResponse:
+    def __init__(self, payload, status_error=None):
+        self._payload = payload
+        self._status_error = status_error
+        self.raise_for_status_called = False
+
+    def raise_for_status(self):
+        self.raise_for_status_called = True
+        if self._status_error:
+            raise self._status_error
+
+    def json(self):
+        return self._payload
+
+
+@pytest.fixture(autouse=True)
+def stub_mcp_dataframe_hooks(monkeypatch):
+    monkeypatch.setattr(
+        DatasetLoadRequestQueue,
+        "_get_current_session_dataframe_size_bytes",
+        lambda self, session_id: 0,
+    )
+    monkeypatch.setattr(
+        DatasetLoadRequestQueue,
+        "_evict_current_session_dataframe",
+        lambda self, session_id: None,
+    )
+
+
+def test_get_current_session_dataframe_size_requires_successful_mcp_response(monkeypatch):
+    response = _FakeMcpResponse({"dataframe_size_bytes": 1234})
+    calls = []
+
+    def fake_get(url, headers, timeout):
+        calls.append((url, headers, timeout))
+        return response
+
+    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", fake_get)
+
+    size = _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "sid-1")
+
+    assert size == 1234
+    assert response.raise_for_status_called
+    assert calls == [
+        (
+            f"{dataset_load_request_queue_module.config.MCP_SERVER_URL}/dataframe/size",
+            {"X-Session-Id": "sid-1"},
+            dataset_load_request_queue_module.config.MCP_REQUEST_TIMEOUT_SECONDS,
+        )
+    ]
+
+
+def test_get_current_session_dataframe_size_propagates_mcp_status_errors(monkeypatch):
+    response = _FakeMcpResponse({"dataframe_size_bytes": 1234}, status_error=RuntimeError("boom"))
+    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", lambda *args, **kwargs: response)
+
+    with pytest.raises(RuntimeError, match="boom"):
+        _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "sid-1")
+
+    assert response.raise_for_status_called
 
 
 def test_get_dataset_load_request_queue_returns_singleton():
@@ -256,6 +321,38 @@ def test_dataset_load_request_queue_admits_concurrent_request_with_projected_act
         "one.csv": "loaded:one.csv",
         "two.csv": "loaded:two.csv",
     }
+    assert queue.qsize() == 0
+
+
+def test_dataset_load_request_queue_subtracts_current_session_dataframe_before_admission(monkeypatch):
+    queue = DatasetLoadRequestQueue(max_length=10)
+    events = []
+
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 100)
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 700)
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+    monkeypatch.setattr(
+        DatasetLoadRequestQueue,
+        "_get_current_session_dataframe_size_bytes",
+        lambda self, session_id: events.append(("size", session_id)) or 300,
+    )
+    monkeypatch.setattr(
+        DatasetLoadRequestQueue,
+        "_evict_current_session_dataframe",
+        lambda self, session_id: events.append(("evict", session_id)),
+    )
+
+    result = queue.submit_and_wait(
+        DatasetLoadRequest(dataset="replacement.csv", session_id="sid-1"),
+        lambda entry: events.append(("process", entry.session_id)) or "loaded",
+    )
+
+    assert result == "loaded"
+    assert events == [
+        ("size", "sid-1"),
+        ("evict", "sid-1"),
+        ("process", "sid-1"),
+    ]
     assert queue.qsize() == 0
 
 

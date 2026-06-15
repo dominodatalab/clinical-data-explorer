@@ -26,6 +26,7 @@ import threading
 import time
 from typing import Dict, Optional
 
+import objsize
 import pandas as pd
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -52,12 +53,19 @@ class LoadedDataEntry:
     # because Domino-sourced files are downloaded to a temp path that gets
     # deleted right after load, so it can't be re-read on demand later.
     metadata: Optional[dict] = None
+    dataframe_size_bytes: int = 0
 
 
 @dataclass
 class DataFrameLoadResult:
     dataframe: pd.DataFrame
     metadata: dict
+
+
+@dataclass(frozen=True)
+class SessionEvictionResult:
+    evicted_sessions: int
+    evicted_dataframes: int
 
 
 _sessions: Dict[str, LoadedDataEntry] = {}
@@ -118,10 +126,10 @@ def _evict_stale_sessions():
             logger.info(f"Evicting session (over limit): {sid}")
             evicted_paths.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
-    return {
-        "evicted_sessions": len(evicted_paths),
-        "evicted_dataframes": _drop_unreferenced_cache_entries(evicted_paths),
-    }
+    return SessionEvictionResult(
+        evicted_sessions=len(evicted_paths),
+        evicted_dataframes=_drop_unreferenced_cache_entries(evicted_paths),
+    )
 
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
@@ -140,6 +148,7 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
         file_snapshot_path=file_snapshot_path,
         last_accessed=time.time(),
         metadata=metadata,
+        dataframe_size_bytes=objsize.get_deep_size(df),
     )
     if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
         _drop_unreferenced_cache_entries([previous_file_snapshot_path])
@@ -171,6 +180,31 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     result = _create_dataframe_entry_in_thread(file_snapshot_path)
     _set_current_df(result.dataframe, file_snapshot_path, result.metadata)
     return result.dataframe
+
+
+def get_current_dataframe_size_bytes() -> int:
+    """Return the cached DataFrame size for the current session, or 0 when empty."""
+    session_id = _current_session_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None:
+        logger.warning("No loaded DataFrame found for session %s when reading DataFrame size", session_id)
+        return 0
+    return session.dataframe_size_bytes
+
+
+def evict_current_session_dataframe() -> SessionEvictionResult:
+    """Remove the current session and its unreferenced cached DataFrame."""
+    session_id = _current_session_id.get()
+    sessions = _get_sessions()
+    session = sessions.pop(session_id, None)
+    if session is None:
+        logger.warning("No loaded DataFrame found for session %s when evicting current session", session_id)
+        return SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
+
+    return SessionEvictionResult(
+        evicted_sessions=1,
+        evicted_dataframes=_drop_unreferenced_cache_entries([session.file_snapshot_path]),
+    )
 
 
 def get_current_metadata() -> dict:
