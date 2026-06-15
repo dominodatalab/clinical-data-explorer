@@ -1230,11 +1230,15 @@ function renderSummaryStatsTable() {
     const visibleCols = summaryStatsState.viewColumns.slice(0, summaryStatsState.renderedCount);
 
     let html = '';
-    if (summaryStatsState.loadingCols.size > 0 && summaryStatsState.statsByColumn.size === 0) {
+    if (summaryStatsState.viewColumns.length > 0 && summaryStatsState.loadingCols.size > 0 && summaryStatsState.statsByColumn.size === 0) {
         html += `<div class="stats-table-loading"><span class="spinner-small"></span><span>Loading summary statistics...</span></div>`;
     }
     if (visibleCols.length === 0) {
-        html += `<div class="stats-table-loading"><span class="spinner-small"></span><span>Preparing summary statistics...</span></div>`;
+        if (hasSearch && summaryStatsState.viewColumns.length === 0) {
+            html += `<div class="stats-table-loading"><span class="muted">No matching variables found.</span></div>`;
+        } else {
+            html += `<div class="stats-table-loading"><span class="spinner-small"></span><span>Preparing summary statistics...</span></div>`;
+        }
         statsTableContainer.innerHTML = html;
         return;
     }
