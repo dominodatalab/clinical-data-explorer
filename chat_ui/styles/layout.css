@@ -12,7 +12,7 @@
     right: 0;
     background: linear-gradient(90deg, var(--color-primary-primary) 0%, var(--color-accent-accentpurple) 100%);
     color: white;
-    padding: 12px 20px;
+    padding: 12px 56px 12px 20px;
     z-index: 10000;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
     animation: slideDown 0.3s ease-out;
@@ -24,7 +24,31 @@
 
 .error-banner {
     background: #b42318;
+    user-select: text;
+}
+
+.error-banner-close {
+    position: absolute;
+    top: 50%;
+    right: 16px;
+    width: 28px;
+    height: 28px;
+    transform: translateY(-50%);
+    border-radius: var(--radius-small);
+    background: transparent;
+    color: white;
     cursor: pointer;
+    font-size: 22px;
+    line-height: 1;
+}
+
+.error-banner-close:hover {
+    background: rgba(255, 255, 255, 0.16);
+}
+
+.error-banner-close:focus-visible {
+    outline: 2px solid rgba(255, 255, 255, 0.9);
+    outline-offset: 2px;
 }
 
 @keyframes slideDown {
