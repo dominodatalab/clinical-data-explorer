@@ -201,22 +201,27 @@ export function invalidateMetadataCache() {
 
 // ===== Permalink machinery =====
 
-// Build a permalink to the current view. Used by script.js's
-// finding-submit-btn click handler (passed into governance.createFinding)
-// and shares its URL-building shape with copyPermalink — but they're
-// kept as separate functions because copyPermalink also writes to the
-// clipboard and clears the row param.
-export function generatePermalink() {
+export function buildPermalinkUrl() {
     const url = new URL(window.location.href);
 
     if (state.currentDataset) {
         url.searchParams.set('dataset', state.currentDataset);
+    } else {
+        url.searchParams.delete('dataset');
     }
 
     if (tableState.filters.length > 0) {
         url.searchParams.set('filters', JSON.stringify(tableState.filters));
     } else {
         url.searchParams.delete('filters');
+    }
+
+    if (tableState.expressionFilter) {
+        url.searchParams.set('expr', tableState.expressionFilter.expression);
+        url.searchParams.set('exprSyntax', tableState.expressionFilter.syntax);
+    } else {
+        url.searchParams.delete('expr');
+        url.searchParams.delete('exprSyntax');
     }
 
     // Preserve extension params so permalinks work within extension context
@@ -236,53 +241,43 @@ export function generatePermalink() {
         url.searchParams.set('projectId', state.extensionProjectId);
     }
 
+    if (state.extensionNetAppVolumeId) {
+        if (state.extensionMountPointType) {
+            url.searchParams.set('mountPointType', state.extensionMountPointType);
+        }
+        url.searchParams.set('netAppVolumeId', state.extensionNetAppVolumeId);
+        if (state.extensionNetAppVolumeSnapshotId) {
+            url.searchParams.set('netAppVolumeSnapshotId', state.extensionNetAppVolumeSnapshotId);
+        }
+    }
+
     // Embed snapshot/source identity of the currently loaded file so the
     // receiver can reload the *same* snapshot — the /datasets listing only
     // reflects the latest snapshot, so display_name alone isn't enough.
     ['volumeKey', 'volumeId', 'snapshotId', 'snapshotVersion', 'loadDatasetId'].forEach(k => url.searchParams.delete(k));
-    if (state.lastLoadContext && state.lastLoadContext.sourceType === 'netapp') {
+    if (state.lastLoadContext && (state.lastLoadContext.sourceType === 'netapp' || state.lastLoadContext.volumeKey)) {
         if (state.lastLoadContext.volumeKey) url.searchParams.set('volumeKey', state.lastLoadContext.volumeKey);
         if (state.lastLoadContext.volumeId) url.searchParams.set('volumeId', state.lastLoadContext.volumeId);
         if (state.lastLoadContext.snapshotId) url.searchParams.set('snapshotId', state.lastLoadContext.snapshotId);
         if (state.lastLoadContext.snapshotVersion != null) url.searchParams.set('snapshotVersion', String(state.lastLoadContext.snapshotVersion));
-    } else if (state.lastLoadContext && state.lastLoadContext.sourceType === 'dataset' && !state.extensionDatasetId) {
+    } else if (state.lastLoadContext && state.lastLoadContext.datasetId && !state.extensionDatasetId) {
         // In-app dataset navigation (no extension dataset context) — carry ids explicitly.
         if (state.lastLoadContext.datasetId) url.searchParams.set('loadDatasetId', state.lastLoadContext.datasetId);
         if (state.lastLoadContext.snapshotId) url.searchParams.set('snapshotId', state.lastLoadContext.snapshotId);
     }
 
     url.searchParams.delete('row');
-    return url.toString();
+    return url;
+}
+
+// Build a permalink to the current view. Used by script.js's
+// finding-submit-btn click handler (passed into governance.createFinding).
+export function generatePermalink() {
+    return buildPermalinkUrl().toString();
 }
 
 function copyPermalink() {
-    const url = new URL(window.location.href);
-    
-    // Include dataset name
-    if (state.currentDataset) {
-        url.searchParams.set('dataset', state.currentDataset);
-    } else {
-        url.searchParams.delete('dataset');
-    }
-    
-    // Include filters
-    if (tableState.filters.length > 0) {
-        url.searchParams.set('filters', JSON.stringify(tableState.filters));
-    } else {
-        url.searchParams.delete('filters');
-    }
-    
-    // Include expression filter
-    if (tableState.expressionFilter) {
-        url.searchParams.set('expr', tableState.expressionFilter.expression);
-        url.searchParams.set('exprSyntax', tableState.expressionFilter.syntax);
-    } else {
-        url.searchParams.delete('expr');
-        url.searchParams.delete('exprSyntax');
-    }
-    
-    // Clear any row parameter - this is for table view, not row detail
-    url.searchParams.delete('row');
+    const url = buildPermalinkUrl();
 
     navigator.clipboard.writeText(url.toString()).then(() => {
         showToast('Link copied to clipboard!');
