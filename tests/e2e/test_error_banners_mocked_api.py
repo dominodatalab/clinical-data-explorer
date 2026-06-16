@@ -30,7 +30,7 @@ def _expect_banner(page, message):
 
 
 def _dismiss_banner(page):
-    page.locator("#error-banner").click()
+    page.locator("#error-banner-close").click()
     expect(page.locator("#error-banner")).not_to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
 
 
@@ -49,6 +49,18 @@ def test_page_load_error_banners_from_mocked_api(page, chat_ui_static_url):
     responses["datasets"] = error("Dataset list exploded")
     page.reload()
     _expect_banner(page, "Error loading datasets: Dataset list exploded")
+
+
+def test_error_banner_body_click_does_not_dismiss(page, chat_ui_static_url):
+    install_api_routes(page)
+
+    page.goto(f"{chat_ui_static_url}?filters=%7Bbad")
+    _expect_banner(page, "Failed to parse filters from URL")
+
+    page.locator("#error-banner-text").click()
+    expect(page.locator("#error-banner")).to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
+
+    _dismiss_banner(page)
 
 
 def test_user_triggered_error_banners_from_mocked_api(page, chat_ui_static_url):
