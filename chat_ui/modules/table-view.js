@@ -241,6 +241,16 @@ export function buildPermalinkUrl() {
         url.searchParams.set('projectId', state.extensionProjectId);
     }
 
+    if (state.extensionNetAppVolumeId) {
+        if (state.extensionMountPointType) {
+            url.searchParams.set('mountPointType', state.extensionMountPointType);
+        }
+        url.searchParams.set('netAppVolumeId', state.extensionNetAppVolumeId);
+        if (state.extensionNetAppVolumeSnapshotId) {
+            url.searchParams.set('netAppVolumeSnapshotId', state.extensionNetAppVolumeSnapshotId);
+        }
+    }
+
     // Embed snapshot/source identity of the currently loaded file so the
     // receiver can reload the *same* snapshot — the /datasets listing only
     // reflects the latest snapshot, so display_name alone isn't enough.

@@ -16,6 +16,9 @@ async function loadTableViewModule({
         extensionSnapshotId: null,
         extensionFilePath: null,
         extensionProjectId: null,
+        extensionMountPointType: null,
+        extensionNetAppVolumeId: null,
+        extensionNetAppVolumeSnapshotId: null,
         lastLoadContext: null,
         ...stateOverrides,
     };
@@ -171,4 +174,29 @@ test('buildPermalinkUrl preserves NetApp volume metadata for copied links', asyn
     assert.equal(url.searchParams.get('snapshotId'), 'snapshot-123');
     assert.equal(url.searchParams.get('snapshotVersion'), '7');
     assert.equal(url.searchParams.has('loadDatasetId'), false);
+});
+
+test('buildPermalinkUrl preserves no-project NetApp dashboard extension context', async () => {
+    const { namespace } = await loadTableViewModule({
+        href: 'https://example.test/apps/cde/?mountPointType=netAppVolume&netAppVolumeId=volume-global',
+        stateOverrides: {
+            currentDataset: 'global_netapp_volume/subjects.csv',
+            extensionMountPointType: 'netAppVolume',
+            extensionNetAppVolumeId: 'volume-global',
+            lastLoadContext: {
+                datasetName: 'global_netapp_volume/subjects.csv',
+                volumeKey: 'netapp-volume-global_netapp_volume-123',
+                volumeId: 'volume-global',
+            },
+        },
+    });
+
+    const url = namespace.buildPermalinkUrl();
+
+    assert.equal(url.searchParams.get('dataset'), 'global_netapp_volume/subjects.csv');
+    assert.equal(url.searchParams.has('projectId'), false);
+    assert.equal(url.searchParams.get('mountPointType'), 'netAppVolume');
+    assert.equal(url.searchParams.get('netAppVolumeId'), 'volume-global');
+    assert.equal(url.searchParams.get('volumeKey'), 'netapp-volume-global_netapp_volume-123');
+    assert.equal(url.searchParams.get('volumeId'), 'volume-global');
 });
