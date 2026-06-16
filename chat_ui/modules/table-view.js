@@ -245,12 +245,12 @@ export function buildPermalinkUrl() {
     // receiver can reload the *same* snapshot — the /datasets listing only
     // reflects the latest snapshot, so display_name alone isn't enough.
     ['volumeKey', 'volumeId', 'snapshotId', 'snapshotVersion', 'loadDatasetId'].forEach(k => url.searchParams.delete(k));
-    if (state.lastLoadContext && state.lastLoadContext.sourceType === 'netapp') {
+    if (state.lastLoadContext && (state.lastLoadContext.sourceType === 'netapp' || state.lastLoadContext.volumeKey)) {
         if (state.lastLoadContext.volumeKey) url.searchParams.set('volumeKey', state.lastLoadContext.volumeKey);
         if (state.lastLoadContext.volumeId) url.searchParams.set('volumeId', state.lastLoadContext.volumeId);
         if (state.lastLoadContext.snapshotId) url.searchParams.set('snapshotId', state.lastLoadContext.snapshotId);
         if (state.lastLoadContext.snapshotVersion != null) url.searchParams.set('snapshotVersion', String(state.lastLoadContext.snapshotVersion));
-    } else if (state.lastLoadContext && state.lastLoadContext.sourceType === 'dataset' && !state.extensionDatasetId) {
+    } else if (state.lastLoadContext && state.lastLoadContext.datasetId && !state.extensionDatasetId) {
         // In-app dataset navigation (no extension dataset context) — carry ids explicitly.
         if (state.lastLoadContext.datasetId) url.searchParams.set('loadDatasetId', state.lastLoadContext.datasetId);
         if (state.lastLoadContext.snapshotId) url.searchParams.set('snapshotId', state.lastLoadContext.snapshotId);

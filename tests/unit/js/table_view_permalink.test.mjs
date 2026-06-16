@@ -104,6 +104,28 @@ test('buildPermalinkUrl preserves Domino project dataset identity for copied lin
     assert.deepEqual(JSON.parse(url.searchParams.get('filters')), namespace.tableState.filters);
 });
 
+test('buildPermalinkUrl preserves dataset identity even when source type is absent', async () => {
+    const { namespace } = await loadTableViewModule({
+        href: 'https://example.test/apps/cde/?projectId=proj-1',
+        stateOverrides: {
+            currentDataset: 'Clinical_Data/clinical.csv',
+            extensionProjectId: 'proj-1',
+            lastLoadContext: {
+                datasetName: 'Clinical_Data/clinical.csv',
+                datasetId: 'dataset-clinical',
+                snapshotId: 'snapshot-clinical',
+            },
+        },
+    });
+
+    const url = namespace.buildPermalinkUrl();
+
+    assert.equal(url.searchParams.get('dataset'), 'Clinical_Data/clinical.csv');
+    assert.equal(url.searchParams.get('projectId'), 'proj-1');
+    assert.equal(url.searchParams.get('loadDatasetId'), 'dataset-clinical');
+    assert.equal(url.searchParams.get('snapshotId'), 'snapshot-clinical');
+});
+
 test('buildPermalinkUrl preserves dataset file context params', async () => {
     const { namespace } = await loadTableViewModule({
         href: 'https://example.test/apps/cde/?mountPointType=datasetFileContext&datasetId=dataset-1&datasetSnapshotId=snapshot-1&filePath=nested%2Fae.csv',
@@ -122,4 +144,31 @@ test('buildPermalinkUrl preserves dataset file context params', async () => {
     assert.equal(url.searchParams.get('datasetId'), 'dataset-1');
     assert.equal(url.searchParams.get('datasetSnapshotId'), 'snapshot-1');
     assert.equal(url.searchParams.get('filePath'), 'nested/ae.csv');
+});
+
+test('buildPermalinkUrl preserves NetApp volume metadata for copied links', async () => {
+    const { namespace } = await loadTableViewModule({
+        href: 'https://example.test/apps/cde/?projectId=proj-1',
+        stateOverrides: {
+            currentDataset: 'Safety Volume/reports/adlb.csv',
+            extensionProjectId: 'proj-1',
+            lastLoadContext: {
+                datasetName: 'Safety Volume/reports/adlb.csv',
+                volumeKey: 'netapp-volume-Safety-123',
+                volumeId: 'volume-123',
+                snapshotId: 'snapshot-123',
+                snapshotVersion: 7,
+            },
+        },
+    });
+
+    const url = namespace.buildPermalinkUrl();
+
+    assert.equal(url.searchParams.get('dataset'), 'Safety Volume/reports/adlb.csv');
+    assert.equal(url.searchParams.get('projectId'), 'proj-1');
+    assert.equal(url.searchParams.get('volumeKey'), 'netapp-volume-Safety-123');
+    assert.equal(url.searchParams.get('volumeId'), 'volume-123');
+    assert.equal(url.searchParams.get('snapshotId'), 'snapshot-123');
+    assert.equal(url.searchParams.get('snapshotVersion'), '7');
+    assert.equal(url.searchParams.has('loadDatasetId'), false);
 });
