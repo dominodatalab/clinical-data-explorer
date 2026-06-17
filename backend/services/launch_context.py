@@ -44,16 +44,18 @@ def resolve_launch_context():
     }
 
     try:
-        project = _get_launch_project(api_host, run_id, headers)
+        app = _get_app_for_instance(api_host, run_id, headers) or {}
+        app_id = app.get("id")
+        project = app.get("project") or {}
         project_id = project.get("id")
-        if not project_id:
+        if not project_id or not app_id:
             return {
                 "redirectUrl": None,
                 "available": False,
                 "reason": f"No project was found for run {run_id}",
             }
 
-        extension = _get_project_sidebar_extension(api_host, project_id, headers)
+        extension = _get_project_sidebar_extension(api_host, project_id, app_id, headers)
         if not extension:
             return {
                 "redirectUrl": None,
@@ -78,14 +80,6 @@ def resolve_launch_context():
             "available": False,
             "reason": str(exc),
         }
-
-
-def _get_launch_project(api_host, run_id, headers):
-    app = _get_app_for_instance(api_host, run_id, headers)
-    if not app:
-        return {}
-
-    return app.get("project") or {}
 
 
 def _get_app_for_instance(api_host, run_id, headers):
@@ -128,7 +122,7 @@ def _app_current_instance_id(app):
     return current_instance.get("id")
 
 
-def _get_project_sidebar_extension(api_host, project_id, headers):
+def _get_project_sidebar_extension(api_host, project_id, app_id, headers):
     try:
         response = httpclient.get(
             f"{api_host}/api/extensions/beta/extensions-ui",
@@ -142,6 +136,8 @@ def _get_project_sidebar_extension(api_host, project_id, headers):
         raise RuntimeError(f"Failed to fetch project sidebar extensions for project {project_id}: {exc}") from exc
 
     for extension in response.get("data", []):
+        if extension.get("appId") != app_id:
+            continue
         project_sidebar = (extension.get("uiMountPointTypeConfigs") or {}).get("projectSidebar") or {}
         if project_sidebar:
             return extension

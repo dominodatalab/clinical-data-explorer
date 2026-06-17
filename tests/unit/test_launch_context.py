@@ -45,7 +45,15 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
             return {
                 "data": [
                     {
+                        "id": "ext-other",
+                        "appId": "app-other",
+                        "uiMountPointTypeConfigs": {
+                            "projectSidebar": {"title": "Other"},
+                        },
+                    },
+                    {
                         "id": "ext-1",
+                        "appId": "app-1",
                         "uiMountPointTypeConfigs": {
                             "projectSidebar": {"title": "CDE"},
                         },
@@ -132,6 +140,7 @@ def test_resolve_launch_context_scans_app_pages_until_instance_is_found(monkeypa
                 "data": [
                     {
                         "id": "ext-1",
+                        "appId": "app-2",
                         "uiMountPointTypeConfigs": {
                             "projectSidebar": {"title": "CDE"},
                         },
