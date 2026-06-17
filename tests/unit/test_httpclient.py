@@ -44,7 +44,18 @@ def test_get_returns_raw_response_when_is_json_false(monkeypatch):
     assert response is fake_response
 
 
-def test_get_raises_access_denied_error(monkeypatch):
+def test_get_raises_authentication_error_for_401(monkeypatch):
+    monkeypatch.setattr(httpclient.requests, "get", lambda *args, **kwargs: _FakeResponse(401, text="unauthorized"))
+
+    try:
+        httpclient.get("https://domino.example/api/unauthorized")
+        assert False, "expected HTTPClientError"
+    except httpclient.HTTPClientError as exc:
+        assert exc.status_code == 401
+        assert exc.text == "Authentication failed. Your session may have expired."
+
+
+def test_get_raises_permission_error_for_403(monkeypatch):
     monkeypatch.setattr(httpclient.requests, "get", lambda *args, **kwargs: _FakeResponse(403, text="forbidden"))
 
     try:
@@ -52,7 +63,7 @@ def test_get_raises_access_denied_error(monkeypatch):
         assert False, "expected HTTPClientError"
     except httpclient.HTTPClientError as exc:
         assert exc.status_code == 403
-        assert exc.text == "Access denied. Your session may have expired."
+        assert exc.text == "Access denied. You do not have permission to access this resource."
 
 
 def test_get_raises_error_for_other_non_success_status(monkeypatch):
