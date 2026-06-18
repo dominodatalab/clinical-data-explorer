@@ -60,10 +60,6 @@ variables have defaults.
 
 See the environment variables section in the [README.md](./README.md) for more options.
 
-## App Deployment
-
-Open the `Publish` modal and fill out the sections in the wizard. Make sure that you have selected reasonable configuration values for the usage that you expect.
-
 **Example configuration for optimal performance**
 For 12 users per hour usage, 300 MB files max size
 
@@ -71,6 +67,10 @@ For 12 users per hour usage, 300 MB files max size
 - MCP_SERVER_DATAFRAME_CACHE_SIZE_B=15032385536 (14 GB)
 - DATA_FILE_SIZE_LIMIT_B=300000 (350 MB)
 - Enable autoscaling and configure scale up to happen when RAM is at 50%
+
+## App Deployment
+
+Open the `Publish` modal and fill out the sections in the wizard. Make sure that you have selected reasonable configuration values for the usage that you expect.
 
 **Details Section**
 - Name the app `Clinical Data Explorer`
