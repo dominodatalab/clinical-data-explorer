@@ -30,6 +30,8 @@ Next, you would configure Project Environment Variables. In order to configure t
 need to set the environment variables mentioned in the following [section](https://github.com/dominodatalab/clinical-data-explorer#optional-ai-chat-feature).
 By default, the Chat feature uses OpenAI.
 
+If you expect high concurrent use, you should increase the volume size in the project settings section to be larger than the number of files downloaded within 1 minute.
+
 There are environment variables for configuring the size of in-memory dataset and chat history caching and processing.
 Depending on what usage you expect from your users you may need to set some variables here. All of the following
 variables have defaults.
