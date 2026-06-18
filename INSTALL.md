@@ -40,7 +40,7 @@ variables have defaults.
 
 **datasets processing**
 - Set `DATA_FILE_SIZE_LIMIT_B` to the max file size that a user may want to use
-- Set `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` to 5x the size of the largest data file, and then multiply that by the number of users expected to actively use the App in an hour
+- Set `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` to the amount of free memory in your Hardware Tier, minus ~1 GB in order to allow for code operations. Your Hardware Tier size should be about 5x the size of the largest data file, and then multiply that by the number of users expected to actively use the App in an hour
 - Set `DATASET_LOAD_REQUEST_QUEUE_MAX_LENGTH` to the maximum number of users that you expect to download datasets at the same time
 - Set `MCP_SESSION_MAX_AGE` to a higher number if it seems like datasets are removed from the cache too quickly
 - Set `MCP_SESSION_MAX_COUNT` to a higher number if you have high concurrent usage
