@@ -175,6 +175,39 @@ def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeyp
     assert queue.peek_all() == []
 
 
+def test_evict_stale_dataframes_proxies_to_mcp(monkeypatch):
+    app = _create_test_app()
+    calls = []
+
+    def fake_mcp_post(path, **kwargs):
+        calls.append((path, kwargs))
+        return _FakeMcpResponse(200, {"evicted_sessions": 1, "evicted_dataframes": 2})
+
+    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+
+    with app.test_client() as client:
+        response = client.post("/dataframes/evict-stale")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"evicted_sessions": 1, "evicted_dataframes": 2}
+    assert calls == [("/dataframes/evict-stale", {})]
+
+
+def test_evict_stale_dataframes_returns_503_when_mcp_unavailable(monkeypatch):
+    app = _create_test_app()
+
+    def fake_mcp_post(path, **kwargs):
+        raise data_routes.requests.exceptions.ConnectionError()
+
+    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+
+    with app.test_client() as client:
+        response = client.post("/dataframes/evict-stale")
+
+    assert response.status_code == 503
+    assert response.get_json() == {"error": "Could not connect to MCP server"}
+
+
 def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     full_queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=0)
     app = _create_test_app(testing=True)

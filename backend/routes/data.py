@@ -15,6 +15,7 @@ queries to the MCP server:
 - `GET  /column_labels`
 - `POST /table/expression_filter`
 - `GET  /table/expression_samples`
+- `POST /dataframes/evict-stale`
 
 Behavior is preserved verbatim: same paths, same query-param handling,
 same response envelopes, same status codes (including 503 for MCP
@@ -59,6 +60,22 @@ def _evict_stale_dataframes_before_load():
         logger.warning("Could not connect to MCP server to evict stale DataFrames before dataset load")
     except requests.exceptions.RequestException as exc:
         logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
+
+
+@bp.route('/dataframes/evict-stale', methods=['POST'])
+def evict_stale_dataframes():
+    """Proxy stale DataFrame eviction to the MCP server."""
+    try:
+        response = mcp_post("/dataframes/evict-stale")
+        if response.status_code == 200:
+            return jsonify(response.json())
+        return jsonify({'error': response.json().get('detail', 'Failed to evict stale DataFrames')}), response.status_code
+    except requests.exceptions.ConnectionError:
+        logger.error("Could not connect to MCP server to evict stale DataFrames")
+        return jsonify({'error': 'Could not connect to MCP server'}), 503
+    except Exception as e:
+        logger.error(f"Error evicting stale DataFrames: {e}")
+        return jsonify({'error': str(e)}), 500
 
 
 @bp.route('/dataset/load', methods=['POST'])
