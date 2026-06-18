@@ -44,6 +44,8 @@ import { showToast } from '../core/dom.js';
 import { showErrorBanner } from '../core/error-banner.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
 
+const GOVERNANCE_FEATURES_ENABLED = false;
+
 const governanceIndicator = document.getElementById('governance-indicator');
 const governanceBadge = document.getElementById('governance-badge');
 const governancePopover = document.getElementById('governance-popover');
@@ -62,6 +64,8 @@ const findingModal = document.getElementById('finding-modal-overlay');
 const findingStageSelect = document.getElementById('finding-stage');
 const findingApprovalSelect = document.getElementById('finding-approval');
 
+hideGovernanceIndicator();
+
 // Check for governance bundles when a dataset is loaded.
 // Governance attachments are snapshot-specific. Both DatasetSnapshotFile
 // and NetAppVolumeSnapshotFile attachments are keyed by a globally-unique
@@ -74,6 +78,10 @@ const findingApprovalSelect = document.getElementById('finding-approval');
 //   snapshotId:       globally-unique snapshot id (the only reliable key)
 //   datasetId/volumeId: defensive extra narrowing, when available
 export async function checkGovernanceBundles(ctx) {
+    if (!GOVERNANCE_FEATURES_ENABLED) {
+        return;
+    }
+
     try {
         ctx = ctx || {};
         const filename = ctx.filename;
@@ -466,6 +474,11 @@ function populateFindingApprovalSelector(stageId) {
 // `generatePermalink()` — see the module docstring for why that bridge lives
 // in script.js rather than here.
 export async function createFinding(findingData, permalink) {
+    if (!GOVERNANCE_FEATURES_ENABLED) {
+        showToast('Governance findings are disabled.');
+        return null;
+    }
+
     const submitBtn = document.getElementById('finding-submit-btn');
     submitBtn.classList.add('loading');
     submitBtn.disabled = true;
@@ -583,6 +596,10 @@ findingStageSelect.addEventListener('change', (e) => {
 });
 
 function openFindingModal() {
+    if (!GOVERNANCE_FEATURES_ENABLED) {
+        return;
+    }
+
     // Reset form
     document.getElementById('finding-name').value = '';
     document.getElementById('finding-severity').value = '';

@@ -23,10 +23,21 @@ logger = logging.getLogger(__name__)
 
 bp = Blueprint('governance', __name__)
 
+# DOM-78262 disables Clinical Data Explorer governance integrations for now;
+# keep the proxy code in place because we may re-enable it later.
+GOVERNANCE_FEATURES_ENABLED = False
+
+
+def governance_disabled_response():
+    return jsonify({'error': 'Governance features are disabled', 'available': False}), 404
+
 
 @bp.route('/governance/attachment-overviews', methods=['GET'])
 def get_attachment_overviews():
     """Query attachment overviews to find bundles containing a dataset file"""
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     governance_url = get_governance_api_url()
     if not governance_url:
         return jsonify({'error': 'DOMINO_API_HOST not configured', 'items': [], 'available': False})
@@ -69,6 +80,9 @@ def get_attachment_overviews():
 @bp.route('/governance/bundles/<bundle_id>', methods=['GET'])
 def get_bundle_details(bundle_id):
     """Get detailed bundle information including stages, approvals, and evidence"""
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     governance_url = get_governance_api_url()
     if not governance_url:
         return jsonify({'error': 'DOMINO_API_HOST not configured', 'available': False})
@@ -102,6 +116,9 @@ def get_bundle_details(bundle_id):
 @bp.route('/governance/bundles/<bundle_id>/stages', methods=['GET'])
 def get_bundle_stages(bundle_id):
     """Get bundle stages with approvals for finding creation"""
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     governance_url = get_governance_api_url()
     if not governance_url:
         return jsonify({'error': 'DOMINO_API_HOST not configured', 'available': False})
@@ -216,6 +233,9 @@ def get_bundle_stages(bundle_id):
 @bp.route('/governance/findings', methods=['POST'])
 def create_finding():
     """Create a new finding in the governance system"""
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     governance_url = get_governance_api_url()
     if not governance_url:
         return jsonify({'error': 'DOMINO_API_HOST not configured', 'available': False}), 503
@@ -276,6 +296,9 @@ def get_current_user():
     any authenticated user and does NOT require ManageCollaborators on the project,
     unlike the projectSettingsCollaborators lookup used previously.
     """
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     domino_api_host = get_domino_api_host()
     if not domino_api_host:
         return jsonify({'error': 'DOMINO_API_HOST not configured'}), 503
@@ -310,6 +333,9 @@ def get_current_user():
 @bp.route('/governance/project-collaborators', methods=['GET'])
 def get_project_collaborators():
     """Get project collaborators for approver/assignee selection"""
+    if not GOVERNANCE_FEATURES_ENABLED:
+        return governance_disabled_response()
+
     domino_api_host = get_domino_api_host()
     project_id = config.get_domino_project_id()
 
