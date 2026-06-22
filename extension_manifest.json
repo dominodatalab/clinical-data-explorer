@@ -1,0 +1,75 @@
+{
+  "manifestSchemaVersion": 1,
+  "project": {
+    "name": "Domino_Official_Clinical_Data_Explorer_Extension",
+    "description": "Contains the app for the Clinical Data Explorer Extension. Please review https://github.com/dominodatalab/clinical-data-explorer/blob/main/INSTALL.md#extension-project-creation for instructions for required and recommended environment variables for your app.",
+    "visibility": "Private",
+    "isRestricted": false
+  },
+  "app": {
+    "computeEnvironment": {
+      "type": "custom",
+      "customEnvironment": {
+        "name": "Clinical Data Explorer Extension Compute Environment",
+        "dockerfilePath": "Dockerfile",
+        "baseImage": "python:3.13-slim-bullseye",
+        "autoCompatibleWithDomino": false,
+        "visibility": "global",
+        "buildArgs": {
+          "EXTENSION_VERSION": "v1.0.0-provisional1"
+        }
+      }
+    },
+    "appName": "Domino Clinical Data Explorer App",
+    "appDescription": "Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.",
+    "appVersionDescription": "Domino Clinical Data Explorer 1.0.0",
+    "vanityUrl": "clinical-data-explorer-extension",
+    "entryPoint": "start_servers_prod.sh",
+    "visibility": "authenticated",
+    "enableDeepLinking": true,
+    "discoverable": true,
+    "mountDatasets": false,
+    "mountNetAppVolumes": false,
+    "externalVolumeMounts": [],
+    "hardwareTierIdSuggestion": "medium-k8s",
+    "autoscalingSpec": {
+        "enabled": true,
+        "useSessionAffinity": true,
+        "minReplicas": 1,
+        "maxReplicas": 5,
+        "targetMemoryAvgUtilizationPct": 50,
+        "scaleUpStabilizationWindowSeconds": 0
+    }
+  },
+  "extension": {
+    "name": "Clinical Data Explorer",
+    "description": "Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.",
+    "enabled": true,
+    "uiMountPointTypeConfigs": {
+      "projectSidebar": {
+        "enabled": true,
+        "allProjects": true,
+        "urlConfig": {
+          "route": null,
+          "contextualQueryParams": ["projectId"]
+        }
+      },
+      "dataset": {
+          "enabled": true,
+          "urlConfig": {
+              "route": null,
+              "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId"]
+          }
+      },
+	  "datasetFileContext": {
+		  "enabled": true,
+		  "allProjects": true,
+		  "fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"],
+		  "urlConfig": {
+			  "route": null,
+			  "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
+		  }
+	  }
+    }
+  }
+}
