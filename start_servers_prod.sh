@@ -31,12 +31,14 @@ fi
 MCP_HOST="${MCP_HOST:-0.0.0.0}"
 MCP_PORT="${MCP_PORT:-3333}"
 MCP_WORKERS="${MCP_WORKERS:-1}"
+MCP_APP_KEEPALIVE_TIMEOUT="${MCP_APP_KEEPALIVE_TIMEOUT:-5}"
 
 FLASK_HOST="${FLASK_HOST:-0.0.0.0}"
 FLASK_PORT="${MAIN_APP_PORT:-8888}"
 FLASK_WORKERS="${FLASK_WORKERS:-1}"
 FLASK_THREADS="${FLASK_THREADS:-4}"
 GUNICORN_TIMEOUT="${GUNICORN_TIMEOUT:-120}"
+FLASK_APP_KEEPALIVE_TIMEOUT="${FLASK_APP_KEEPALIVE_TIMEOUT:-5}"
 
 UVICORN_LOG_LEVEL="${UVICORN_LOG_LEVEL:-info}"
 GUNICORN_LOG_LEVEL="${GUNICORN_LOG_LEVEL:-info}"
@@ -90,7 +92,7 @@ uv run --locked uvicorn mcp_server.app:app \
     --workers "$MCP_WORKERS" \
     --proxy-headers \
     --forwarded-allow-ips "$FORWARDED_ALLOW_IPS" \
-    --timeout-keep-alive 30 \
+    --timeout-keep-alive $MCP_APP_KEEPALIVE_TIMEOUT \
     --log-level "$UVICORN_LOG_LEVEL" &
 MCP_PID=$!
 echo "MCP Server started (PID: $MCP_PID)"
@@ -112,7 +114,7 @@ uv run --locked gunicorn app:app \
     --timeout "$GUNICORN_TIMEOUT" \
     --access-logfile - \
     --error-logfile - \
-    --keep-alive 30 \
+    --keep-alive $FLASK_APP_KEEPALIVE_TIMEOUT \
     --log-level "$GUNICORN_LOG_LEVEL" &
 FLASK_PID=$!
 echo "Flask App started (PID: $FLASK_PID)"
