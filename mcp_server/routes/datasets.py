@@ -53,7 +53,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/datasets/list", response_model=DatasetList, operation_id="list_available_datasets")
+@router.get("/datasets/list", response_model=DatasetList)
 async def list_datasets():
     """List all available data files (CSV and Parquet) from datasets/ and /mnt/data/"""
     data_files = find_data_files()
