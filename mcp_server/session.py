@@ -83,7 +83,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
         session_id = request.headers.get("x-session-id", "default")
-        logger.info(f"SESSION {session_id}")
+        logger.info(f"SESSION {session_id}, time {time.time()}")
         _current_session_id.set(session_id)
         request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive
@@ -91,6 +91,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         if session_id in sessions:
             logger.info(f"NIOLE touching session {session_id}")
             sessions[session_id].last_accessed = time.time()
+            logger.info(f"NIOLE session last accessed {sessions[session_id].last_accessed}")
         response = await call_next(request)
         return response
 
