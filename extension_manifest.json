@@ -16,7 +16,7 @@
         "autoCompatibleWithDomino": false,
         "visibility": "global",
         "buildArgs": {
-          "EXTENSION_VERSION": "v1.0.0-provisional1"
+          "EXTENSION_VERSION": "v1.0.0-provisional2"
         }
       }
     },
@@ -43,7 +43,7 @@
   },
   "extension": {
     "name": "Clinical Data Explorer",
-    "description": "Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.",
+    "description": "Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets. See the INSTALL.md for required post-install configuration.",
     "enabled": true,
     "uiMountPointTypeConfigs": {
       "projectSidebar": {
@@ -58,18 +58,34 @@
           "enabled": true,
           "urlConfig": {
               "route": null,
-              "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId"]
+              "contextualQueryParams": ["datasetId","datasetSnapshotId","projectId"]
           }
       },
-	  "datasetFileContext": {
-		  "enabled": true,
-		  "allProjects": true,
-		  "fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"],
-		  "urlConfig": {
-			  "route": null,
-			  "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
-		  }
-	  }
+      "datasetFileContext": {
+              "enabled": true,
+              "allProjects": true,
+              "fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"],
+              "urlConfig": {
+                      "route": null,
+                      "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
+              }
+      },
+      "netAppVolume":{
+        "enabled": true,
+        "urlConfig": {
+	    "route": null,
+	    "contextualQueryParams": ["netAppVolumeId","netAppVolumeSnapshotId","projectId"]
+	}
+      },
+      "netAppVolumeFileContext":{
+        "enabled": true,
+        "urlConfig": {
+	  "route": null,
+	  "contextualQueryParams": ["netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
+	},
+        "allProjects": true,
+	"fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"]
+      }
     }
   }
 }
