@@ -1,0 +1,15 @@
+{
+  "versionRegistrySchemaVersion": 1,
+  "installDisplayName": "Clinical Data Explorer",
+  "versions": [
+    {
+      "manifestSchemaVersion": 1,
+      "version": "v1.0.0-provisional1",
+	  "releaseTag": "v1.0.0-provisional1",
+	  "isProvisional": true,
+	  "minDominoVersion": "6.3.0",
+      "maxDominoVersion": "6.3.0",
+      "testedWithDominoVersions": ["6.3.0"]
+    }
+  ]
+}
