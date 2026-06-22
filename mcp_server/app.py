@@ -106,9 +106,8 @@ def create_app() -> FastAPI:
     app.include_router(filters_router)
     app.include_router(tables_router)
 
-    # Wire FastApiMCP after all routers so every analysis route is exposed
-    # as an MCP tool. Dataset discovery/loading stays HTTP-only so chat can
-    # analyze the current session DataFrame without browsing project files.
+    # Wire FastApiMCP after all routers so every business route is exposed
+    # as an MCP tool (other than `load_dataset`, which is excluded).
     # Connect to this MCP by default with (in pydantic ai for example):
     #   server = MCPServerHTTP(url='http://localhost:3333/mcp')
     #   agent = Agent('openai:gpt-4.1-mini', mcp_servers=[server])
@@ -117,7 +116,7 @@ def create_app() -> FastAPI:
         app,
         name="Generic dataset analysis MCP server",
         description="MCP server for generic dataset analysis API - works with any CSV dataset",
-        exclude_operations=["list_available_datasets", "load_dataset", "evict_stale_dataframes"],
+        exclude_operations=["load_dataset", "evict_stale_dataframes"],
         # Forward session ID so MCP tool calls hit the right DataFrame
         headers=["authorization", "x-session-id"],
     )

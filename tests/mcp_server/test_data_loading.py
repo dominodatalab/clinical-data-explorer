@@ -2,6 +2,7 @@ from mcp_server.services import data_loading
 
 
 def test_find_data_files_only_lists_repo_datasets_folder(monkeypatch, tmp_path):
+    monkeypatch.delenv("DOMINO_RUN_ID", raising=False)
     datasets_dir = tmp_path / "datasets"
     datasets_dir.mkdir()
     (datasets_dir / "local.csv").write_text("id\n1\n", encoding="utf-8")
@@ -17,6 +18,17 @@ def test_find_data_files_only_lists_repo_datasets_folder(monkeypatch, tmp_path):
         "local.csv",
         "local.parquet",
     ]
+
+
+def test_find_data_files_hides_repo_datasets_in_domino(monkeypatch, tmp_path):
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    (datasets_dir / "local.csv").write_text("id\n1\n", encoding="utf-8")
+
+    monkeypatch.setattr(data_loading, "datasets_folder", datasets_dir)
+    monkeypatch.setenv("DOMINO_RUN_ID", "run-123")
+
+    assert data_loading.find_data_files() == []
 
 
 def test_load_dataset_resolves_bare_name_from_datasets_folder(monkeypatch, tmp_path):

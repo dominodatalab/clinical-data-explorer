@@ -40,6 +40,7 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException
 
+from mcp_server import config
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
@@ -500,6 +501,9 @@ def find_data_files() -> List[Dict[str, str]]:
 
     Returns a list of dicts with 'name' (display name) and 'path' (full path)
     """
+    if config.get_domino_run_id():
+        return []
+
     data_files = []
 
     if datasets_folder.exists():
