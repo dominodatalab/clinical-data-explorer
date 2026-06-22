@@ -90,6 +90,7 @@ uv run --locked uvicorn mcp_server.app:app \
     --workers "$MCP_WORKERS" \
     --proxy-headers \
     --forwarded-allow-ips "$FORWARDED_ALLOW_IPS" \
+    --timeout-keep-alive 30 \
     --log-level "$UVICORN_LOG_LEVEL" &
 MCP_PID=$!
 echo "MCP Server started (PID: $MCP_PID)"
@@ -111,6 +112,7 @@ uv run --locked gunicorn app:app \
     --timeout "$GUNICORN_TIMEOUT" \
     --access-logfile - \
     --error-logfile - \
+    --keep-alive 30 \
     --log-level "$GUNICORN_LOG_LEVEL" &
 FLASK_PID=$!
 echo "Flask App started (PID: $FLASK_PID)"
