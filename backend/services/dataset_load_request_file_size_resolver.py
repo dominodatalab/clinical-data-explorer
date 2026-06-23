@@ -51,7 +51,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
             token=token,
         )
 
-    return os.path.getsize(load_request.dataset)
+    return os.path.getsize(f"./datasets/{load_request.dataset}")
 
 
 def _split_dataset_file_path(dataset_display_name: str) -> str:
