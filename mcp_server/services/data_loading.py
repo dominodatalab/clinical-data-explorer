@@ -499,6 +499,10 @@ def find_data_files() -> List[Dict[str, str]]:
     """
     Find all supported data files from the repo datasets/ folder.
 
+    Domino deployments should not expose repo-committed sample files through
+    dataset discovery; project datasets are discovered through Domino APIs in
+    the Flask backend instead.
+
     Returns a list of dicts with 'name' (display name) and 'path' (full path)
     """
     if config.get_domino_run_id():
