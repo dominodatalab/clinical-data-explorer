@@ -69,6 +69,16 @@ class DatasetLoadTarget:
     file_path: str | None = None
 
 
+class ProjectDatasetEntriesError(Exception):
+    def __init__(self, payload, status_code):
+        super().__init__(payload.get('error', 'Failed to list datasets'))
+        self.payload = payload
+        self.status_code = status_code
+
+    def to_response(self):
+        return jsonify(self.payload), self.status_code
+
+
 def find_data_files_fallback():
     """
     Fallback function to find data files when MCP server is unavailable.
@@ -278,13 +288,13 @@ def _dataset_entry(entry):
 
 
 def _dataset_client_key(ds):
-    return ds.get('uniqueName') or f"dataset-{ds['name']}-{ds['id']}"
+    # uniqueName comes from the private shared dataset v4 endpoint response.
+    # This helper also works for the public API for listing datasets.
+    unique_name = ds.get('uniqueName')
+    return unique_name or f"dataset-{ds['name']}-{ds['id']}"
 
 
 def _shared_mount_to_dataset(mount):
-    if not isinstance(mount, dict) or not mount.get('datasetId') or not mount.get('name'):
-        return None
-
     return {
         'id': mount['datasetId'],
         'name': mount['name'],
@@ -314,18 +324,10 @@ def _fetch_project_shared_datasets(api_host, project_id, headers):
         return []
 
     raw_mounts = response.json()
-    if not isinstance(raw_mounts, list):
-        raw_mounts = raw_mounts.get('data', raw_mounts.get('mounts', []))
-
-    shared_datasets = []
-    for mount in raw_mounts:
-        ds = _shared_mount_to_dataset(mount)
-        if ds:
-            shared_datasets.append(ds)
-    return shared_datasets
+    return list(map(_shared_mount_to_dataset, raw_mounts))
 
 
-def _project_dataset_entries(api_host, project_id, headers):
+def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
     response = requests.get(
         f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
         headers=headers,
@@ -333,11 +335,28 @@ def _project_dataset_entries(api_host, project_id, headers):
     )
 
     if response.status_code == 401 or response.status_code == 403:
-        return response, []
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError(
+                {'error': 'Access denied. Your session may have expired. Please refresh the page.'},
+                response.status_code,
+            )
+        raise ProjectDatasetEntriesError(
+            {
+                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
+                'auth_error': True,
+                'datasets': [],
+            },
+            response.status_code,
+        )
 
     if response.status_code != 200:
         logger.error(f"Datasets API error: {response.status_code} - {response.text}")
-        return response, []
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError({'error': 'Failed to resolve dataset'}, 500)
+        raise ProjectDatasetEntriesError(
+            {'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []},
+            500,
+        )
 
     all_datasets = response.json().get('datasets', [])
     project_datasets = [
@@ -351,7 +370,7 @@ def _project_dataset_entries(api_host, project_id, headers):
             project_datasets.append(shared_ds)
             seen_ids.add(shared_ds.get('id'))
 
-    return response, project_datasets
+    return project_datasets
 
 
 def list_datasets_via_api(project_id):
@@ -371,16 +390,7 @@ def list_datasets_via_api(project_id):
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        response, project_datasets = _project_dataset_entries(api_host, project_id, headers)
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({
-                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
-                'auth_error': True,
-                'datasets': []
-            }), response.status_code
-
-        if response.status_code != 200:
-            return jsonify({'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []}), 500
+        project_datasets = _project_dataset_entries(api_host, project_id, headers)
 
         # List files from datasets
         file_list = []
@@ -406,6 +416,8 @@ def list_datasets_via_api(project_id):
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
 
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
@@ -740,13 +752,7 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        response, project_datasets = _project_dataset_entries(api_host, project_id, headers)
-
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({'error': 'Access denied. Your session may have expired. Please refresh the page.'}), response.status_code
-
-        if response.status_code != 200:
-            return jsonify({'error': 'Failed to resolve dataset'}), 500
+        project_datasets = _project_dataset_entries(api_host, project_id, headers, purpose='load')
 
         target_ds = None
         for ds in project_datasets:
@@ -759,6 +765,8 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
 
         ds_id = target_ds['id']
         return load_dataset_file_by_id(dataset_display_name, ds_id, token, session_id)
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading dataset via API: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503

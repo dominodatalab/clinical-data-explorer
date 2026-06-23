@@ -8,7 +8,13 @@ from backend.services.dataset_load_request_queue import DatasetLoadRequest
 def test_resolve_project_dataset_id_raises_not_found(monkeypatch):
     monkeypatch.setattr(resolver, "get_domino_api_host", lambda: "https://domino.example")
     monkeypatch.setattr(resolver, "get_passthrough_token", lambda: "test-token")
-    monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: {"datasets": []})
+
+    def fake_get(url, **kwargs):
+        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+            return []
+        return {"datasets": []}
+
+    monkeypatch.setattr(resolver.httpclient, "get", fake_get)
 
     with pytest.raises(NotFound, match='Dataset "AE" not found in project'):
         resolver._resolve_project_dataset_id("AE/adsl.csv", "proj-1")

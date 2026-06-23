@@ -115,8 +115,6 @@ def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, toke
         params={'minimumPermission': 'ListDatasetRwV2'},
         headers={'Authorization': f'Bearer {token}'},
     )
-    if not isinstance(shared_mounts, list):
-        shared_mounts = shared_mounts.get('data', shared_mounts.get('mounts', []))
 
     for mount in shared_mounts:
         if mount.get('name') == ds_name and mount.get('datasetId'):
