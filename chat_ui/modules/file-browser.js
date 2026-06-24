@@ -711,6 +711,7 @@ function loadFileFromBrowser() {
     if (source.type === 'local') {
         displayName = file.path;
         loadBody.dataset = displayName;
+        loadBody.filePath = file.path;
     } else if (source.type === 'netapp') {
         displayName = source.name + '/' + file.fileName;
         // For nested paths, use the full path after the volume name
@@ -718,6 +719,7 @@ function loadFileFromBrowser() {
         const fileNameInVol = pathParts.length > 0 ? file.path : file.fileName;
         displayName = source.name + '/' + fileNameInVol;
         loadBody.dataset = displayName;
+        loadBody.filePath = fileNameInVol;
         loadBody.sourceType = 'netapp';
         loadBody.volumeKey = source.volumeKey || source.id;
         if (source.volumeId) loadBody.volumeId = source.volumeId;
@@ -736,6 +738,7 @@ function loadFileFromBrowser() {
         // Dataset source
         displayName = source.name + '/' + file.path;
         loadBody.dataset = displayName;
+        loadBody.filePath = file.path;
         loadBody.datasetId = source.id;
 
         const snap = state.fileBrowserState.selectedSnapshot;
