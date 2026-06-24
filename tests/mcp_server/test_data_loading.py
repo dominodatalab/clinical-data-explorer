@@ -1,3 +1,5 @@
+import pytest
+
 from mcp_server.services import data_loading
 
 
@@ -41,3 +43,18 @@ def test_load_dataset_resolves_bare_name_from_datasets_folder(monkeypatch, tmp_p
     df = data_loading.load_dataset("local_fixture.csv")
 
     assert df.to_dict(orient="records") == [{"id": 1, "value": "alpha"}]
+
+
+def test_load_dataset_rejects_latin_1_csv_as_bad_request(monkeypatch, tmp_path):
+    datasets_dir = tmp_path / "datasets"
+    datasets_dir.mkdir()
+    (datasets_dir / "latin_1.csv").write_text("id,name\n1,café\n", encoding="latin-1")
+
+    monkeypatch.setattr(data_loading, "datasets_folder", datasets_dir)
+
+    with pytest.raises(data_loading.HTTPException) as exc_info:
+        data_loading.load_dataset("latin_1.csv")
+
+    assert exc_info.value.status_code == 400
+    assert "Dataset was not parseable" in exc_info.value.detail
+    assert "encoded with utf-8" in exc_info.value.detail
