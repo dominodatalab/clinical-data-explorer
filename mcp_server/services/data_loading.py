@@ -590,10 +590,12 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
         logger.info(f"Detected {len(numeric_cols)} numeric columns and {len(categorical_cols)} categorical columns")
 
         return df
-    except UnicodeDecodeError as e:
-        raise HTTPException(status_code=400, detail=f"Dataset was not parseable. Ensure that it was encoded with utf-8: {str(e)}")
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error loading dataset: {str(e)}")
+
+        if 'utf-8' in str(e):
+            raise HTTPException(status_code=400, detail=f"Dataset was not parseable. Ensure that it was encoded with utf-8. {str(e)}")
+
         raise HTTPException(status_code=500, detail=f"Error loading dataset: {str(e)}")
