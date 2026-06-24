@@ -164,6 +164,15 @@ def _get_session_dataset_name() -> Optional[str]:
     return None
 
 
+def has_current_df(file_snapshot_path: str) -> bool:
+    """Return true when the current session has this dataset cached."""
+    session_id = _current_session_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None or session.file_snapshot_path != file_snapshot_path:
+        return False
+    return get_cache().get(file_snapshot_path) is not None
+
+
 def _create_dataframe_entry(file_snapshot_path: str) -> DataFrameLoadResult:
     df = load_dataset(file_snapshot_path)
     metadata = extract_dataset_metadata(Path(file_snapshot_path))
@@ -177,6 +186,9 @@ def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadR
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
+    if has_current_df(file_snapshot_path):
+        return get_cache()[file_snapshot_path]
+
     result = _create_dataframe_entry_in_thread(file_snapshot_path)
     _set_current_df(result.dataframe, file_snapshot_path, result.metadata)
     return result.dataframe

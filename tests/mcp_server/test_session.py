@@ -341,6 +341,46 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
     }
 
 
+def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app):
+    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_session_id.set("session-current-dataset")
+    session_module._sessions["session-current-dataset"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adsl.csv",
+        last_accessed=1.0,
+    )
+    dataframe_cache.get_cache()["adsl.csv"] = cached_df
+
+    client = TestClient(_mcp_app)
+
+    response = client.get(
+        "/dataframe/current-session",
+        headers={"X-Session-Id": "session-current-dataset"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"dataset": "adsl.csv"}
+
+
+def test_load_current_df_reuses_matching_cached_dataframe(monkeypatch):
+    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_session_id.set("session-reuse")
+    session_module._sessions["session-reuse"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adsl.csv",
+        last_accessed=1.0,
+    )
+    dataframe_cache.get_cache()["adsl.csv"] = cached_df
+
+    monkeypatch.setattr(
+        session_module,
+        "_create_dataframe_entry_in_thread",
+        lambda file_snapshot_path: (_ for _ in ()).throw(AssertionError("should not reload")),
+    )
+
+    df = session_module.load_current_df("adsl.csv")
+
+    pd.testing.assert_frame_equal(df, cached_df)
+
+
 def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
     session_module._current_session_id.set("session-4")

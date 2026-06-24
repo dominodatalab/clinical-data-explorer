@@ -82,6 +82,52 @@ def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     assert captured_requests[0].snapshot_version is None
 
 
+def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+    calls = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reuse")
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_get",
+        lambda path, session_id=None, **kwargs: calls.append(("get", path, session_id))
+        or _FakeMcpResponse(200, {"dataset": "datasets/adsl.csv"}),
+    )
+    monkeypatch.setattr(
+        datasets_service,
+        "mcp_post",
+        lambda path, params=None, session_id=None, **kwargs: calls.append(("post", path, params, session_id))
+        or _FakeMcpResponse(200, {"dataset": "datasets/adsl.csv", "columns": ["USUBJID"], "num_rows": 1}),
+    )
+    monkeypatch.setattr(
+        data_routes.dataset_load_request_queue,
+        "resolve_dataset_load_request_file_size",
+        lambda load_request: (_ for _ in ()).throw(AssertionError("should not resolve file size")),
+    )
+    monkeypatch.setattr(
+        data_routes,
+        "process_dataset_load_request",
+        lambda load_request: (_ for _ in ()).throw(AssertionError("should not process load request")),
+    )
+
+    with app.test_client() as client:
+        response = client.post(
+            "/dataset/load",
+            json={"dataset": "datasets/adsl.csv"},
+            headers={"Authorization": "Bearer token-1"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"dataset": "datasets/adsl.csv", "columns": ["USUBJID"], "num_rows": 1}
+    assert calls == [
+        ("get", "/dataframe/current-session", "sid-reuse"),
+        ("post", "/dataset/load", {"file_snapshot_path": "datasets/adsl.csv"}, "sid-reuse"),
+    ]
+    assert queue.peek_all() == []
+
+
 def test_load_dataset_enqueues_netapp_request(monkeypatch):
     queue = get_dataset_load_request_queue()
     queue.clear()

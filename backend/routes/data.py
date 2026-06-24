@@ -41,7 +41,9 @@ from werkzeug.exceptions import (
 
 from backend.services.column_labels import load_column_labels
 from backend.services.datasets import (
+    load_existing_session_dataframe,
     process_dataset_load_request,
+    resolve_dataset_load_target,
 )
 from backend.session import get_session_id, mcp_get, mcp_post
 
@@ -61,6 +63,22 @@ def _evict_stale_dataframes_before_load():
         logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
 
 
+def _get_current_session_dataset(session_id):
+    try:
+        response = mcp_get("/dataframe/current-session", session_id=session_id)
+    except requests.exceptions.ConnectionError:
+        logger.warning("Could not connect to MCP server to check current session DataFrame")
+        return None
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Could not check current session DataFrame: %s", exc)
+        return None
+
+    if response.status_code != 200:
+        logger.warning("MCP current session DataFrame check returned HTTP %s", response.status_code)
+        return None
+    return response.json().get("dataset")
+
+
 @bp.route('/dataset/load', methods=['POST'])
 def load_dataset():
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
@@ -76,23 +94,30 @@ def load_dataset():
     if not dataset_name:
         return jsonify({'error': 'No dataset name provided'}), 400
 
+    session_id = get_session_id()
+    load_request = dataset_load_request_queue.DatasetLoadRequest(
+        dataset=dataset_name,
+        session_id=session_id,
+        authorization_header=request.headers.get('Authorization'),
+        project_id=project_id,
+        dataset_id=dataset_id,
+        snapshot_id=snapshot_id,
+        source_type=source_type,
+        volume_key=volume_key,
+        volume_id=volume_id,
+        snapshot_version=snapshot_version,
+    )
+
     try:
+        target = resolve_dataset_load_target(load_request)
+        if _get_current_session_dataset(session_id) == target.file_snapshot_path:
+            return load_existing_session_dataframe(load_request, target)
+
         _evict_stale_dataframes_before_load()
         # TODO this could wait for a while. can we have a multi minute timeout on requests?
         # should we have an expiration on requests?
         return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
-            dataset_load_request_queue.DatasetLoadRequest(
-                dataset=dataset_name,
-                session_id=get_session_id(),
-                authorization_header=request.headers.get('Authorization'),
-                project_id=project_id,
-                dataset_id=dataset_id,
-                snapshot_id=snapshot_id,
-                source_type=source_type,
-                volume_key=volume_key,
-                volume_id=volume_id,
-                snapshot_version=snapshot_version,
-            ),
+            load_request,
             process_dataset_load_request,
         )
     except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:

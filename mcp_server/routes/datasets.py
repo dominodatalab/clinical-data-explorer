@@ -38,6 +38,7 @@ from mcp_server.session import (
     get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
+    has_current_df,
     load_current_df,
     SessionEvictionResult,
 )
@@ -124,6 +125,13 @@ def evict_stale_dataframes(request: Request):
 def get_current_dataframe_size():
     """Return the cached DataFrame size for the current session."""
     return {"dataframe_size_bytes": get_current_dataframe_size_bytes()}
+
+
+@router.get("/dataframe/current-session", operation_id="get_current_session_dataframe")
+def get_current_session_dataframe():
+    """Return the current session's loaded dataset identifier, if any."""
+    dataset = _get_session_dataset_name()
+    return {"dataset": dataset if dataset and has_current_df(dataset) else None}
 
 
 @router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe")
