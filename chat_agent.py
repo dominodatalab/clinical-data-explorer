@@ -177,6 +177,41 @@ def _extract_response_payload(response_text: str) -> dict:
     }
 
 
+def _text_from_part(part) -> str | None:
+    content = getattr(part, 'content', None)
+    if content is None:
+        return None
+    if isinstance(content, str):
+        return content
+    return str(content)
+
+
+def get_history(session_id: str = 'default') -> list[dict]:
+    """Return a UI-friendly transcript for a session's cached chat history."""
+    transcript = []
+    for message in chat_agent_message_cache.get_messages(session_id):
+        parts = getattr(message, 'parts', None)
+        if not parts:
+            continue
+
+        for part in parts:
+            part_type = type(part).__name__
+            text = _text_from_part(part)
+            if not text:
+                continue
+
+            if part_type == 'UserPromptPart':
+                transcript.append({'sender': 'user', 'text': text})
+            elif part_type == 'TextPart':
+                payload = _extract_response_payload(text)
+                transcript.append({
+                    'sender': 'agent',
+                    'text': payload['text'],
+                    'charts': payload['charts'],
+                })
+    return transcript
+
+
 async def get_agent_response(message: str, session_id: str = 'default') -> dict:
     """Gets a response from the agent, running with MCP servers.
     Returns a dict with 'text' and optional 'charts' list.
