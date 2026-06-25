@@ -16,6 +16,7 @@ pre-refactor pattern). They're slow to import and only needed when the app
 is actually running inside a Domino environment.
 """
 from contextlib import contextmanager
+from dataclasses import dataclass
 import io
 import logging
 import os
@@ -54,6 +55,18 @@ logger = logging.getLogger(__name__)
 # Note: this duplicates the constant in mcp_server/services/data_loading.py.
 # Keep the two in sync (pre-existing tech debt — not deduplicated here).
 SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt', '.json', '.ndjson', '.dsjc'}
+
+
+@dataclass(frozen=True)
+class DatasetLoadTarget:
+    file_snapshot_path: str
+    dataset_id: str | None = None
+    snapshot_id: str | None = None
+    source_type: SourceType | None = None
+    volume_key: str | None = None
+    volume_id: str | None = None
+    snapshot_version: int | str | None = None
+    file_path: str | None = None
 
 
 def find_data_files_fallback():
@@ -526,6 +539,117 @@ def load_local_dataset_file(dataset_display_name, session_id=None):
     except Exception as e:
         logger.error(f"Error loading dataset: {e}")
         return jsonify({'error': 'Could not connect to MCP server'}), 500
+
+
+def _split_display_name_path(dataset_display_name: str) -> tuple[str, str]:
+    parts = dataset_display_name.split('/', 1)
+    if len(parts) != 2:
+        raise ValueError(f'Invalid dataset reference: {dataset_display_name}')
+    return parts[0], parts[1]
+
+
+def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: str | int | None, file_path: str) -> str:
+    snapshot_key = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
+    return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
+
+
+def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, snapshot_version, token=None):
+    if snapshot_version not in (None, ''):
+        return snapshot_version
+    if not snapshot_id or snapshot_id == 'latest':
+        return None
+
+    from domino_data.netapp_volumes import NetAppVolumeClient
+    vol_client = NetAppVolumeClient(token=token)
+    snapshots = vol_client.list_snapshots(volume_unique_name=volume_key) or []
+    for snap in snapshots:
+        if getattr(snap, 'id', None) == snapshot_id:
+            return getattr(snap, 'version', None)
+    return None
+
+
+def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
+    """Resolve a logical load request to the concrete MCP file path it would load."""
+    token = token or get_passthrough_token_from_authorization_header(load_request.authorization_header)
+
+    if load_request.source_type == 'netapp' and load_request.volume_key:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        snapshot_version = _resolve_netapp_snapshot_version(
+            load_request.volume_key,
+            load_request.snapshot_id,
+            load_request.snapshot_version,
+            token=token,
+        )
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('netapp', load_request.volume_key, snapshot_version, file_path),
+            source_type='netapp',
+            volume_key=load_request.volume_key,
+            volume_id=load_request.volume_id,
+            snapshot_id=load_request.snapshot_id,
+            snapshot_version=snapshot_version,
+            file_path=file_path,
+        )
+
+    if load_request.dataset_id:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        snapshot_id = load_request.snapshot_id
+        if not snapshot_id:
+            from backend.services.dataset_load_request_file_size_resolver import _get_default_dataset_snapshot_id
+            snapshot_id = _get_default_dataset_snapshot_id(load_request.dataset_id, token=token)
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('dataset', load_request.dataset_id, snapshot_id, file_path),
+            dataset_id=load_request.dataset_id,
+            snapshot_id=snapshot_id,
+            source_type='dataset',
+            file_path=file_path,
+        )
+
+    if load_request.project_id:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        from backend.services.dataset_load_request_file_size_resolver import (
+            _get_default_dataset_snapshot_id,
+            _resolve_project_dataset_id,
+        )
+        dataset_id = _resolve_project_dataset_id(load_request.dataset, load_request.project_id, token=token)
+        snapshot_id = _get_default_dataset_snapshot_id(dataset_id, token=token)
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('dataset', dataset_id, snapshot_id, file_path),
+            dataset_id=dataset_id,
+            snapshot_id=snapshot_id,
+            source_type='dataset',
+            file_path=file_path,
+        )
+
+    return DatasetLoadTarget(file_snapshot_path=load_request.dataset)
+
+
+def load_existing_session_dataframe(load_request: DatasetLoadRequest, target: DatasetLoadTarget):
+    """Return load metadata for a matching already-loaded MCP dataframe."""
+    mcp_response = mcp_post(
+        "/dataset/load",
+        params={'file_snapshot_path': target.file_snapshot_path},
+        session_id=load_request.session_id,
+    )
+
+    if mcp_response.status_code != 200:
+        error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+        return jsonify({'error': error_detail}), mcp_response.status_code
+
+    result = mcp_response.json()
+    result['dataset'] = load_request.dataset
+    if target.source_type:
+        result['sourceType'] = target.source_type
+    if target.dataset_id:
+        result['datasetId'] = target.dataset_id
+    if target.snapshot_id and target.snapshot_id != 'latest':
+        result['snapshotId'] = target.snapshot_id
+    if target.volume_id:
+        result['volumeId'] = target.volume_id
+    if target.snapshot_version not in (None, ''):
+        result['snapshotVersion'] = target.snapshot_version
+    if target.file_path:
+        result['governanceFilename'] = target.file_path.split('/')[-1]
+    return jsonify(result)
 
 
 def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None):

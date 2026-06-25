@@ -80,6 +80,24 @@ class RecordingLock:
         return None
 
 
+class UserPromptPart:
+    def __init__(self, content):
+        self.content = content
+
+
+class FakeTextPart:
+    def __init__(self, content):
+        self.content = content
+
+
+FakeTextPart.__name__ = "TextPart"
+
+
+class FakeMessage:
+    def __init__(self, parts):
+        self.parts = parts
+
+
 def _message(text):
     return ModelResponse(parts=[TextPart(content=text)])
 
@@ -226,6 +244,30 @@ def test_clear_history_removes_only_requested_session():
     chat_agent.clear_history("session-1")
 
     assert histories == {"session-2": ["message-2"]}
+
+
+def test_get_history_returns_ui_transcript_with_chart_payloads():
+    chat_agent.chat_agent_message_cache.add_messages(
+        "session-history",
+        [
+            FakeMessage([UserPromptPart("show me counts")]),
+            FakeMessage([
+                FakeTextPart(
+                    'Here you go [CHART_DATA]{"type":"bar","data":{"categories":["A"],"values":[1]}}[/CHART_DATA]'
+                )
+            ]),
+            FakeMessage([object()]),
+        ],
+    )
+
+    assert chat_agent.get_history("session-history") == [
+        {"sender": "user", "text": "show me counts"},
+        {
+            "sender": "agent",
+            "text": "Here you go",
+            "charts": [{"type": "bar", "data": {"categories": ["A"], "values": [1]}}],
+        },
+    ]
 
 
 def test_get_agent_response_raises_when_chat_is_not_configured():

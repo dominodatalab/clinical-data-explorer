@@ -17,6 +17,7 @@ import {
     invalidateMetadataCache,
     initializeTableView,
     generatePermalink,
+    replaceBrowserUrlWithCurrentView,
     renderTable,
     populateDistinctColumnSelector,
     updateMissingValuesCard,
@@ -176,7 +177,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     // tableState reference identity is stable for both modules) and is
     // injected with the same tableState + reload primitives so chip apply
     // / clear / expression-filter actions trigger the table-view reloads.
-    initFilters({ tableState, loadTableData, loadSummaryData });
+    initFilters({
+        tableState,
+        loadTableData,
+        loadSummaryData,
+        persistUrl: replaceBrowserUrlWithCurrentView,
+    });
 
     // Tab switching
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -621,12 +627,15 @@ document.addEventListener('DOMContentLoaded', async () => {
             state.lastLoadContext = {
                 sourceType: govCtx.sourceType,
                 datasetName: datasetName,
+                filePath: data.filePath || loadBody.filePath || null,
                 datasetId: govCtx.datasetId,
                 snapshotId: govCtx.snapshotId,
                 snapshotVersion: govCtx.snapshotVersion,
                 volumeId: govCtx.volumeId,
                 volumeKey: loadBody.volumeKey || null,
             };
+
+            replaceBrowserUrlWithCurrentView();
         })
         .catch(async error => {
             console.error('Error:', error);
