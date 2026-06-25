@@ -50,6 +50,9 @@ def _pre_configured_get(path: str):
 
 def _get_domino_api_host() -> str:
     domino_api_host = get_domino_api_host()
+    print("domino_api_host", domino_api_host)
+    print("domino_api_host", domino_api_host)
+    print("domino_api_host", domino_api_host)
     if not domino_api_host:
         raise HTTPException(
             status_code=503,
