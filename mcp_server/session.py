@@ -194,7 +194,7 @@ def get_current_dataframe_size_bytes() -> int:
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        logger.warning("No loaded DataFrame found for session %s when reading DataFrame size", session_id)
+        logger.warning("No loaded DataFrame found for user %s when reading DataFrame size", session_id)
         return 0
     return session.dataframe_size_bytes
 
@@ -205,7 +205,7 @@ def evict_current_session_dataframe() -> SessionEvictionResult:
     sessions = _get_sessions()
     session = sessions.pop(session_id, None)
     if session is None:
-        logger.warning("No loaded DataFrame found for session %s when evicting current session", session_id)
+        logger.warning("No loaded DataFrame found for user %s when evicting current session", session_id)
         return SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
 
     return SessionEvictionResult(
@@ -237,6 +237,6 @@ def get_current_df() -> pd.DataFrame:
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
     if df is None:
-        logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
+        logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
         return load_current_df(session.file_snapshot_path)
     return df
