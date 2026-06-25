@@ -34,16 +34,11 @@ from starlette.middleware.base import BaseHTTPMiddleware
 from mcp_server import dataframe_cache
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
+from mcp_server.services.httpclient import get_current_user
 
 logger = logging.getLogger(__name__)
 
-
-# ===== SESSION-BASED DATASET STORAGE =====
-# Each user session gets its own DataFrame so concurrent users don't clobber each other.
-# Session ID comes from the X-Session-Id header (set by the Flask proxy).
-# A "default" session is used when no header is present (normal single-user mode).
-
-_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
+_current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
 
 @dataclass
 class LoadedDataEntry:
@@ -79,11 +74,23 @@ def _get_sessions():
 def get_cache():
     return dataframe_cache.get_cache()
 
+def _get_session_id():
+    """Return the current user's ID"""
+    user_id = _current_user_id.get()
+
+    if not user_id:
+        user_id = get_current_user()['id']
+        _current_user_id.set(user_id)
+
+    return user_id
+
 class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
-        session_id = request.headers.get("x-session-id", "default")
-        _current_session_id.set(session_id)
+        session_id = _get_session_id()
+
+        _current_user_id.set(session_id)
+
         request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive
         sessions = _get_sessions()
@@ -134,7 +141,7 @@ def _evict_stale_sessions():
 
 def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
     """Store a DataFrame for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     sessions = _get_sessions()
     previous_session = sessions.get(session_id)
     previous_file_snapshot_path = previous_session.file_snapshot_path if previous_session else None
@@ -157,7 +164,7 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
 
 def _get_session_dataset_name() -> Optional[str]:
     """Get the dataset name for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session:
         return session.file_snapshot_path
@@ -184,7 +191,7 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
 
 def get_current_dataframe_size_bytes() -> int:
     """Return the cached DataFrame size for the current session, or 0 when empty."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
         logger.warning("No loaded DataFrame found for session %s when reading DataFrame size", session_id)
@@ -194,7 +201,7 @@ def get_current_dataframe_size_bytes() -> int:
 
 def evict_current_session_dataframe() -> SessionEvictionResult:
     """Remove the current session and its unreferenced cached DataFrame."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     sessions = _get_sessions()
     session = sessions.pop(session_id, None)
     if session is None:
@@ -209,7 +216,7 @@ def evict_current_session_dataframe() -> SessionEvictionResult:
 
 def get_current_metadata() -> dict:
     """Return the verbatim file metadata captured for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
@@ -222,7 +229,7 @@ def get_current_metadata() -> dict:
 
 def get_current_df() -> pd.DataFrame:
     """Get the current dataframe for this session, reloading on cache miss."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
