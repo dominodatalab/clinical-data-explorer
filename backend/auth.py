@@ -15,6 +15,7 @@ These helpers all run inside a Flask request context (they read
 flask.request.headers); calling them outside one will raise.
 """
 import logging
+import os
 
 from backend import config
 from flask import request
@@ -24,8 +25,12 @@ logger = logging.getLogger(__name__)
 
 def get_passthrough_token_from_authorization_header(auth_header):
     """Extract a passthrough bearer token from an Authorization header value."""
+    if os.environ.get("DEV_MODE") == "dev":
+      return config.get_dev_access_token()
+
     if auth_header and auth_header.startswith('Bearer '):
         return auth_header[7:]
+
     return config.get_dev_access_token()
 
 
