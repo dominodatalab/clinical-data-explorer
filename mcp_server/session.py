@@ -32,6 +32,7 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
+from mcp_server.auth import set_auth_header
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 from mcp_server.services.httpclient import get_current_user
@@ -87,6 +88,8 @@ def _get_session_id():
 class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
+        set_auth_header(request.headers)
+
         session_id = _get_session_id()
 
         _current_user_id.set(session_id)
