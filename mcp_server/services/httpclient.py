@@ -41,6 +41,7 @@ def get(*args, is_json: bool = True, **kwargs):
 
 def _pre_configured_get(path: str):
     domino_api_host = _get_domino_api_host()
+    print("domino_api_host in preconfigured path", domino_api_host)
     token = _get_passthrough_token()
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
