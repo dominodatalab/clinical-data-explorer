@@ -1,10 +1,8 @@
 """HTTP helpers. Just forwards arguments to the python requests library
 with some overrides"""
 
-from fastapi import HTTPException
 import requests
 
-from backend.auth import get_domino_api_host, get_passthrough_token
 
 class HTTPClientError(RuntimeError):
     """Raised when an HTTP helper call returns a non-success response."""
@@ -37,38 +35,3 @@ def get(*args, is_json: bool = True, **kwargs):
         return response.json()
 
     return response
-
-def _pre_configured_get(path: str):
-    domino_api_host = _get_domino_api_host()
-    token = _get_passthrough_token()
-    headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
-
-    return get(
-        f"{domino_api_host}{path}",
-        headers=headers,
-    )
-
-def _get_domino_api_host() -> str:
-    domino_api_host = get_domino_api_host()
-    if not domino_api_host:
-        raise HTTPException(
-            status_code=503,
-            detail="DOMINO_API_HOST not configured"
-        )
-    return domino_api_host
-
-def _get_passthrough_token() -> str:
-    token = get_passthrough_token()
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Authentication required"
-        )
-    return token
-
-"""
-API helpers
-"""
-
-def get_current_user():
-    return _pre_configured_get('/api/users/v1/self')['user']
