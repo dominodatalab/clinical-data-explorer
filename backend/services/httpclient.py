@@ -55,6 +55,7 @@ def _get_domino_api_host() -> str:
             status_code=503,
             detail="DOMINO_API_HOST not configured"
         )
+    return domino_api_host
 
 def _get_passthrough_token() -> str:
     token = get_passthrough_token()
@@ -63,6 +64,7 @@ def _get_passthrough_token() -> str:
             status_code=401,
             detail="Authentication required"
         )
+    return token
 
 """
 API helpers
