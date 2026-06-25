@@ -53,6 +53,7 @@ def _get_domino_api_host() -> str:
     print("domino_api_host", domino_api_host)
     print("domino_api_host", domino_api_host)
     print("domino_api_host", domino_api_host)
+    print(os.environ)
     if not domino_api_host:
         raise HTTPException(
             status_code=503,
