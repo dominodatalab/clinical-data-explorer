@@ -135,7 +135,7 @@ def _create_agent_for_session(session_id: str) -> Agent | None:
     # MCP server routes tool calls to the correct DataFrame.
     server = MCPServerSSE(
         url=MCP_SERVER_URL,
-        headers={'X-Session-Id': session_id},
+        headers={'Authorization': f'Bearer {session_id}'},
     )
     return Agent(llm_model, toolsets=[server], system_prompt=SYSTEM_PROMPT, retries=5)
 
@@ -226,7 +226,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 
     message_history = chat_agent_message_cache.get_messages(session_id)
 
-    logger.info(f"Starting agent response for session {session_id[:8]}...")
+    logger.info(f"Starting agent response for Domino user {session_id[:8]}...")
 
     try:
         logger.debug("Connecting to MCP servers...")
@@ -246,7 +246,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 
         # Update this session's history
         message_history = chat_agent_message_cache.add_messages(session_id, result.new_messages())
-        logger.debug(f"Session {session_id[:8]} history now has {len(message_history)} messages")
+        logger.debug(f"User {session_id[:8]} history now has {len(message_history)} messages")
 
         response_text = result.output
         logger.debug(f"Got response text of length {len(response_text)}")
@@ -274,7 +274,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
 def clear_history(session_id: str = 'default'):
     """Clear the conversation history for a session."""
     chat_agent_message_cache.clear_messages(session_id)
-    logger.info(f"Chat history cleared for session {session_id[:8]}...")
+    logger.info(f"Chat history cleared for user {session_id[:8]}...")
 
 async def main():
     if not is_chat_configured():
