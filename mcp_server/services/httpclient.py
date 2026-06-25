@@ -2,6 +2,7 @@
 with some overrides"""
 
 from fastapi import HTTPException
+import os
 import requests
 
 from mcp_server.auth import get_domino_api_host, get_passthrough_token
