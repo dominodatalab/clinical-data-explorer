@@ -64,7 +64,10 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 
     exc = excinfo.value
     assert exc.status_code == 400
-    assert exc.detail == "No dataset loaded. Please load a dataset first using /dataset/load"
+    assert exc.detail == {
+        "error": "No dataset loaded. Please load a dataset first using /dataset/load",
+        "code": "DATAFRAME_EXPIRED",
+    }
 
 
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
@@ -176,6 +179,7 @@ def test_set_current_df_evicts_previous_dataset_for_same_session():
 def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-6"})
     old_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["old.csv"] = old_df
     session_module._sessions["session-6"] = session_module.LoadedDataEntry(
@@ -202,6 +206,7 @@ def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
 def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-7"})
     old_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["old.csv"] = old_df
     session_module._sessions["session-7"] = session_module.LoadedDataEntry(
@@ -219,7 +224,8 @@ def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkey
     assert "old.csv" not in session_module.get_cache()
 
 
-def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
+def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-size"})
     current_df = pd.DataFrame({"subject_id": [1]})
     other_df = pd.DataFrame({"subject_id": [2]})
     session_module.get_cache()["current.csv"] = current_df
@@ -289,7 +295,8 @@ def test_get_current_dataframe_size_logs_warning_when_session_is_missing(caplog)
     assert "No loaded DataFrame found for user missing-session" in caplog.text
 
 
-def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_mcp_app):
+def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current"})
     current_df = pd.DataFrame({"subject_id": [1]})
     other_df = pd.DataFrame({"subject_id": [2]})
     session_module.get_cache()["current.csv"] = current_df
@@ -331,7 +338,10 @@ def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(ca
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
     monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-3"})
+<<<<<<< HEAD
     session_module._current_user_id.set(None)
+=======
+>>>>>>> fb70976 (DOM-78293 Refresh expired backend data)
     session_module._sessions["session-3"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
@@ -353,7 +363,9 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
     assert session_module._sessions["session-3"].last_accessed == 123.0
 
 
-def test_session_middleware_defaults_session_id_when_header_is_missing():
+def test_session_middleware_uses_current_user_when_header_is_missing(monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "user-default"})
+
     app = FastAPI()
     app.add_middleware(session_module.SessionMiddleware)
 
@@ -366,10 +378,11 @@ def test_session_middleware_defaults_session_id_when_header_is_missing():
     response = client.get("/session")
 
     assert response.status_code == 200
-    assert response.json() == {"session_id": "default"}
+    assert response.json() == {"session_id": "user-default"}
 
 
 def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, monkeypatch, tmp_path):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-too-large"})
     dataset = tmp_path / "too_big.csv"
     dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
     tiny_cache = LRUCache(maxsize=1, getsizeof=lambda value: 2)
@@ -389,9 +402,15 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
 
 
 def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app, monkeypatch):
+<<<<<<< HEAD
     cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
     session_module._current_user_id.set(None)
+=======
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
+    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_user_id.set("session-current-dataset")
+>>>>>>> fb70976 (DOM-78293 Refresh expired backend data)
     session_module._sessions["session-current-dataset"] = session_module.LoadedDataEntry(
         file_snapshot_path="adsl.csv",
         last_accessed=time.time(),

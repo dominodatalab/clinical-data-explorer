@@ -1,5 +1,7 @@
 """Playwright checks for non-chat UI error banners using mocked API responses."""
 
+import json
+
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -113,6 +115,77 @@ def test_summary_and_snapshot_error_banners_from_mocked_api(page, chat_ui_static
     page.goto(f"{chat_ui_static_url}?datasetId=ds-1")
     page.locator('[data-testid="browse-files-button"]').click()
     _expect_banner(page, "Error loading snapshots: Snapshots exploded")
+
+
+def test_expired_dataframe_dialog_refreshes_dataset(page, chat_ui_static_url):
+    load_bodies = []
+
+    def load_then_reload_response(route):
+        load_bodies.append(json.loads(route.request.post_data or "{}"))
+        return ok(load_response())
+
+    responses = install_api_routes(page, {
+        "dataset/load": load_then_reload_response,
+        "table/summary": error(
+            "No dataset loaded. Please load a dataset first.",
+            status=400,
+            code="DATAFRAME_EXPIRED",
+            description="The backend data for this session has expired. Refresh the dataset to continue.",
+        ),
+    })
+
+    page.goto(chat_ui_static_url)
+    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
+    load_local_dataset(page)
+
+    expect(page.locator("#data-expired-modal-overlay")).to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
+    expect(page.locator("#data-expired-modal-overlay")).to_contain_text(
+        "This view needs to reload its data before it can continue. You can reload now and keep working where you left off."
+    )
+    expect(page.locator("#error-banner")).not_to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
+
+    responses["table/summary"] = ok(summary_response())
+    page.locator('[data-testid="data-expired-refresh-btn"]').click()
+    expect(page.locator("#data-expired-modal-overlay")).not_to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
+    expect(page.locator('[data-testid="data-row"]').first).to_be_visible(timeout=5_000)
+    assert load_bodies == [
+        {"dataset": SAMPLE_DATASET, "filePath": SAMPLE_DATASET},
+        {"dataset": SAMPLE_DATASET, "filePath": SAMPLE_DATASET},
+    ]
+
+
+def test_expired_dataframe_dialog_preempts_chat_request(page, chat_ui_static_url):
+    chat_calls = {"count": 0}
+
+    def chat_response(_route):
+        chat_calls["count"] += 1
+        return ok({"response": "This should not be rendered", "charts": []})
+
+    install_api_routes(page, {
+        "chat/status": ok({"configured": True}),
+        "chat": chat_response,
+        "dataset/metadata": error(
+            "No dataset loaded. Please load a dataset first.",
+            status=400,
+            code="DATAFRAME_EXPIRED",
+            description="The backend data for this session has expired. Refresh the dataset to continue.",
+        ),
+    })
+
+    page.goto(chat_ui_static_url)
+    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
+    load_local_dataset(page)
+    page.locator('[data-testid="tab-chat"]').click()
+    expect(page.locator('[data-testid="chat-input"]')).to_be_visible(timeout=5_000)
+
+    page.locator('[data-testid="chat-input"]').fill("summarize this data")
+    page.locator("#send-button").click()
+
+    expect(page.locator("#data-expired-modal-overlay")).to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
+    expect(page.locator("#error-banner")).not_to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
+    expect(page.locator('[data-testid="chat-input"]')).to_have_value("summarize this data")
+    expect(page.locator("#chat-box")).not_to_contain_text("summarize this data")
+    assert chat_calls["count"] == 0
 
 
 @pytest.mark.parametrize(

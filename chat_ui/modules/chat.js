@@ -158,7 +158,7 @@ async function loadChatHistory() {
     }
 }
 
-function sendMessage() {
+async function sendMessage() {
     const messageText = userInput.value.trim();
     if (messageText === '') {
         return;
@@ -166,6 +166,11 @@ function sendMessage() {
 
     if (!state.currentDataset) {
         displayMessage('Please load a dataset first before asking questions.', 'system');
+        return;
+    }
+
+    const datasetReady = await ensureLoadedDatasetForChat();
+    if (!datasetReady) {
         return;
     }
 
@@ -223,6 +228,21 @@ function sendMessage() {
         userInput.disabled = false;
         userInput.focus();
     });
+}
+
+async function ensureLoadedDatasetForChat() {
+    try {
+        await fetchJson(apiUrl('dataset/metadata'));
+        return true;
+    } catch (error) {
+        console.error('Error checking data before chat request:', error);
+        if (error && error.userVisibleHandled) {
+            return false;
+        }
+        const message = await getApiErrorMessage(error, 'Please try again.');
+        displayMessage(`Error checking data before chat request: ${message}`, 'system');
+        return false;
+    }
 }
 
 function showThinkingAnimation() {

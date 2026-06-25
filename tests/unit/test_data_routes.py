@@ -225,6 +225,7 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     full_queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=0)
     app = _create_test_app(testing=True)
 
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-queue-full")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
@@ -287,6 +288,34 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
         )
     ]
     assert queue.peek_all() == []
+
+
+def test_table_data_marks_no_dataset_loaded_as_expired(monkeypatch):
+    app = _create_test_app()
+
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_post",
+        lambda path, json=None: _FakeMcpResponse(
+            400,
+            {
+                "detail": {
+                    "error": "No dataset loaded. Please load a dataset first using /dataset/load",
+                    "code": "DATAFRAME_EXPIRED",
+                },
+            },
+        ),
+    )
+
+    with app.test_client() as client:
+        response = client.post("/table/data", json={"page": 1, "page_size": 100})
+
+    assert response.status_code == 400
+    assert response.get_json() == {
+        "error": "No dataset loaded. Please load a dataset first using /dataset/load",
+        "code": "DATAFRAME_EXPIRED",
+        "description": "The backend data for this session has expired. Refresh the dataset to continue.",
+    }
 
 
 def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypatch):

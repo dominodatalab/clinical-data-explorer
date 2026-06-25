@@ -33,6 +33,22 @@
         <button class="error-banner-close" id="error-banner-close" type="button" aria-label="Dismiss error banner">&times;</button>
     </div>
 
+    <div class="modal-overlay" id="data-expired-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="data-expired-modal-title">
+        <div class="modal">
+            <div class="modal-header">
+                <h3 id="data-expired-modal-title">Reload Data</h3>
+                <button class="modal-close" id="data-expired-modal-close" type="button" aria-label="Close">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="data-expired-modal-message">This view needs to reload its data before it can continue. You can reload now and keep working where you left off.</p>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-secondary" id="data-expired-cancel-btn" type="button">Not Now</button>
+                <button class="btn-primary" id="data-expired-refresh-btn" type="button" data-testid="data-expired-refresh-btn">Reload Data</button>
+            </div>
+        </div>
+    </div>
+
     <div class="app-container">
         <!-- Top Navigation -->
         <div class="header">

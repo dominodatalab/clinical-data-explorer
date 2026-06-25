@@ -40,6 +40,9 @@ from mcp_server.services.httpclient import get_current_user
 
 logger = logging.getLogger(__name__)
 
+DATAFRAME_EXPIRED_CODE = "DATAFRAME_EXPIRED"
+NO_DATASET_LOADED_MESSAGE = "No dataset loaded. Please load a dataset first using /dataset/load"
+
 _current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
 
 @dataclass
@@ -275,7 +278,7 @@ def get_current_metadata() -> dict:
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+        raise _dataframe_expired_exception()
     if session.metadata is not None:
         return session.metadata
     # Fallback for sessions loaded before metadata capture existed: extract
@@ -288,7 +291,7 @@ def get_current_df() -> pd.DataFrame:
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+        raise _dataframe_expired_exception()
 
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
@@ -296,3 +299,13 @@ def get_current_df() -> pd.DataFrame:
         logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
         return load_current_df(session.file_snapshot_path)
     return df
+
+
+def _dataframe_expired_exception() -> HTTPException:
+    return HTTPException(
+        status_code=400,
+        detail={
+            "error": NO_DATASET_LOADED_MESSAGE,
+            "code": DATAFRAME_EXPIRED_CODE,
+        },
+    )

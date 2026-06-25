@@ -10,6 +10,7 @@ async function loadApiModule({
     pathname = '/',
     fetchImpl = async () => ({ status: 200 }),
     reloadPage = () => {},
+    dispatchEvent = () => true,
 } = {}) {
     const context = vm.createContext({
         console: { log() {} },
@@ -19,7 +20,9 @@ async function loadApiModule({
                 pathname,
                 reload: reloadPage,
             },
+            dispatchEvent,
         },
+        CustomEvent,
     });
     const module = new vm.SourceTextModule(apiSource, {
         context,
@@ -239,6 +242,38 @@ test('fetchWithStatusCheck rejects 302 responses without refreshing', async () =
     assert.equal(reloadCount, 0);
 });
 
+test('fetchWithStatusCheck handles expired data responses centrally', async () => {
+    const events = [];
+    const response = jsonResponse(400, {
+        error: 'No dataset loaded. Please load a dataset first.',
+        code: 'DATAFRAME_EXPIRED',
+    });
+    const api = await loadApiModule({
+        fetchImpl: async () => response,
+        dispatchEvent: event => {
+            events.push(event);
+            return true;
+        },
+    });
+
+    await assert.rejects(
+        api.fetchWithStatusCheck('/table/summary'),
+        error => {
+            assert.ok(error instanceof api.ApiError);
+            assert.equal(error.status, 400);
+            assert.equal(error.userVisibleHandled, true);
+            assert.deepEqual(error.data, {
+                error: 'No dataset loaded. Please load a dataset first.',
+                code: 'DATAFRAME_EXPIRED',
+            });
+            return true;
+        },
+    );
+
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'dataframe-expired');
+});
+
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {
     const api = await loadApiModule({
         fetchImpl: async () => jsonResponse(200, { rows: [1, 2, 3] }),
@@ -279,4 +314,31 @@ test('fetchJson HTTP failures can still expose backend JSON through getApiErrorM
             'Error getting agent response: OpenAI quota exceeded',
         );
     }
+});
+
+test('getApiErrorPayload dispatches an event for expired backend data', async () => {
+    const events = [];
+    const api = await loadApiModule({
+        dispatchEvent: event => {
+            events.push(event);
+            return true;
+        },
+    });
+    const error = {
+        response: jsonResponse(400, {
+            error: 'No dataset loaded. Please load a dataset first.',
+            code: 'DATAFRAME_EXPIRED',
+        }),
+    };
+
+    assert.deepEqual(await api.getApiErrorPayload(error), {
+        error: 'No dataset loaded. Please load a dataset first.',
+        code: 'DATAFRAME_EXPIRED',
+    });
+    assert.equal(events.length, 1);
+    assert.equal(events[0].type, 'dataframe-expired');
+    assert.equal(events[0].detail.error, error);
+
+    await api.getApiErrorPayload(error);
+    assert.equal(events.length, 1);
 });

@@ -32,11 +32,9 @@ import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
 from werkzeug.exceptions import (
-    BadRequest,
     RequestEntityTooLarge,
     ServiceUnavailable,
     TooManyRequests,
-    abort,
 )
 
 from backend.services.column_labels import load_column_labels
@@ -45,6 +43,7 @@ from backend.services.datasets import (
     process_dataset_load_request,
     resolve_dataset_load_target,
 )
+from backend.services.mcp_errors import mcp_error_payload
 from backend.session import get_session_id, mcp_get, mcp_post
 
 logger = logging.getLogger(__name__)
@@ -148,9 +147,8 @@ def get_dataset_metadata():
     if response.status_code == 200:
         return jsonify(response.json())
     if response.status_code == 400:
-        raise BadRequest(description="No dataset loaded. Please load a dataset first.")
-    error_detail = response.json().get('detail', 'Failed to get dataset metadata')
-    abort(response.status_code, description=error_detail)
+        return jsonify(mcp_error_payload(response, 'No dataset loaded. Please load a dataset first.')), 400
+    return jsonify(mcp_error_payload(response, 'Failed to get dataset metadata')), response.status_code
 
 
 @bp.route('/dataset/data', methods=['GET'])
@@ -161,10 +159,9 @@ def get_dataset_data():
         if response.status_code == 200:
             return jsonify(response.json())
         elif response.status_code == 400:
-            return jsonify({'error': 'No dataset loaded. Please load a dataset first.'}), 400
+            return jsonify(mcp_error_payload(response, 'No dataset loaded. Please load a dataset first.')), 400
         else:
-            error_detail = response.json().get('detail', 'Failed to get dataset data')
-            return jsonify({'error': error_detail}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get dataset data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server")
         return jsonify({'error': 'Could not connect to MCP server. Make sure it is running on port 8888.'}), 503
@@ -183,7 +180,7 @@ def get_table_data():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get table data')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get table data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for table data")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -213,7 +210,7 @@ def get_column_values(column):
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get column values')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get column values')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for column values")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -230,7 +227,7 @@ def get_table_summary():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get summary')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get summary')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for summary")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -256,7 +253,7 @@ def get_column_stats(column):
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get column stats')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get column stats')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for column stats")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -289,8 +286,7 @@ def expression_filter():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            error_detail = response.json().get('detail', 'Failed to apply expression filter')
-            return jsonify({'error': error_detail}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to apply expression filter')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for expression filter")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -307,7 +303,7 @@ def get_expression_samples():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get expression samples')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get expression samples')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for expression samples")
         return jsonify({'error': 'Could not connect to MCP server'}), 503

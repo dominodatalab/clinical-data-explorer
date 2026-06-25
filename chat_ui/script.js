@@ -1,6 +1,7 @@
 import { state } from './core/state.js';
-import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
+import { DATAFRAME_EXPIRED_EVENT, apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
 import { showErrorBanner } from './core/error-banner.js';
+import { attachOverlayDismiss, closeModal, openModal } from './core/modals.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -183,6 +184,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadSummaryData,
         persistUrl: replaceBrowserUrlWithCurrentView,
     });
+    initDataExpiredDialog();
 
     // Tab switching
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -571,7 +573,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         const browseBtn = document.getElementById('browse-files-button');
         browseBtn.disabled = true;
 
-        fetchWithStatusCheck(apiUrl('dataset/load'), {
+        return fetchWithStatusCheck(apiUrl('dataset/load'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(loadBody),
@@ -659,6 +661,103 @@ document.addEventListener('DOMContentLoaded', async () => {
             browseBtn.disabled = false;
             hideLoadingBanner();
         });
+    }
+
+    function initDataExpiredDialog() {
+        const overlay = document.getElementById('data-expired-modal-overlay');
+        const closeBtn = document.getElementById('data-expired-modal-close');
+        const cancelBtn = document.getElementById('data-expired-cancel-btn');
+        const refreshBtn = document.getElementById('data-expired-refresh-btn');
+        const message = document.getElementById('data-expired-modal-message');
+        if (!overlay || !closeBtn || !cancelBtn || !refreshBtn || !message) return;
+
+        let isReloading = false;
+        const closeDialog = () => {
+            if (!isReloading) closeModal(overlay);
+        };
+        closeBtn.addEventListener('click', closeDialog);
+        cancelBtn.addEventListener('click', closeDialog);
+        attachOverlayDismiss(overlay, closeDialog);
+
+        refreshBtn.addEventListener('click', async () => {
+            const reloadContext = buildDatasetReloadContextFromBrowser();
+            if (!reloadContext) {
+                return;
+            }
+
+            isReloading = true;
+            refreshBtn.disabled = true;
+            cancelBtn.disabled = true;
+            try {
+                await performDatasetLoad(reloadContext.datasetName, reloadContext.loadBody);
+                closeModal(overlay);
+            } finally {
+                isReloading = false;
+                refreshBtn.disabled = false;
+                cancelBtn.disabled = false;
+            }
+        });
+
+        window.addEventListener(DATAFRAME_EXPIRED_EVENT, () => {
+            if (isReloading) return;
+            const reloadContext = buildDatasetReloadContextFromBrowser();
+            message.textContent = reloadContext
+                ? 'This view needs to reload its data before it can continue. You can reload now and keep working where you left off.'
+                : 'This view needs to reload its data, but it cannot be reloaded automatically from this link. Choose the data file again to continue.';
+            refreshBtn.disabled = !reloadContext;
+            cancelBtn.textContent = reloadContext ? 'Not Now' : 'Close';
+            if (refreshBtn.disabled) {
+                refreshBtn.textContent = 'Reload Unavailable';
+            } else {
+                refreshBtn.textContent = 'Reload Data';
+            }
+            openModal(overlay);
+        });
+    }
+
+    function buildDatasetReloadContextFromBrowser() {
+        const params = new URLSearchParams(window.location.search);
+        const filePath = params.get('filePath');
+        const datasetName = params.get('dataset');
+        if (!filePath || !datasetName) return null;
+
+        const loadBody = {
+            dataset: datasetName,
+            filePath,
+        };
+
+        const netAppVolumeId = params.get('netAppVolumeId') || params.get('volumeId');
+        const volumeKey = params.get('volumeKey');
+        const isNetApp = Boolean(volumeKey || netAppVolumeId);
+        if (isNetApp) {
+            if (!volumeKey) return null;
+            loadBody.sourceType = 'netapp';
+            loadBody.volumeKey = volumeKey;
+            if (netAppVolumeId) loadBody.volumeId = netAppVolumeId;
+            const snapshotId = params.get('netAppVolumeSnapshotId')
+                || params.get('snapshotId');
+            if (snapshotId && snapshotId !== 'latest') loadBody.snapshotId = snapshotId;
+            const snapshotVersion = params.get('snapshotVersion');
+            if (snapshotVersion != null && snapshotVersion !== '') loadBody.snapshotVersion = snapshotVersion;
+            return { datasetName, loadBody };
+        }
+
+        const datasetId = params.get('datasetId')
+            || params.get('loadDatasetId');
+        if (datasetId) {
+            loadBody.datasetId = datasetId;
+            const snapshotId = params.get('datasetSnapshotId')
+                || params.get('snapshotId');
+            if (snapshotId) loadBody.snapshotId = snapshotId;
+            return { datasetName, loadBody };
+        }
+
+        const projectId = params.get('projectId');
+        if (projectId) {
+            loadBody.projectId = projectId;
+        }
+
+        return { datasetName, loadBody };
     }
 
     // Loading banner functions

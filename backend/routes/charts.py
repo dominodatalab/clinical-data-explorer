@@ -15,6 +15,7 @@ import logging
 import requests
 from flask import Blueprint, jsonify, request
 
+from backend.services.mcp_errors import mcp_error_payload
 from backend.session import mcp_post
 
 logger = logging.getLogger(__name__)
@@ -30,7 +31,7 @@ def get_bar_chart_data():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get bar chart data')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get bar chart data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for bar chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -47,7 +48,7 @@ def get_xy_chart_data():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get XY chart data')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get XY chart data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for XY chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -64,7 +65,7 @@ def get_time_series_data():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get time series data')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get time series data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for time series")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -81,7 +82,7 @@ def get_histogram_data():
         if response.status_code == 200:
             return jsonify(response.json())
         else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get histogram data')}), response.status_code
+            return jsonify(mcp_error_payload(response, 'Failed to get histogram data')), response.status_code
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for histogram")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
