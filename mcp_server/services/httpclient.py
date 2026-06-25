@@ -41,7 +41,6 @@ def get(*args, is_json: bool = True, **kwargs):
 
 def _pre_configured_get(path: str):
     domino_api_host = _get_domino_api_host()
-    print("domino_api_host in preconfigured path", domino_api_host)
     token = _get_passthrough_token()
     headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
@@ -52,15 +51,12 @@ def _pre_configured_get(path: str):
 
 def _get_domino_api_host() -> str:
     domino_api_host = get_domino_api_host()
-    print("domino_api_host", domino_api_host)
-    print("domino_api_host", domino_api_host)
-    print("domino_api_host", domino_api_host)
-    print(os.environ)
     if not domino_api_host:
         raise HTTPException(
             status_code=503,
             detail="DOMINO_API_HOST not configured"
         )
+    return domino_api_host
 
 def _get_passthrough_token() -> str:
     token = get_passthrough_token()
@@ -69,6 +65,7 @@ def _get_passthrough_token() -> str:
             status_code=401,
             detail="Authentication required"
         )
+    return token
 
 """
 API helpers
