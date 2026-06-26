@@ -109,7 +109,7 @@
 //     concurrent fetches, scroll debounce 120ms).
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, isUserVisibleHandledResult, throwIfApiError } from '../core/api.js';
 import { escapeHtml, showToast } from '../core/dom.js';
 import { showErrorBanner } from '../core/error-banner.js';
 import { getDisplayName, getDisplayNameWithOriginal } from './column-labels.js';
@@ -599,6 +599,7 @@ export async function renderMetadataTab() {
     metadataBody.innerHTML = metadataEmptyState('Loading metadata…', '');
     try {
         const data = await fetchJson(apiUrl('dataset/metadata'));
+        if (isUserVisibleHandledResult(data)) return;
         metadataCache = data;
         metadataCacheKey = state.currentDataset;
         renderMetadataContent(data);
@@ -971,6 +972,7 @@ export async function updateDistinctValuesCard() {
             fetchJson(apiUrl(statsUrl)),
             fetchJson(apiUrl(valuesUrl))
         ]);
+        if (isUserVisibleHandledResult(statsData) || isUserVisibleHandledResult(valuesData)) return;
         
         // Show count
         valueEl.textContent = statsData.unique_count.toLocaleString();
@@ -1104,6 +1106,7 @@ async function fetchColumnStatsForTable(column, fetchToken) {
         throw error;
     }
     const data = await response.json();
+    if (isUserVisibleHandledResult(data)) return null;
     if (fetchToken !== summaryStatsState.activeFetchToken) return null;
     throwIfApiError(data);
 
@@ -1575,6 +1578,7 @@ export async function loadTableData() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
+        if (isUserVisibleHandledResult(data)) return;
 
         tableState.totalRows = data.filtered_rows;
         tableState.totalPages = data.total_pages;
@@ -1680,6 +1684,7 @@ export async function loadSummaryData() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
+        if (isUserVisibleHandledResult(data)) return;
 
         tableState.summaryData = data;
         

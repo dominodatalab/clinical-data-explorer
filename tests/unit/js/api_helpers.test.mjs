@@ -86,8 +86,10 @@ test('ApiError carries response metadata and payload data', async () => {
 test('throwIfApiError returns successful payloads and throws for API error payloads', async () => {
     const api = await loadApiModule();
     const payload = { ok: true };
+    const handledPayload = { error: 'No dataset loaded', userVisibleHandled: true };
 
     assert.equal(api.throwIfApiError(payload), payload);
+    assert.equal(api.throwIfApiError(handledPayload), handledPayload);
     assert.throws(
         () => api.throwIfApiError({ error: 'Dataset unavailable', detail: 'missing' }),
         error => {
@@ -242,12 +244,13 @@ test('fetchWithStatusCheck rejects 302 responses without refreshing', async () =
     assert.equal(reloadCount, 0);
 });
 
-test('fetchWithStatusCheck handles expired data responses centrally', async () => {
+test('fetchWithStatusCheck handles expired data responses centrally without rejecting', async () => {
     const events = [];
-    const response = jsonResponse(400, {
+    const expiredData = {
         error: 'No dataset loaded. Please load a dataset first.',
         code: 'DATAFRAME_EXPIRED',
-    });
+    };
+    const response = jsonResponse(400, expiredData);
     const api = await loadApiModule({
         fetchImpl: async () => response,
         dispatchEvent: event => {
@@ -256,22 +259,32 @@ test('fetchWithStatusCheck handles expired data responses centrally', async () =
         },
     });
 
-    await assert.rejects(
-        api.fetchWithStatusCheck('/table/summary'),
-        error => {
-            assert.ok(error instanceof api.ApiError);
-            assert.equal(error.status, 400);
-            assert.equal(error.userVisibleHandled, true);
-            assert.deepEqual(error.data, {
-                error: 'No dataset loaded. Please load a dataset first.',
-                code: 'DATAFRAME_EXPIRED',
-            });
-            return true;
-        },
-    );
+    const handledResponse = await api.fetchWithStatusCheck('/table/summary');
+
+    assert.equal(handledResponse.userVisibleHandled, true);
+    assert.equal(handledResponse.status, 400);
+    assert.deepEqual(await handledResponse.json(), {
+        ...expiredData,
+        userVisibleHandled: true,
+    });
 
     assert.equal(events.length, 1);
     assert.equal(events[0].type, 'dataframe-expired');
+});
+
+test('fetchJson returns handled expired data payloads without rejecting', async () => {
+    const api = await loadApiModule({
+        fetchImpl: async () => jsonResponse(400, {
+            error: 'No dataset loaded. Please load a dataset first.',
+            code: 'DATAFRAME_EXPIRED',
+        }),
+    });
+
+    assert.deepEqual(await api.fetchJson('/dataset/metadata'), {
+        error: 'No dataset loaded. Please load a dataset first.',
+        code: 'DATAFRAME_EXPIRED',
+        userVisibleHandled: true,
+    });
 });
 
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {

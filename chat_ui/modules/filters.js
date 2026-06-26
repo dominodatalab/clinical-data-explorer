@@ -55,7 +55,7 @@
 // pattern.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, isUserVisibleHandledResult } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { showErrorBanner } from '../core/error-banner.js';
 import { openModal, closeModal, attachOverlayDismiss } from '../core/modals.js';
@@ -247,6 +247,7 @@ async function applyExpressionFilter() {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(requestBody)
         });
+        if (isUserVisibleHandledResult(data)) return;
 
         // Expression is valid - save and apply
         tableStateRef.expressionFilter = {
@@ -300,6 +301,7 @@ async function fetchAutocomplete() {
 
     try {
         const data = await fetchJson(apiUrl(`table/column_values/${encodeURIComponent(column)}?search=${encodeURIComponent(search)}&limit=15`));
+        if (isUserVisibleHandledResult(data)) return;
 
         if (data.values && data.values.length > 0) {
             renderAutocomplete(data.values, search);

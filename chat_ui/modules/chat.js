@@ -37,7 +37,7 @@
 // rare case where another module fires a system message before init.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
+import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload, isUserVisibleHandledResult } from '../core/api.js';
 import {
     renderBarChart,
     renderScatterChart,
@@ -191,6 +191,7 @@ async function sendMessage() {
         body: JSON.stringify({ message: messageText }),
     })
     .then(data => {
+        if (isUserVisibleHandledResult(data)) return;
         console.log('Received data from server:', data);
         if (data.response) {
             console.log('Charts received:', data.charts);
@@ -232,8 +233,8 @@ async function sendMessage() {
 
 async function ensureLoadedDatasetForChat() {
     try {
-        await fetchJson(apiUrl('dataset/metadata'));
-        return true;
+        const data = await fetchJson(apiUrl('dataset/metadata'));
+        return !isUserVisibleHandledResult(data);
     } catch (error) {
         console.error('Error checking data before chat request:', error);
         if (error && error.userVisibleHandled) {
