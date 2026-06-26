@@ -57,10 +57,6 @@
     display: flex;
 }
 
-#data-expired-modal-overlay {
-    z-index: 11000;
-}
-
 .modal {
     background: var(--color-background-bg);
     border-radius: var(--radius-small);

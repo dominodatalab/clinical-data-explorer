@@ -38,6 +38,7 @@
 
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
+import { showErrorBanner } from '../core/error-banner.js';
 import {
     renderBarChart,
     renderScatterChart,
@@ -236,11 +237,8 @@ async function ensureLoadedDatasetForChat() {
         return true;
     } catch (error) {
         console.error('Error checking data before chat request:', error);
-        if (error && error.userVisibleHandled) {
-            return false;
-        }
         const message = await getApiErrorMessage(error, 'Please try again.');
-        displayMessage(`Error checking data before chat request: ${message}`, 'system');
+        showErrorBanner(`Error checking data before chat request: ${message}`);
         return false;
     }
 }

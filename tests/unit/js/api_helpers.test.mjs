@@ -242,18 +242,13 @@ test('fetchWithStatusCheck rejects 302 responses without refreshing', async () =
     assert.equal(reloadCount, 0);
 });
 
-test('fetchWithStatusCheck handles expired data responses centrally', async () => {
-    const events = [];
+test('fetchWithStatusCheck rejects reloadable backend errors normally', async () => {
     const response = jsonResponse(400, {
         error: 'No dataset loaded. Please load a dataset first.',
-        code: 'DATAFRAME_EXPIRED',
+        description: 'Please reload your data',
     });
     const api = await loadApiModule({
         fetchImpl: async () => response,
-        dispatchEvent: event => {
-            events.push(event);
-            return true;
-        },
     });
 
     await assert.rejects(
@@ -261,17 +256,13 @@ test('fetchWithStatusCheck handles expired data responses centrally', async () =
         error => {
             assert.ok(error instanceof api.ApiError);
             assert.equal(error.status, 400);
-            assert.equal(error.userVisibleHandled, true);
             assert.deepEqual(error.data, {
                 error: 'No dataset loaded. Please load a dataset first.',
-                code: 'DATAFRAME_EXPIRED',
+                description: 'Please reload your data',
             });
             return true;
         },
     );
-
-    assert.equal(events.length, 1);
-    assert.equal(events[0].type, 'dataframe-expired');
 });
 
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {
@@ -316,29 +307,19 @@ test('fetchJson HTTP failures can still expose backend JSON through getApiErrorM
     }
 });
 
-test('getApiErrorPayload dispatches an event for expired backend data', async () => {
-    const events = [];
-    const api = await loadApiModule({
-        dispatchEvent: event => {
-            events.push(event);
-            return true;
-        },
-    });
+test('getApiErrorPayload preserves backend reload guidance', async () => {
+    const api = await loadApiModule();
     const error = {
         response: jsonResponse(400, {
             error: 'No dataset loaded. Please load a dataset first.',
-            code: 'DATAFRAME_EXPIRED',
+            description: 'Please reload your data',
         }),
     };
 
     assert.deepEqual(await api.getApiErrorPayload(error), {
         error: 'No dataset loaded. Please load a dataset first.',
-        code: 'DATAFRAME_EXPIRED',
+        description: 'Please reload your data',
     });
-    assert.equal(events.length, 1);
-    assert.equal(events[0].type, 'dataframe-expired');
-    assert.equal(events[0].detail.error, error);
 
     await api.getApiErrorPayload(error);
-    assert.equal(events.length, 1);
 });

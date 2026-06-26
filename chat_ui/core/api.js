@@ -28,10 +28,6 @@ export function getBaseUrl() {
 export const BASE_URL = getBaseUrl();
 console.log('Base URL for API calls:', BASE_URL);
 
-export const DATAFRAME_EXPIRED_CODE = 'DATAFRAME_EXPIRED';
-export const DATAFRAME_EXPIRED_EVENT = 'dataframe-expired';
-export const SUPPRESS_NEXT_ERROR_BANNER_FLAG = '__dataExplorerSuppressNextErrorBanner';
-
 export function apiUrl(endpoint) {
     return BASE_URL + endpoint;
 }
@@ -52,7 +48,6 @@ export class ApiError extends Error {
 export function throwIfApiError(data) {
     if (data && data.error) {
         const error = new ApiError(data.error, { data });
-        handleApiErrorPayload(error, data);
         throw error;
     }
     return data;
@@ -61,31 +56,15 @@ export function throwIfApiError(data) {
 export async function getApiErrorPayload(error) {
     if (!error) return null;
     if (error.data) {
-        handleApiErrorPayload(error, error.data);
         return error.data;
     }
     if (!error.response || error.response.bodyUsed) return null;
     try {
         const data = await error.response.json();
         error.data = data;
-        handleApiErrorPayload(error, data);
         return data;
     } catch {
         return null;
-    }
-}
-
-function handleApiErrorPayload(error, data) {
-    if (!data || data.code !== DATAFRAME_EXPIRED_CODE || error.dataframeExpiredEventDispatched) {
-        return;
-    }
-    error.userVisibleHandled = true;
-    error.dataframeExpiredEventDispatched = true;
-    if (typeof window !== 'undefined') {
-        window[SUPPRESS_NEXT_ERROR_BANNER_FLAG] = true;
-    }
-    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
-        window.dispatchEvent(new CustomEvent(DATAFRAME_EXPIRED_EVENT, { detail: { error, data } }));
     }
 }
 
@@ -94,7 +73,6 @@ async function attachApiErrorPayload(error) {
     try {
         const data = await error.response.json();
         error.data = data;
-        handleApiErrorPayload(error, data);
     } catch {
         // Keep the original HTTP error when the response body is not JSON.
     }

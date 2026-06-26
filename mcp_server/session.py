@@ -40,7 +40,6 @@ from mcp_server.services.httpclient import get_current_user
 
 logger = logging.getLogger(__name__)
 
-DATAFRAME_EXPIRED_CODE = "DATAFRAME_EXPIRED"
 NO_DATASET_LOADED_MESSAGE = "No dataset loaded. Please load a dataset first using /dataset/load"
 
 _current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
@@ -304,8 +303,5 @@ def get_current_df() -> pd.DataFrame:
 def _dataframe_expired_exception() -> HTTPException:
     return HTTPException(
         status_code=400,
-        detail={
-            "error": NO_DATASET_LOADED_MESSAGE,
-            "code": DATAFRAME_EXPIRED_CODE,
-        },
+        detail=NO_DATASET_LOADED_MESSAGE,
     )

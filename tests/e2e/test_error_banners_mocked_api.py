@@ -117,7 +117,7 @@ def test_summary_and_snapshot_error_banners_from_mocked_api(page, chat_ui_static
     _expect_banner(page, "Error loading snapshots: Snapshots exploded")
 
 
-def test_expired_dataframe_dialog_refreshes_dataset(page, chat_ui_static_url):
+def test_backend_data_error_banner_and_reload_button_refresh_dataset(page, chat_ui_static_url):
     load_bodies = []
 
     def load_then_reload_response(route):
@@ -129,8 +129,7 @@ def test_expired_dataframe_dialog_refreshes_dataset(page, chat_ui_static_url):
         "table/summary": error(
             "No dataset loaded. Please load a dataset first.",
             status=400,
-            code="DATAFRAME_EXPIRED",
-            description="The backend data for this session has expired. Refresh the dataset to continue.",
+            description="Please reload your data",
         ),
     })
 
@@ -138,15 +137,13 @@ def test_expired_dataframe_dialog_refreshes_dataset(page, chat_ui_static_url):
     expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
     load_local_dataset(page)
 
-    expect(page.locator("#data-expired-modal-overlay")).to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
-    expect(page.locator("#data-expired-modal-overlay")).to_contain_text(
-        "This view needs to reload its data before it can continue. You can reload now and keep working where you left off."
+    _expect_banner(
+        page,
+        "Error loading summary: No dataset loaded. Please load a dataset first.: Please reload your data",
     )
-    expect(page.locator("#error-banner")).not_to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
 
     responses["table/summary"] = ok(summary_response())
-    page.locator('[data-testid="data-expired-refresh-btn"]').click()
-    expect(page.locator("#data-expired-modal-overlay")).not_to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
+    page.locator('[data-testid="reload-dataset-btn"]').click()
     expect(page.locator('[data-testid="data-row"]').first).to_be_visible(timeout=5_000)
     assert load_bodies == [
         {"dataset": SAMPLE_DATASET, "filePath": SAMPLE_DATASET},
@@ -154,7 +151,7 @@ def test_expired_dataframe_dialog_refreshes_dataset(page, chat_ui_static_url):
     ]
 
 
-def test_expired_dataframe_dialog_preempts_chat_request(page, chat_ui_static_url):
+def test_backend_data_error_banner_preempts_chat_request(page, chat_ui_static_url):
     chat_calls = {"count": 0}
 
     def chat_response(_route):
@@ -167,8 +164,7 @@ def test_expired_dataframe_dialog_preempts_chat_request(page, chat_ui_static_url
         "dataset/metadata": error(
             "No dataset loaded. Please load a dataset first.",
             status=400,
-            code="DATAFRAME_EXPIRED",
-            description="The backend data for this session has expired. Refresh the dataset to continue.",
+            description="Please reload your data",
         ),
     })
 
@@ -181,8 +177,10 @@ def test_expired_dataframe_dialog_preempts_chat_request(page, chat_ui_static_url
     page.locator('[data-testid="chat-input"]').fill("summarize this data")
     page.locator("#send-button").click()
 
-    expect(page.locator("#data-expired-modal-overlay")).to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
-    expect(page.locator("#error-banner")).not_to_have_class(VISIBLE_CLASS_RE, timeout=2_000)
+    _expect_banner(
+        page,
+        "Error checking data before chat request: No dataset loaded. Please load a dataset first.: Please reload your data",
+    )
     expect(page.locator('[data-testid="chat-input"]')).to_have_value("summarize this data")
     expect(page.locator("#chat-box")).not_to_contain_text("summarize this data")
     assert chat_calls["count"] == 0

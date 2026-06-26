@@ -290,7 +290,7 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
     assert queue.peek_all() == []
 
 
-def test_table_data_marks_no_dataset_loaded_as_expired(monkeypatch):
+def test_table_data_includes_reload_guidance_for_backend_errors(monkeypatch):
     app = _create_test_app()
 
     monkeypatch.setattr(
@@ -301,7 +301,6 @@ def test_table_data_marks_no_dataset_loaded_as_expired(monkeypatch):
             {
                 "detail": {
                     "error": "No dataset loaded. Please load a dataset first using /dataset/load",
-                    "code": "DATAFRAME_EXPIRED",
                 },
             },
         ),
@@ -313,8 +312,7 @@ def test_table_data_marks_no_dataset_loaded_as_expired(monkeypatch):
     assert response.status_code == 400
     assert response.get_json() == {
         "error": "No dataset loaded. Please load a dataset first using /dataset/load",
-        "code": "DATAFRAME_EXPIRED",
-        "description": "The backend data for this session has expired. Refresh the dataset to continue.",
+        "description": "Please reload your data",
     }
 
 

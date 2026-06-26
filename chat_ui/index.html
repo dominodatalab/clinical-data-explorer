@@ -33,22 +33,6 @@
         <button class="error-banner-close" id="error-banner-close" type="button" aria-label="Dismiss error banner">&times;</button>
     </div>
 
-    <div class="modal-overlay" id="data-expired-modal-overlay" role="dialog" aria-modal="true" aria-labelledby="data-expired-modal-title">
-        <div class="modal">
-            <div class="modal-header">
-                <h3 id="data-expired-modal-title">Reload Data</h3>
-                <button class="modal-close" id="data-expired-modal-close" type="button" aria-label="Close">&times;</button>
-            </div>
-            <div class="modal-body">
-                <p id="data-expired-modal-message">This view needs to reload its data before it can continue. You can reload now and keep working where you left off.</p>
-            </div>
-            <div class="modal-footer">
-                <button class="btn-secondary" id="data-expired-cancel-btn" type="button">Not Now</button>
-                <button class="btn-primary" id="data-expired-refresh-btn" type="button" data-testid="data-expired-refresh-btn">Reload Data</button>
-            </div>
-        </div>
-    </div>
-
     <div class="app-container">
         <!-- Top Navigation -->
         <div class="header">
@@ -160,6 +144,13 @@
                         <button class="toolbar-btn toolbar-btn-tertiary" id="copy-permalink-btn" title="Copy shareable link">
                             <span class="permalink-icon">🔗</span>
                             <span>Copy Link</span>
+                        </button>
+                        <button class="toolbar-btn toolbar-btn-tertiary" id="reload-dataset-btn" data-testid="reload-dataset-btn" title="refreshes the data in the app">
+                            <svg class="toolbar-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                <polyline points="23 4 23 10 17 10"></polyline>
+                                <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                            </svg>
+                            <span>Reload</span>
                         </button>
                     </div>
                     <div class="toolbar-right">

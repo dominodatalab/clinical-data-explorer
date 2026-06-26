@@ -1,7 +1,6 @@
 import { state } from './core/state.js';
-import { DATAFRAME_EXPIRED_EVENT, apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
+import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
 import { showErrorBanner } from './core/error-banner.js';
-import { attachOverlayDismiss, closeModal, openModal } from './core/modals.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -184,7 +183,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadSummaryData,
         persistUrl: replaceBrowserUrlWithCurrentView,
     });
-    initDataExpiredDialog();
+    initReloadDatasetButton();
 
     // Tab switching
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -663,55 +662,23 @@ document.addEventListener('DOMContentLoaded', async () => {
         });
     }
 
-    function initDataExpiredDialog() {
-        const overlay = document.getElementById('data-expired-modal-overlay');
-        const closeBtn = document.getElementById('data-expired-modal-close');
-        const cancelBtn = document.getElementById('data-expired-cancel-btn');
-        const refreshBtn = document.getElementById('data-expired-refresh-btn');
-        const message = document.getElementById('data-expired-modal-message');
-        if (!overlay || !closeBtn || !cancelBtn || !refreshBtn || !message) return;
+    function initReloadDatasetButton() {
+        const reloadBtn = document.getElementById('reload-dataset-btn');
+        if (!reloadBtn) return;
 
-        let isReloading = false;
-        const closeDialog = () => {
-            if (!isReloading) closeModal(overlay);
-        };
-        closeBtn.addEventListener('click', closeDialog);
-        cancelBtn.addEventListener('click', closeDialog);
-        attachOverlayDismiss(overlay, closeDialog);
-
-        refreshBtn.addEventListener('click', async () => {
+        reloadBtn.addEventListener('click', async () => {
             const reloadContext = buildDatasetReloadContextFromBrowser();
             if (!reloadContext) {
+                showErrorBanner('Unable to reload data from this link. Choose the data file again.');
                 return;
             }
 
-            isReloading = true;
-            refreshBtn.disabled = true;
-            cancelBtn.disabled = true;
+            reloadBtn.disabled = true;
             try {
                 await performDatasetLoad(reloadContext.datasetName, reloadContext.loadBody);
-                closeModal(overlay);
             } finally {
-                isReloading = false;
-                refreshBtn.disabled = false;
-                cancelBtn.disabled = false;
+                reloadBtn.disabled = false;
             }
-        });
-
-        window.addEventListener(DATAFRAME_EXPIRED_EVENT, () => {
-            if (isReloading) return;
-            const reloadContext = buildDatasetReloadContextFromBrowser();
-            message.textContent = reloadContext
-                ? 'This view needs to reload its data before it can continue. You can reload now and keep working where you left off.'
-                : 'This view needs to reload its data, but it cannot be reloaded automatically from this link. Choose the data file again to continue.';
-            refreshBtn.disabled = !reloadContext;
-            cancelBtn.textContent = reloadContext ? 'Not Now' : 'Close';
-            if (refreshBtn.disabled) {
-                refreshBtn.textContent = 'Reload Unavailable';
-            } else {
-                refreshBtn.textContent = 'Reload Data';
-            }
-            openModal(overlay);
         });
     }
 

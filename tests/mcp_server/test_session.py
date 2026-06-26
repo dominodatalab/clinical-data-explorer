@@ -64,10 +64,7 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 
     exc = excinfo.value
     assert exc.status_code == 400
-    assert exc.detail == {
-        "error": "No dataset loaded. Please load a dataset first using /dataset/load",
-        "code": "DATAFRAME_EXPIRED",
-    }
+    assert exc.detail == "No dataset loaded. Please load a dataset first using /dataset/load"
 
 
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
