@@ -176,7 +176,7 @@ def _get_session_dataset_name() -> Optional[str]:
 
 def has_current_df(file_snapshot_path: str) -> bool:
     """Return true when the current session has this dataset cached."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None or session.file_snapshot_path != file_snapshot_path:
         return False
