@@ -40,7 +40,7 @@ from mcp_server.services.httpclient import get_current_user
 
 logger = logging.getLogger(__name__)
 
-NO_DATASET_LOADED_MESSAGE = "No dataset loaded. Please load a dataset first using /dataset/load"
+NO_DATASET_LOADED_MESSAGE = "No dataset loaded."
 
 _current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
 

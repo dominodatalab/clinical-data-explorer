@@ -10,7 +10,6 @@ async function loadApiModule({
     pathname = '/',
     fetchImpl = async () => ({ status: 200 }),
     reloadPage = () => {},
-    dispatchEvent = () => true,
 } = {}) {
     const context = vm.createContext({
         console: { log() {} },
@@ -20,9 +19,7 @@ async function loadApiModule({
                 pathname,
                 reload: reloadPage,
             },
-            dispatchEvent,
         },
-        CustomEvent,
     });
     const module = new vm.SourceTextModule(apiSource, {
         context,
@@ -242,29 +239,6 @@ test('fetchWithStatusCheck rejects 302 responses without refreshing', async () =
     assert.equal(reloadCount, 0);
 });
 
-test('fetchWithStatusCheck rejects reloadable backend errors normally', async () => {
-    const response = jsonResponse(400, {
-        error: 'No dataset loaded. Please load a dataset first.',
-        description: 'Please reload your data',
-    });
-    const api = await loadApiModule({
-        fetchImpl: async () => response,
-    });
-
-    await assert.rejects(
-        api.fetchWithStatusCheck('/table/summary'),
-        error => {
-            assert.ok(error instanceof api.ApiError);
-            assert.equal(error.status, 400);
-            assert.deepEqual(error.data, {
-                error: 'No dataset loaded. Please load a dataset first.',
-                description: 'Please reload your data',
-            });
-            return true;
-        },
-    );
-});
-
 test('fetchJson parses successful JSON and rejects API error payloads', async () => {
     const api = await loadApiModule({
         fetchImpl: async () => jsonResponse(200, { rows: [1, 2, 3] }),
@@ -311,13 +285,13 @@ test('getApiErrorPayload preserves backend reload guidance', async () => {
     const api = await loadApiModule();
     const error = {
         response: jsonResponse(400, {
-            error: 'No dataset loaded. Please load a dataset first.',
+            error: 'No dataset loaded.',
             description: 'Please reload your data',
         }),
     };
 
     assert.deepEqual(await api.getApiErrorPayload(error), {
-        error: 'No dataset loaded. Please load a dataset first.',
+        error: 'No dataset loaded.',
         description: 'Please reload your data',
     });
 

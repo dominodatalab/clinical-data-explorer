@@ -76,6 +76,12 @@
     background: var(--color-background-bgprimary);
 }
 
+.toolbar-btn:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+    pointer-events: none;
+}
+
 /* Tertiary: text-only buttons (Clear All, Copy Link) */
 .toolbar-btn-tertiary {
     color: var(--color-text-textsecondary);

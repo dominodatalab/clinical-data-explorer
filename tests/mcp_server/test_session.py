@@ -64,7 +64,7 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 
     exc = excinfo.value
     assert exc.status_code == 400
-    assert exc.detail == "No dataset loaded. Please load a dataset first using /dataset/load"
+    assert exc.detail == "No dataset loaded."
 
 
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
@@ -335,10 +335,7 @@ def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(ca
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
     monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-3"})
-<<<<<<< HEAD
     session_module._current_user_id.set(None)
-=======
->>>>>>> fb70976 (DOM-78293 Refresh expired backend data)
     session_module._sessions["session-3"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
@@ -362,6 +359,7 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
 
 def test_session_middleware_uses_current_user_when_header_is_missing(monkeypatch):
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "user-default"})
+    session_module._current_user_id.set(None)
 
     app = FastAPI()
     app.add_middleware(session_module.SessionMiddleware)
@@ -399,15 +397,9 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
 
 
 def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app, monkeypatch):
-<<<<<<< HEAD
     cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
     session_module._current_user_id.set(None)
-=======
-    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
-    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
-    session_module._current_user_id.set("session-current-dataset")
->>>>>>> fb70976 (DOM-78293 Refresh expired backend data)
     session_module._sessions["session-current-dataset"] = session_module.LoadedDataEntry(
         file_snapshot_path="adsl.csv",
         last_accessed=time.time(),

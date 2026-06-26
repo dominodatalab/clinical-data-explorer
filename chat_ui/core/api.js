@@ -47,17 +47,14 @@ export class ApiError extends Error {
 
 export function throwIfApiError(data) {
     if (data && data.error) {
-        const error = new ApiError(data.error, { data });
-        throw error;
+        throw new ApiError(data.error, { data });
     }
     return data;
 }
 
 export async function getApiErrorPayload(error) {
     if (!error) return null;
-    if (error.data) {
-        return error.data;
-    }
+    if (error.data) return error.data;
     if (!error.response || error.response.bodyUsed) return null;
     try {
         const data = await error.response.json();
@@ -66,17 +63,6 @@ export async function getApiErrorPayload(error) {
     } catch {
         return null;
     }
-}
-
-async function attachApiErrorPayload(error) {
-    if (!error.response || error.response.bodyUsed) return error;
-    try {
-        const data = await error.response.json();
-        error.data = data;
-    } catch {
-        // Keep the original HTTP error when the response body is not JSON.
-    }
-    return error;
 }
 
 export async function getApiErrorMessage(error, fallback = 'Request failed') {
@@ -106,7 +92,7 @@ export async function fetchWithStatusCheck(input, init) {
         throw new ApiError('HTTP 302', { response });
     }
     if (response.status >= 400) {
-        throw await attachApiErrorPayload(new ApiError(`HTTP ${response.status}`, { response }));
+        throw new ApiError(`HTTP ${response.status}`, { response });
     }
     return response;
 }

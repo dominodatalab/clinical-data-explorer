@@ -1,6 +1,6 @@
 import { state } from './core/state.js';
 import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
-import { showErrorBanner } from './core/error-banner.js';
+import { hideErrorBanner, showErrorBanner } from './core/error-banner.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -565,10 +565,10 @@ document.addEventListener('DOMContentLoaded', async () => {
         performDatasetLoad(datasetName, loadBody);
     }
 
-    function performDatasetLoad(datasetName, loadBody) {
+    function performDatasetLoad(datasetName, loadBody, { loadingMessage = `Loading ${datasetName}...` } = {}) {
         const isDatasetSwitch = state.currentDataset && state.currentDataset !== datasetName;
 
-        showLoadingBanner(`Loading ${datasetName}...`);
+        showLoadingBanner(loadingMessage);
         const browseBtn = document.getElementById('browse-files-button');
         browseBtn.disabled = true;
 
@@ -658,6 +658,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         })
         .finally(() => {
             browseBtn.disabled = false;
+            updateReloadDatasetButtonState();
             hideLoadingBanner();
         });
     }
@@ -665,21 +666,36 @@ document.addEventListener('DOMContentLoaded', async () => {
     function initReloadDatasetButton() {
         const reloadBtn = document.getElementById('reload-dataset-btn');
         if (!reloadBtn) return;
+        updateReloadDatasetButtonState();
 
-        reloadBtn.addEventListener('click', async () => {
+        document.addEventListener('click', async (event) => {
+            const clickedReloadBtn = event.target.closest('#reload-dataset-btn');
+            if (!clickedReloadBtn || clickedReloadBtn.disabled) return;
+            hideErrorBanner();
+            showLoadingBanner('Loading data...');
             const reloadContext = buildDatasetReloadContextFromBrowser();
             if (!reloadContext) {
-                showErrorBanner('Unable to reload data from this link. Choose the data file again.');
+                hideLoadingBanner();
+                showErrorBanner('Unable to reload data. Please select the file from the data selection modal.');
                 return;
             }
 
-            reloadBtn.disabled = true;
+            clickedReloadBtn.disabled = true;
             try {
-                await performDatasetLoad(reloadContext.datasetName, reloadContext.loadBody);
+                await performDatasetLoad(reloadContext.datasetName, reloadContext.loadBody, {
+                    loadingMessage: 'Loading data...',
+                });
             } finally {
-                reloadBtn.disabled = false;
+                updateReloadDatasetButtonState();
             }
         });
+    }
+
+    function updateReloadDatasetButtonState() {
+        const reloadBtn = document.getElementById('reload-dataset-btn');
+        if (reloadBtn) {
+            reloadBtn.disabled = !state.currentDataset;
+        }
     }
 
     function buildDatasetReloadContextFromBrowser() {

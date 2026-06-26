@@ -300,7 +300,7 @@ def test_table_data_includes_reload_guidance_for_backend_errors(monkeypatch):
             400,
             {
                 "detail": {
-                    "error": "No dataset loaded. Please load a dataset first using /dataset/load",
+                    "error": "No dataset loaded.",
                 },
             },
         ),
@@ -311,7 +311,7 @@ def test_table_data_includes_reload_guidance_for_backend_errors(monkeypatch):
 
     assert response.status_code == 400
     assert response.get_json() == {
-        "error": "No dataset loaded. Please load a dataset first using /dataset/load",
+        "error": "No dataset loaded.",
         "description": "Please reload your data",
     }
 
