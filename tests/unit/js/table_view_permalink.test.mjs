@@ -48,14 +48,12 @@ async function loadTableViewModule({
             'fetchJson',
             'fetchWithStatusCheck',
             'getApiErrorMessage',
-            'isUserVisibleHandledResult',
             'throwIfApiError',
         ], function () {
             this.setExport('apiUrl', endpoint => `/${endpoint}`);
             this.setExport('fetchJson', async () => ({}));
             this.setExport('fetchWithStatusCheck', async () => ({ json: async () => ({}) }));
             this.setExport('getApiErrorMessage', async () => 'Request failed');
-            this.setExport('isUserVisibleHandledResult', value => !!(value && value.userVisibleHandled));
             this.setExport('throwIfApiError', data => data);
         }, { context })],
         ['../core/dom.js', new vm.SyntheticModule(['escapeHtml', 'showToast'], function () {

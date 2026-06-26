@@ -30,6 +30,7 @@ console.log('Base URL for API calls:', BASE_URL);
 
 export const DATAFRAME_EXPIRED_CODE = 'DATAFRAME_EXPIRED';
 export const DATAFRAME_EXPIRED_EVENT = 'dataframe-expired';
+export const SUPPRESS_NEXT_ERROR_BANNER_FLAG = '__dataExplorerSuppressNextErrorBanner';
 
 export function apiUrl(endpoint) {
     return BASE_URL + endpoint;
@@ -48,36 +49,7 @@ export class ApiError extends Error {
     }
 }
 
-class HandledApiResponse {
-    constructor(response, data) {
-        this.response = response;
-        this.data = markUserVisibleHandled(data);
-        this.userVisibleHandled = true;
-        this.status = response.status;
-        this.statusText = response.statusText;
-    }
-
-    async json() {
-        return this.data;
-    }
-}
-
-export function isUserVisibleHandledResult(value) {
-    return !!(value && value.userVisibleHandled);
-}
-
-function markUserVisibleHandled(data) {
-    if (!data || typeof data !== 'object') {
-        return { userVisibleHandled: true };
-    }
-    data.userVisibleHandled = true;
-    return data;
-}
-
 export function throwIfApiError(data) {
-    if (isUserVisibleHandledResult(data)) {
-        return data;
-    }
     if (data && data.error) {
         const error = new ApiError(data.error, { data });
         handleApiErrorPayload(error, data);
@@ -109,6 +81,9 @@ function handleApiErrorPayload(error, data) {
     }
     error.userVisibleHandled = true;
     error.dataframeExpiredEventDispatched = true;
+    if (typeof window !== 'undefined') {
+        window[SUPPRESS_NEXT_ERROR_BANNER_FLAG] = true;
+    }
     if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
         window.dispatchEvent(new CustomEvent(DATAFRAME_EXPIRED_EVENT, { detail: { error, data } }));
     }
@@ -153,20 +128,12 @@ export async function fetchWithStatusCheck(input, init) {
         throw new ApiError('HTTP 302', { response });
     }
     if (response.status >= 400) {
-        const error = await attachApiErrorPayload(new ApiError(`HTTP ${response.status}`, { response }));
-        if (error.userVisibleHandled) {
-            return new HandledApiResponse(response, error.data);
-        }
-        throw error;
+        throw await attachApiErrorPayload(new ApiError(`HTTP ${response.status}`, { response }));
     }
     return response;
 }
 
 export async function fetchJson(input, init) {
     const response = await fetchWithStatusCheck(input, init);
-    const data = await response.json();
-    if (isUserVisibleHandledResult(response)) {
-        return markUserVisibleHandled(data);
-    }
-    return throwIfApiError(data);
+    return throwIfApiError(await response.json());
 }

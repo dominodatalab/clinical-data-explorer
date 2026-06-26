@@ -1,5 +1,5 @@
 import { state } from './core/state.js';
-import { DATAFRAME_EXPIRED_EVENT, apiUrl, fetchWithStatusCheck, getApiErrorMessage, isUserVisibleHandledResult, throwIfApiError } from './core/api.js';
+import { DATAFRAME_EXPIRED_EVENT, apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
 import { showErrorBanner } from './core/error-banner.js';
 import { attachOverlayDismiss, closeModal, openModal } from './core/modals.js';
 import { loadColumnLabels } from './modules/column-labels.js';
@@ -294,7 +294,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         fetchWithStatusCheck(datasetsUrl)
             .then(response => response.json())
             .then(data => {
-                if (isUserVisibleHandledResult(data)) return;
                 state.cachedDatasetListResponse = data;
 
                 // Determine mode
@@ -581,7 +580,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         })
         .then(response => response.json().then(throwIfApiError))
         .then(data => {
-            if (isUserVisibleHandledResult(data)) return;
             state.currentDataset = datasetName;
             state.selectedDataset = datasetName;
             state.currentFilter = null;

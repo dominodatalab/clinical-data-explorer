@@ -66,7 +66,7 @@
 // module that touches the same fields.
 
 import { state } from '../core/state.js';
-import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, isUserVisibleHandledResult, throwIfApiError } from '../core/api.js';
+import { apiUrl, fetchJson, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from '../core/api.js';
 import { escapeHtml } from '../core/dom.js';
 import { getDisplayName } from './column-labels.js';
 
@@ -141,8 +141,7 @@ function loadDatasetData() {
     fetchWithStatusCheck(apiUrl('dataset/data'))
         .then(response => response.json())
         .then(throwIfApiError)
-        .then(data => {
-            if (isUserVisibleHandledResult(data)) return;
+        .then(() => {
             initializeExploreTab();
         })
         .catch(async error => {
@@ -440,7 +439,6 @@ function updateBarChart() {
         body: JSON.stringify(requestBody)
     })
     .then(data => {
-        if (isUserVisibleHandledResult(data)) return;
         // Convert server response to chart format
         // Server returns: { chart_data: [{label, value}, ...] }
         const chartData = data.chart_data.map(d => [d.label, d.value]);
@@ -605,7 +603,6 @@ function updateHistogramChart() {
         body: JSON.stringify(requestBody)
     })
     .then(data => {
-        if (isUserVisibleHandledResult(data)) return;
         renderHistogramChart(data);
     })
     .catch(async error => {
@@ -770,7 +767,6 @@ function fetchTimeSeriesChart(xAxis, yAxis, aggregationType) {
         body: JSON.stringify(requestBody)
     })
     .then(data => {
-        if (isUserVisibleHandledResult(data)) return;
         renderTimeSeriesChartFromServer(data.chart_data, xAxis, yAxis, aggregationType);
     })
     .catch(async error => {
@@ -802,7 +798,6 @@ function fetchXYChart(xAxis, yAxis, aggregationType) {
         body: JSON.stringify(requestBody)
     })
     .then(data => {
-        if (isUserVisibleHandledResult(data)) return;
         renderXYChartFromServer(data, xAxis, yAxis, aggregationType);
     })
     .catch(async error => {
