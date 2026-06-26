@@ -78,8 +78,10 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
 
     api_calls = []
 
-    def fake_requests_get(url, headers=None, timeout=None):
-        api_calls.append((url, headers, timeout))
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+            return _FakeResponse(200, [])
         return _FakeResponse(
             200,
             {
@@ -158,6 +160,13 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
     assert api_calls == [
         (
             "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
+            {"minimumPermission": "ListDatasetRwV2"},
             {"Authorization": "Bearer test-token"},
             30,
         )
@@ -172,6 +181,93 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
     }
 
 
+def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
+
+    api_calls = []
+
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        if url.endswith("/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100"):
+            return _FakeResponse(
+                200,
+                {
+                    "datasets": [
+                        {"dataset": {"id": "ds-1", "name": "AE", "projectId": "proj-1"}},
+                    ]
+                },
+            )
+        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+            return _FakeResponse(
+                200,
+                [
+                    {
+                        "datasetId": "ds-shared",
+                        "snapshotId": "snap-shared",
+                        "name": "quick-start",
+                        "uniqueName": "dataset-quick-start-ds-shared",
+                        "ownerProjectId": "owner-proj",
+                    }
+                ],
+            )
+        return _FakeResponse(404, {"error": "not found"})
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services, "discover_netapp_files_for_project", lambda project_id, token: ([], []))
+
+    captured = install_fake_dataset_client(
+        monkeypatch,
+        {
+            "dataset-AE-ds-1": ["events.csv"],
+            "dataset-quick-start-ds-shared": ["shared.sas7bdat", "readme.md"],
+        },
+    )
+
+    response = _call_service(app, services.list_datasets_via_api, "proj-1")
+
+    assert response.status_code == 200
+    assert response.get_json() == {
+        "datasets": [
+            "AE/events.csv",
+            "quick-start/shared.sas7bdat",
+        ],
+        "dataset_info": [
+            {"id": "ds-1", "name": "AE"},
+            {"id": "ds-shared", "name": "quick-start"},
+        ],
+        "netapp_files": [],
+        "netapp_volumes": [],
+        "current_dataset": None,
+        "extension_mode": True,
+        "project_id": "proj-1",
+    }
+    assert api_calls == [
+        (
+            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
+            {"minimumPermission": "ListDatasetRwV2"},
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+    ]
+    assert captured == {
+        "token": "test-token",
+        "dataset_keys": [
+            "dataset-AE-ds-1",
+            "dataset-quick-start-ds-shared",
+        ],
+    }
+
+
 def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
@@ -179,7 +275,9 @@ def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch
     monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
 
-    def fake_requests_get(url, headers=None, timeout=None):
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+            return _FakeResponse(200, [])
         return _FakeResponse(200, {"datasets": []})
 
     def fake_discover(project_id, token):
@@ -660,8 +758,10 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
 
     request_calls = []
 
-    def fake_requests_get(url, headers=None, timeout=None):
-        request_calls.append((url, headers, timeout))
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        request_calls.append((url, params, headers, timeout))
+        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+            return _FakeResponse(200, [])
         return _FakeResponse(
             200,
             {
@@ -687,7 +787,14 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     assert response.get_json() == {"loaded": True, "dataset": "AE/reports/visit.csv"}
     assert request_calls == [
         (
-            "https://domino.example/api/datasetrw/v2/datasets?projectId=proj-1&limit=100",
+            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
+            {"minimumPermission": "ListDatasetRwV2"},
             {"Authorization": "Bearer test-token"},
             30,
         )

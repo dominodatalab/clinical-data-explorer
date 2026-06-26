@@ -69,6 +69,16 @@ class DatasetLoadTarget:
     file_path: str | None = None
 
 
+class ProjectDatasetEntriesError(Exception):
+    def __init__(self, payload, status_code):
+        super().__init__(payload.get('error', 'Failed to list datasets'))
+        self.payload = payload
+        self.status_code = status_code
+
+    def to_response(self):
+        return jsonify(self.payload), self.status_code
+
+
 def find_data_files_fallback():
     """
     Fallback function to find data files when MCP server is unavailable.
@@ -273,6 +283,96 @@ def discover_netapp_files_for_volume(volume_id, token, snapshot_id=None):
     return _discover_netapp_files_from_volumes([volume], token, snapshot_id)
 
 
+def _dataset_entry(entry):
+    return entry.get('dataset', entry)
+
+
+def _dataset_client_key(ds):
+    # uniqueName comes from the private shared dataset v4 endpoint response.
+    # This helper also works for the public API for listing datasets.
+    unique_name = ds.get('uniqueName')
+    return unique_name or f"dataset-{ds['name']}-{ds['id']}"
+
+
+def _shared_mount_to_dataset(mount):
+    return {
+        'id': mount['datasetId'],
+        'name': mount['name'],
+        'projectId': mount.get('ownerProjectId'),
+        'uniqueName': mount.get('uniqueName'),
+        'snapshotId': mount.get('snapshotId'),
+        'ownerProjectId': mount.get('ownerProjectId'),
+        'ownerProjectName': mount.get('ownerProjectName'),
+        'shared': True,
+    }
+
+
+def _fetch_project_shared_datasets(api_host, project_id, headers):
+    response = requests.get(
+        f'{api_host}/v4/datasetrw/mounts-v2/{project_id}/shared',
+        params={'minimumPermission': 'ListDatasetRwV2'},
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Shared dataset mounts API returned %s: %s",
+            response.status_code,
+            response.text[:200],
+        )
+        return []
+
+    raw_mounts = response.json()
+    return list(map(_shared_mount_to_dataset, raw_mounts))
+
+
+def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
+    response = requests.get(
+        f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
+        headers=headers,
+        timeout=30
+    )
+
+    if response.status_code == 401 or response.status_code == 403:
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError(
+                {'error': 'Access denied. Your session may have expired. Please refresh the page.'},
+                response.status_code,
+            )
+        raise ProjectDatasetEntriesError(
+            {
+                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
+                'auth_error': True,
+                'datasets': [],
+            },
+            response.status_code,
+        )
+
+    if response.status_code != 200:
+        logger.error(f"Datasets API error: {response.status_code} - {response.text}")
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError({'error': 'Failed to resolve dataset'}, 500)
+        raise ProjectDatasetEntriesError(
+            {'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []},
+            500,
+        )
+
+    all_datasets = response.json().get('datasets', [])
+    project_datasets = [
+        _dataset_entry(d) for d in all_datasets
+        if _dataset_entry(d).get('projectId') == project_id
+    ]
+
+    seen_ids = {ds.get('id') for ds in project_datasets}
+    for shared_ds in _fetch_project_shared_datasets(api_host, project_id, headers):
+        if shared_ds.get('id') not in seen_ids:
+            project_datasets.append(shared_ds)
+            seen_ids.add(shared_ds.get('id'))
+
+    return project_datasets
+
+
 def list_datasets_via_api(project_id):
     """List datasets and their files for a target project using Domino API with passthrough auth."""
     token = get_passthrough_token()
@@ -290,30 +390,7 @@ def list_datasets_via_api(project_id):
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        # Get datasets (the API returns all accessible datasets; we filter by projectId)
-        response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
-            headers=headers,
-            timeout=30
-        )
-
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({
-                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
-                'auth_error': True,
-                'datasets': []
-            }), response.status_code
-
-        if response.status_code != 200:
-            logger.error(f"Datasets API error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []}), 500
-
-        all_datasets = response.json().get('datasets', [])
-        # Filter to only datasets belonging to the target project
-        project_datasets = [
-            d.get('dataset', d) for d in all_datasets
-            if d.get('dataset', d).get('projectId') == project_id
-        ]
+        project_datasets = _project_dataset_entries(api_host, project_id, headers)
 
         # List files from datasets
         file_list = []
@@ -324,7 +401,7 @@ def list_datasets_via_api(project_id):
             for ds in project_datasets:
                 ds_id = ds['id']
                 ds_name = ds['name']
-                dataset_key = f'dataset-{ds_name}-{ds_id}'
+                dataset_key = _dataset_client_key(ds)
 
                 try:
                     dataset = client.get_dataset(dataset_key)
@@ -339,6 +416,8 @@ def list_datasets_via_api(project_id):
         # Build dataset_info for the frontend (needed for snapshot browsing)
         dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
 
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
@@ -673,24 +752,11 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        # Resolve dataset ID by querying the API
-        response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?projectId={project_id}&limit=100',
-            headers=headers,
-            timeout=30
-        )
+        project_datasets = _project_dataset_entries(api_host, project_id, headers, purpose='load')
 
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({'error': 'Access denied. Your session may have expired. Please refresh the page.'}), response.status_code
-
-        if response.status_code != 200:
-            return jsonify({'error': 'Failed to resolve dataset'}), 500
-
-        all_datasets = response.json().get('datasets', [])
         target_ds = None
-        for d in all_datasets:
-            ds = d.get('dataset', d)
-            if ds.get('name') == ds_name and ds.get('projectId') == project_id:
+        for ds in project_datasets:
+            if ds.get('name') == ds_name:
                 target_ds = ds
                 break
 
@@ -699,6 +765,8 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
 
         ds_id = target_ds['id']
         return load_dataset_file_by_id(dataset_display_name, ds_id, token, session_id)
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading dataset via API: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503

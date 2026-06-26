@@ -101,7 +101,7 @@ def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, toke
 
     ds_name = dataset_display_name.split('/', 1)[0]
     response = httpclient.get(
-        f'{api_host}/api/datasetrw/v2/datasets?projectId={project_id}&limit=100',
+        f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
         headers={'Authorization': f'Bearer {token}'},
     )
 
@@ -109,6 +109,17 @@ def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, toke
         dataset = dataset_entry.get('dataset', dataset_entry)
         if dataset.get('name') == ds_name and dataset.get('projectId') == project_id:
             return dataset['id']
+
+    shared_mounts = httpclient.get(
+        f'{api_host}/v4/datasetrw/mounts-v2/{project_id}/shared',
+        params={'minimumPermission': 'ListDatasetRwV2'},
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    for mount in shared_mounts:
+        if mount.get('name') == ds_name and mount.get('datasetId'):
+            return mount['datasetId']
+
     raise NotFound(f'Dataset "{ds_name}" not found in project')
 
 
