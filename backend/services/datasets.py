@@ -212,15 +212,8 @@ def _first_non_empty(*values):
 
 
 def _dataset_owner_name(ds):
-    return _first_non_empty(
-        ds.get('ownerName'),
-        ds.get('owner_name'),
-        ds.get('ownerUsername'),
-        ds.get('ownerUserName'),
-        ds.get('projectOwner'),
-        ds.get('ownerProjectName'),
-        ds.get('ownerProjectId'),
-    )
+    project_info = ds.get('projectInfo') or {}
+    return _first_non_empty(ds.get('owner_name'), project_info.get('projectOwnerUsername'))
 
 
 def _dataset_info_entry(ds):
@@ -325,52 +318,110 @@ def discover_netapp_files_for_volume(volume_id, token, snapshot_id=None):
 
 
 def _dataset_entry(entry):
-    return entry.get('dataset', entry)
+    dataset = dict(entry['dataset'])
+    project_info = entry.get('projectInfo') or {}
+    if project_info:
+        dataset['projectInfo'] = project_info
+        owner_name = project_info.get('projectOwnerUsername')
+        if owner_name:
+            dataset['owner_name'] = owner_name
+    return dataset
 
 
 def _dataset_client_key(ds):
-    # uniqueName comes from the private shared dataset v4 endpoint response.
-    # This helper also works for the public API for listing datasets.
-    unique_name = ds.get('uniqueName')
-    return unique_name or f"dataset-{ds['name']}-{ds['id']}"
+    return f"dataset-{ds['name']}-{ds['id']}"
 
 
-def _shared_mount_to_dataset(mount):
-    return {
-        'id': mount['datasetId'],
-        'name': mount['name'],
-        'projectId': mount.get('ownerProjectId'),
-        'uniqueName': mount.get('uniqueName'),
-        'snapshotId': mount.get('snapshotId'),
-        'ownerProjectId': mount.get('ownerProjectId'),
-        'ownerProjectName': mount.get('ownerProjectName'),
-        'shared': True,
-    }
-
-
-def _fetch_project_shared_datasets(api_host, project_id, headers):
+def _fetch_dataset_details(api_host, dataset_id, headers):
     response = requests.get(
-        f'{api_host}/v4/datasetrw/mounts-v2/{project_id}/shared',
-        params={'minimumPermission': 'ListDatasetRwV2'},
+        f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
         headers=headers,
         timeout=30,
     )
 
     if response.status_code != 200:
         logger.warning(
-            "Shared dataset mounts API returned %s: %s",
+            "Dataset details API returned %s for %s: %s",
+            response.status_code,
+            dataset_id,
+            response.text[:200],
+        )
+        return None
+
+    return response.json().get('dataset')
+
+
+def _fetch_project_owner_username(api_host, project_id, headers, project_owner_cache):
+    if not project_id:
+        return None
+    if project_id in project_owner_cache:
+        return project_owner_cache[project_id]
+
+    response = requests.get(
+        f'{api_host}/api/projects/v1/projects/{project_id}',
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Project details API returned %s for %s: %s",
+            response.status_code,
+            project_id,
+            response.text[:200],
+        )
+        project_owner_cache[project_id] = None
+        return None
+
+    owner_name = (response.json().get('project') or {}).get('ownerUsername')
+    project_owner_cache[project_id] = owner_name
+    return owner_name
+
+
+def _fetch_project_shared_datasets(api_host, project_id, headers):
+    response = requests.get(
+        f'{api_host}/api/projects/v1/projects/{project_id}/shared-datasets',
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Shared datasets API returned %s: %s",
             response.status_code,
             response.text[:200],
         )
         return []
 
-    raw_mounts = response.json()
-    return list(map(_shared_mount_to_dataset, raw_mounts))
+    shared_dataset_ids = (response.json().get('dataset') or {}).get('sharedDatasetIds') or []
+    shared_datasets = []
+    project_owner_cache = {}
+    for shared_dataset_id in shared_dataset_ids:
+        dataset = _fetch_dataset_details(api_host, shared_dataset_id, headers)
+        if not dataset:
+            continue
+        dataset['shared'] = True
+        owner_name = _fetch_project_owner_username(
+            api_host,
+            dataset.get('projectId'),
+            headers,
+            project_owner_cache,
+        )
+        if owner_name:
+            dataset['owner_name'] = owner_name
+        shared_datasets.append(dataset)
+
+    return shared_datasets
 
 
 def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
     response = requests.get(
-        f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
+        f'{api_host}/api/datasetrw/v2/datasets',
+        params={
+            'projectIdsToInclude': project_id,
+            'includeProjectInfo': True,
+            'limit': 100,
+        },
         headers=headers,
         timeout=30
     )

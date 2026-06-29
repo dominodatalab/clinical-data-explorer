@@ -10,8 +10,8 @@ def test_resolve_project_dataset_id_raises_not_found(monkeypatch):
     monkeypatch.setattr(resolver, "get_passthrough_token", lambda: "test-token")
 
     def fake_get(url, **kwargs):
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
-            return []
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return {"dataset": {"projectId": "proj-1", "sharedDatasetIds": []}}
         return {"datasets": []}
 
     monkeypatch.setattr(resolver.httpclient, "get", fake_get)
@@ -27,15 +27,12 @@ def test_resolve_project_dataset_id_finds_shared_mount(monkeypatch):
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
-        if url.endswith("/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100"):
+        if url.endswith("/api/datasetrw/v2/datasets"):
             return {"datasets": []}
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
-            return [
-                {
-                    "datasetId": "ds-shared",
-                    "name": "quick-start",
-                }
-            ]
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return {"dataset": {"projectId": "proj-1", "sharedDatasetIds": ["ds-shared"]}}
+        if url.endswith("/api/datasetrw/v1/datasets/ds-shared"):
+            return {"dataset": {"id": "ds-shared", "name": "quick-start"}}
         return {}
 
     monkeypatch.setattr(resolver.httpclient, "get", fake_get)
@@ -43,15 +40,19 @@ def test_resolve_project_dataset_id_finds_shared_mount(monkeypatch):
     assert resolver._resolve_project_dataset_id("quick-start/adsl.csv", "proj-1") == "ds-shared"
     assert calls == [
         (
-            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
+            "https://domino.example/api/datasetrw/v2/datasets",
+            {
+                "params": {"projectIdsToInclude": "proj-1", "limit": 100},
+                "headers": {"Authorization": "Bearer test-token"},
+            },
+        ),
+        (
+            "https://domino.example/api/projects/v1/projects/proj-1/shared-datasets",
             {"headers": {"Authorization": "Bearer test-token"}},
         ),
         (
-            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
-            {
-                "params": {"minimumPermission": "ListDatasetRwV2"},
-                "headers": {"Authorization": "Bearer test-token"},
-            },
+            "https://domino.example/api/datasetrw/v1/datasets/ds-shared",
+            {"headers": {"Authorization": "Bearer test-token"}},
         ),
     ]
 
