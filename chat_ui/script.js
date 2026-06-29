@@ -701,7 +701,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     function buildDatasetReloadContextFromBrowser() {
         const params = new URLSearchParams(window.location.search);
         const filePath = params.get('filePath');
-        const datasetName = params.get('dataset');
+        const datasetName = params.get('dataset') || state.currentDataset;
         if (!filePath || !datasetName) return null;
 
         const loadBody = {

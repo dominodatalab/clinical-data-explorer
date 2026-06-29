@@ -168,6 +168,34 @@ def test_backend_data_error_banner_and_reload_button_refresh_dataset(page, chat_
     ]
 
 
+def test_reload_button_explains_when_url_cannot_identify_file(page, chat_ui_static_url):
+    load_calls = {"count": 0}
+
+    def load_response_count(_route):
+        load_calls["count"] += 1
+        return ok(load_response())
+
+    install_api_routes(page, {
+        "dataset/load": load_response_count,
+    })
+
+    page.goto(chat_ui_static_url)
+    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_disabled()
+    load_local_dataset(page)
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
+    page.evaluate("window.history.replaceState({}, '', '?projectId=project-1')")
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
+
+    page.locator('[data-testid="reload-dataset-btn"]').click()
+
+    _expect_banner(
+        page,
+        "Unable to reload data. Please select the file from the data selection modal.",
+    )
+    assert load_calls["count"] == 1
+
+
 def test_backend_data_error_banner_preempts_chat_request(page, chat_ui_static_url):
     chat_calls = {"count": 0}
 
