@@ -470,21 +470,28 @@ export function renderActiveFilters() {
         chip.className = 'filter-chip';
 
         const displayCol = getDisplayName(filter.column);
+        const displayValue = formatFilterValue(filter.value);
+        const displayValue2 = formatFilterValue(filter.value2);
         let text;
         if (filter.operator === 'is_missing' || filter.operator === 'is_not_missing') {
             text = `${displayCol} ${formatOperator(filter.operator)}`;
         } else if (filter.operator === 'between') {
-            text = `${displayCol} between "${filter.value}" and "${filter.value2}"`;
+            text = `${displayCol} between ${displayValue} and ${displayValue2}`;
         } else {
-            text = `${displayCol} ${formatOperator(filter.operator)} "${filter.value}"`;
+            text = `${displayCol} ${formatOperator(filter.operator)} ${displayValue}`;
         }
 
-        chip.innerHTML = `
-            <span>${text}</span>
-            <button class="filter-chip-remove" data-index="${index}">&times;</button>
-        `;
+        const label = document.createElement('span');
+        label.textContent = text;
+        chip.appendChild(label);
 
-        chip.querySelector('.filter-chip-remove').addEventListener('click', () => removeFilter(index));
+        const removeButton = document.createElement('button');
+        removeButton.className = 'filter-chip-remove';
+        removeButton.dataset.index = String(index);
+        removeButton.innerHTML = '&times;';
+        chip.appendChild(removeButton);
+
+        removeButton.addEventListener('click', () => removeFilter(index));
         container.appendChild(chip);
     });
 }
@@ -510,4 +517,11 @@ function formatOperator(op) {
         'is_not_missing': 'is not missing'
     };
     return opNames[op] || op;
+}
+
+function formatFilterValue(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value);
 }
