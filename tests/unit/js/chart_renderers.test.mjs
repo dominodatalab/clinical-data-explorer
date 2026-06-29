@@ -50,6 +50,9 @@ test('formatDateForDisplay returns human-readable labels for common clinical dat
     assert.equal(namespace.formatDateForDisplay('04/16/13'), 'Apr 16, 2013');
     assert.equal(namespace.formatDateForDisplay('18DEC2012'), 'Dec 18, 2012');
     assert.equal(namespace.formatDateForDisplay('2013-02-31'), '2013-02-31');
+    assert.equal(namespace.formatDateForDisplay('Feb 4, 2013'), 'Feb 4, 2013');
+    assert.equal(namespace.formatDateForDisplay('February 4, 2013'), 'February 4, 2013');
+    assert.equal(namespace.formatDateForDisplay('4 Feb 2013'), '4 Feb 2013');
     assert.equal(namespace.formatDateForDisplay('Placebo'), 'Placebo');
 });
 
@@ -62,12 +65,12 @@ test('bar and grouped bar charts format date-like category labels', async () => 
         yAxisTitle: 'Events',
     });
     namespace.renderGroupedBarChart('grouped-chart', 'By Start Date', {
-        categories: ['18DEC2012', '2013-01-12'],
+        categories: ['18DEC2012', 'January 12, 2013'],
         series: [{ name: 'Mild', data: [1, 2] }],
     });
 
     assert.deepEqual(plain(chartCalls[0].options.xAxis.categories), ['Jan 19, 2013', 'Feb 4, 2013']);
-    assert.deepEqual(plain(chartCalls[1].options.xAxis.categories), ['Dec 18, 2012', 'Jan 12, 2013']);
+    assert.deepEqual(plain(chartCalls[1].options.xAxis.categories), ['Dec 18, 2012', 'January 12, 2013']);
 });
 
 test('scatter charts convert date-like x values to a datetime axis', async () => {

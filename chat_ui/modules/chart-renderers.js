@@ -44,6 +44,8 @@ const HUMAN_DATETIME_FORMATTER = new Intl.DateTimeFormat('en-US', {
     timeZone: 'UTC',
 });
 
+const MONTH_NAME_PATTERN = /\b(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:tember)?|sept|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)\b/i;
+
 function parseDate9(value) {
     const match = String(value).trim().match(/^(\d{1,2})([A-Za-z]{3})(\d{2}|\d{4})$/);
     if (!match) return null;
@@ -149,6 +151,7 @@ function parseDateLikeValue(value) {
 
     const trimmed = value.trim();
     if (!trimmed) return null;
+    if (MONTH_NAME_PATTERN.test(trimmed)) return null;
 
     const date9Timestamp = parseDate9(trimmed);
     if (date9Timestamp !== null) return date9Timestamp;
