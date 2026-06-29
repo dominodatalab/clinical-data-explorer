@@ -211,6 +211,7 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
                         "name": "quick-start",
                         "uniqueName": "dataset-quick-start-ds-shared",
                         "ownerProjectId": "owner-proj",
+                        "ownerProjectName": "Shared Owner",
                     }
                 ],
             )
@@ -237,7 +238,7 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
         ],
         "dataset_info": [
             {"id": "ds-1", "name": "AE"},
-            {"id": "ds-shared", "name": "quick-start"},
+            {"id": "ds-shared", "name": "quick-start", "owner_name": "Shared Owner"},
         ],
         "netapp_files": [],
         "netapp_volumes": [],

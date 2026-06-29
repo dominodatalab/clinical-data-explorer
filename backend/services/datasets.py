@@ -183,12 +183,52 @@ def _netapp_volume_metadata(vol):
     vol_name = vol.get('name', '')
     vol_id = vol.get('id', '')
     vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
+    owner_name = _first_non_empty(
+        vol.get('ownerName'),
+        vol.get('owner_name'),
+        vol.get('ownerUsername'),
+        vol.get('ownerUserName'),
+        vol.get('projectOwner'),
+        vol.get('ownerProjectName'),
+        vol.get('ownerProjectId'),
+    )
 
-    return {
+    metadata = {
         'id': vol_id,
         'name': vol_name,
         'unique_name': vol_unique_name,
     }
+    if owner_name:
+        metadata['owner_name'] = owner_name
+
+    return metadata
+
+
+def _first_non_empty(*values):
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _dataset_owner_name(ds):
+    return _first_non_empty(
+        ds.get('ownerName'),
+        ds.get('owner_name'),
+        ds.get('ownerUsername'),
+        ds.get('ownerUserName'),
+        ds.get('projectOwner'),
+        ds.get('ownerProjectName'),
+        ds.get('ownerProjectId'),
+    )
+
+
+def _dataset_info_entry(ds):
+    info = {'id': ds['id'], 'name': ds['name']}
+    owner_name = _dataset_owner_name(ds)
+    if owner_name:
+        info['owner_name'] = owner_name
+    return info
 
 
 def _volume_matches_identifier(vol, volume_id):
@@ -248,6 +288,7 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
                         'volume_key': volume_meta['unique_name'],
                         'volume_name': volume_meta['name'],
                         'volume_id': volume_meta['id'],
+                        **({'owner_name': volume_meta['owner_name']} if volume_meta.get('owner_name') else {}),
                     })
         except Exception as e:
             logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
@@ -414,7 +455,7 @@ def list_datasets_via_api(project_id):
                     logger.warning(f'Failed to list files for dataset {ds_id}: {e}')
 
         # Build dataset_info for the frontend (needed for snapshot browsing)
-        dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
+        dataset_info = [_dataset_info_entry(ds) for ds in project_datasets]
 
     except ProjectDatasetEntriesError as e:
         return e.to_response()
