@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
+import os
 from pathlib import Path
 import threading
 import time
@@ -50,12 +51,14 @@ class LoadedDataEntry:
     # deleted right after load, so it can't be re-read on demand later.
     metadata: Optional[dict] = None
     dataframe_size_bytes: int = 0
+    source_file_size_bytes: int = 0
 
 
 @dataclass
 class DataFrameLoadResult:
     dataframe: pd.DataFrame
     metadata: dict
+    source_file_size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -142,7 +145,20 @@ def _evict_stale_sessions():
     )
 
 
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
+def _get_source_file_size_bytes(file_snapshot_path: str) -> int:
+    try:
+        return os.path.getsize(file_snapshot_path)
+    except OSError:
+        logger.warning("Could not determine source file size for %s", file_snapshot_path)
+        return 0
+
+
+def _set_current_df(
+    df: pd.DataFrame,
+    file_snapshot_path: str,
+    metadata: Optional[dict] = None,
+    source_file_size_bytes: Optional[int] = None,
+):
     """Store a DataFrame for the current session."""
     session_id = _current_user_id.get()
     sessions = _get_sessions()
@@ -159,6 +175,11 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
         last_accessed=time.time(),
         metadata=metadata,
         dataframe_size_bytes=objsize.get_deep_size(df),
+        source_file_size_bytes=(
+            source_file_size_bytes
+            if source_file_size_bytes is not None
+            else _get_source_file_size_bytes(file_snapshot_path)
+        ),
     )
     if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
         _drop_unreferenced_cache_entries([previous_file_snapshot_path])
@@ -184,9 +205,14 @@ def has_current_df(file_snapshot_path: str) -> bool:
 
 
 def _create_dataframe_entry(file_snapshot_path: str) -> DataFrameLoadResult:
+    source_file_size_bytes = _get_source_file_size_bytes(file_snapshot_path)
     df = load_dataset(file_snapshot_path)
     metadata = extract_dataset_metadata(Path(file_snapshot_path))
-    return DataFrameLoadResult(dataframe=df, metadata=metadata)
+    return DataFrameLoadResult(
+        dataframe=df,
+        metadata=metadata,
+        source_file_size_bytes=source_file_size_bytes,
+    )
 
 
 def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadResult:
@@ -200,7 +226,12 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
         return get_cache()[file_snapshot_path]
 
     result = _create_dataframe_entry_in_thread(file_snapshot_path)
-    _set_current_df(result.dataframe, file_snapshot_path, result.metadata)
+    _set_current_df(
+        result.dataframe,
+        file_snapshot_path,
+        result.metadata,
+        source_file_size_bytes=result.source_file_size_bytes,
+    )
     return result.dataframe
 
 
@@ -212,6 +243,16 @@ def get_current_dataframe_size_bytes() -> int:
         logger.warning("No loaded DataFrame found for user %s when reading DataFrame size", session_id)
         return 0
     return session.dataframe_size_bytes
+
+
+def get_current_source_file_size_bytes() -> int:
+    """Return the loaded source file size for the current session, or 0 when empty."""
+    session_id = _current_user_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None:
+        logger.warning("No loaded DataFrame found for user %s when reading source file size", session_id)
+        return 0
+    return session.source_file_size_bytes
 
 
 def evict_current_session_dataframe() -> SessionEvictionResult:

@@ -45,6 +45,17 @@ def test_set_current_df_stores_loaded_dataframe_deep_size(monkeypatch):
     assert session_module._sessions["session-size"].dataframe_size_bytes == 1234
 
 
+def test_set_current_df_stores_source_file_size(tmp_path):
+    data_file = tmp_path / "adsl.csv"
+    data_file.write_text("subject_id\n1\n", encoding="utf-8")
+    df = pd.DataFrame({"subject_id": [1]})
+    session_module._current_user_id.set("session-file-size")
+
+    session_module._set_current_df(df, str(data_file))
+
+    assert session_module._sessions["session-file-size"].source_file_size_bytes == data_file.stat().st_size
+
+
 def test_get_current_df_raises_when_no_dataset_is_loaded():
     session_module._current_user_id.set("missing-session")
 
@@ -231,6 +242,41 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
 
     assert response.status_code == 200
     assert response.json() == {"dataframe_size_bytes": 1234}
+
+
+def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
+    current_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["current.csv"] = current_df
+    session_module._sessions["session-size"] = session_module.LoadedDataEntry(
+        file_snapshot_path="current.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=1234,
+        source_file_size_bytes=42,
+    )
+
+    session_module._current_user_id.set("session-size")
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataset/info")
+
+    assert response.status_code == 200
+    assert response.json()["source_file_size_bytes"] == 42
+
+
+def test_get_current_source_file_size_uses_stored_session_value(monkeypatch):
+    session_module._current_user_id.set("session-size")
+    session_module._sessions["session-size"] = session_module.LoadedDataEntry(
+        file_snapshot_path="/missing/temp/file.csv",
+        last_accessed=time.time(),
+        source_file_size_bytes=42,
+    )
+    monkeypatch.setattr(
+        session_module,
+        "_get_source_file_size_bytes",
+        lambda path: (_ for _ in ()).throw(AssertionError("should not stat after load")),
+    )
+
+    assert session_module.get_current_source_file_size_bytes() == 42
 
 
 def test_get_current_dataframe_size_logs_warning_when_session_is_missing(caplog):
