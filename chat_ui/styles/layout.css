@@ -170,7 +170,10 @@ html.in-iframe .header {
 .dataset-selector {
     display: flex;
     align-items: center;
+    justify-content: flex-end;
+    flex-wrap: wrap;
     gap: var(--spacing-xsmall);
+    min-width: 0;
 }
 
 /* Tab Navigation

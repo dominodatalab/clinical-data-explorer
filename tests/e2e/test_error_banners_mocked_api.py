@@ -143,6 +143,13 @@ def test_backend_data_error_banner_and_reload_button_refresh_dataset(page, chat_
     expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_disabled()
     load_local_dataset(page)
     expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
+    page.locator('[data-testid="tab-chat"]').click()
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_visible()
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
+    page.locator('[data-testid="tab-explore"]').click()
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_visible()
+    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
+    page.locator('[data-testid="tab-table"]').click()
 
     _expect_banner(
         page,
