@@ -183,25 +183,12 @@ def _netapp_volume_metadata(vol):
     vol_name = vol.get('name', '')
     vol_id = vol.get('id', '')
     vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
-    owner_name = _first_non_empty(
-        vol.get('ownerName'),
-        vol.get('owner_name'),
-        vol.get('ownerUsername'),
-        vol.get('ownerUserName'),
-        vol.get('projectOwner'),
-        vol.get('ownerProjectName'),
-        vol.get('ownerProjectId'),
-    )
 
-    metadata = {
+    return {
         'id': vol_id,
         'name': vol_name,
         'unique_name': vol_unique_name,
     }
-    if owner_name:
-        metadata['owner_name'] = owner_name
-
-    return metadata
 
 
 def _first_non_empty(*values):
@@ -281,7 +268,6 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
                         'volume_key': volume_meta['unique_name'],
                         'volume_name': volume_meta['name'],
                         'volume_id': volume_meta['id'],
-                        **({'owner_name': volume_meta['owner_name']} if volume_meta.get('owner_name') else {}),
                     })
         except Exception as e:
             logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
