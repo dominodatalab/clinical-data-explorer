@@ -30,6 +30,7 @@ class DatasetInfo(BaseModel):
     column_types: Dict[str, str]
     numeric_columns: List[str]
     categorical_columns: List[str]
+    source_file_size_bytes: int = 0
 
 
 class FeatureStats(BaseModel):

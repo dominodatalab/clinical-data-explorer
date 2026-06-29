@@ -38,6 +38,7 @@ from mcp_server.session import (
     get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
+    get_current_source_file_size_bytes,
     has_current_df,
     load_current_df,
     SessionEvictionResult,
@@ -158,7 +159,8 @@ def get_dataset_info():
         "num_features": len(df.columns),
         "column_types": column_types,
         "numeric_columns": numeric_cols,
-        "categorical_columns": categorical_cols
+        "categorical_columns": categorical_cols,
+        "source_file_size_bytes": get_current_source_file_size_bytes(),
     }
 
 
