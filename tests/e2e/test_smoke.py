@@ -237,3 +237,29 @@ def test_chat_text_and_chart_errors_are_not_rendered_as_html(page, chat_ui_stati
     assert result["chartSvgs"] == 0
     assert result["chatXss"] is False
     assert result["chartXss"] is False
+
+
+def test_chat_chart_dates_render_as_human_readable_text(page, chat_ui_static_url):
+    page.goto(chat_ui_static_url)
+    expect(page.locator("#chat-box")).to_be_attached(timeout=15_000)
+
+    page.evaluate(
+        """async () => {
+            const { displayMessage } = await import('/modules/chat.js');
+            displayMessage('Here is the chart.', 'agent', [{
+                type: 'bar',
+                title: 'Events by Start Date',
+                data: {
+                    categories: ['2013-02-04'],
+                    values: [7],
+                    yAxisTitle: 'Events',
+                    xAxisTitle: 'Start Date',
+                },
+            }]);
+        }"""
+    )
+
+    chart = page.locator("#chat-box .chart-container").last
+    expect(chart.locator("svg")).to_be_attached(timeout=15_000)
+    expect(chart).to_contain_text("Feb 4, 2013", timeout=15_000)
+    assert "2013-02-04" not in chart.text_content()

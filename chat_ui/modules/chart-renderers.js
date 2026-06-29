@@ -81,6 +81,52 @@ function parseDate9(value) {
     return timestamp;
 }
 
+function validatedUtcTimestamp(year, monthIndex, day) {
+    const timestamp = Date.UTC(year, monthIndex, day);
+    const parsed = new Date(timestamp);
+
+    if (
+        parsed.getUTCFullYear() !== year ||
+        parsed.getUTCMonth() !== monthIndex ||
+        parsed.getUTCDate() !== day
+    ) {
+        return null;
+    }
+
+    return timestamp;
+}
+
+function normalizeYear(year) {
+    return year < 100 ? year + (year >= 50 ? 1900 : 2000) : year;
+}
+
+function parseDateOnly(value) {
+    const patterns = [
+        {
+            regex: /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+            parts: match => [Number(match[1]), Number(match[2]) - 1, Number(match[3])],
+        },
+        {
+            regex: /^(\d{4})\/(\d{1,2})\/(\d{1,2})$/,
+            parts: match => [Number(match[1]), Number(match[2]) - 1, Number(match[3])],
+        },
+        {
+            regex: /^(\d{1,2})\/(\d{1,2})\/(\d{2}|\d{4})$/,
+            parts: match => [normalizeYear(Number(match[3])), Number(match[1]) - 1, Number(match[2])],
+        },
+    ];
+
+    for (const pattern of patterns) {
+        const match = value.match(pattern.regex);
+        if (!match) continue;
+
+        const [year, monthIndex, day] = pattern.parts(match);
+        return { matched: true, timestamp: validatedUtcTimestamp(year, monthIndex, day) };
+    }
+
+    return { matched: false, timestamp: null };
+}
+
 function hasTimeComponent(value) {
     if (value instanceof Date) {
         return (
@@ -106,6 +152,9 @@ function parseDateLikeValue(value) {
 
     const date9Timestamp = parseDate9(trimmed);
     if (date9Timestamp !== null) return date9Timestamp;
+
+    const dateOnly = parseDateOnly(trimmed);
+    if (dateOnly.matched) return dateOnly.timestamp;
 
     const datePatterns = [
         /^\d{4}-\d{1,2}-\d{1,2}(?:[T\s]\d{1,2}:\d{2}(?::\d{2}(?:\.\d{1,3})?)?(?:Z|[+-]\d{2}:?\d{2})?)?$/,

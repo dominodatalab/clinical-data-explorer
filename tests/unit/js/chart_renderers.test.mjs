@@ -47,7 +47,9 @@ test('formatDateForDisplay returns human-readable labels for common clinical dat
 
     assert.equal(namespace.formatDateForDisplay('2013-02-04'), 'Feb 4, 2013');
     assert.equal(namespace.formatDateForDisplay('04/16/2013'), 'Apr 16, 2013');
+    assert.equal(namespace.formatDateForDisplay('04/16/13'), 'Apr 16, 2013');
     assert.equal(namespace.formatDateForDisplay('18DEC2012'), 'Dec 18, 2012');
+    assert.equal(namespace.formatDateForDisplay('2013-02-31'), '2013-02-31');
     assert.equal(namespace.formatDateForDisplay('Placebo'), 'Placebo');
 });
 
