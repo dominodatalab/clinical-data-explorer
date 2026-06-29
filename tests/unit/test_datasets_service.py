@@ -80,15 +80,20 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
 
     def fake_requests_get(url, params=None, headers=None, timeout=None):
         api_calls.append((url, params, headers, timeout))
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
-            return _FakeResponse(200, [])
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return _FakeResponse(200, {"dataset": {"projectId": "proj-1", "sharedDatasetIds": []}})
         return _FakeResponse(
             200,
             {
                 "datasets": [
-                    {"dataset": {"id": "ds-1", "name": "AE", "projectId": "proj-1"}},
-                    {"id": "ds-2", "name": "ADSL", "projectId": "proj-1"},
-                    {"dataset": {"id": "ds-3", "name": "Other", "projectId": "proj-2"}},
+                    {
+                        "dataset": {"id": "ds-1", "name": "AE", "projectId": "proj-1"},
+                        "projectInfo": {"projectOwnerUsername": "project-owner"},
+                    },
+                    {
+                        "dataset": {"id": "ds-2", "name": "ADSL", "projectId": "proj-1"},
+                        "projectInfo": {"projectOwnerUsername": "project-owner"},
+                    },
                 ]
             },
         )
@@ -135,8 +140,8 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
             "ADSL/subjects.parquet",
         ],
         "dataset_info": [
-            {"id": "ds-1", "name": "AE"},
-            {"id": "ds-2", "name": "ADSL"},
+            {"id": "ds-1", "name": "AE", "owner_name": "project-owner"},
+            {"id": "ds-2", "name": "ADSL", "owner_name": "project-owner"},
         ],
         "netapp_files": [
             {
@@ -159,14 +164,14 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
     }
     assert api_calls == [
         (
-            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
-            None,
+            "https://domino.example/api/datasetrw/v2/datasets",
+            {"projectIdsToInclude": "proj-1", "includeProjectInfo": True, "limit": 100},
             {"Authorization": "Bearer test-token"},
             30,
         ),
         (
-            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
-            {"minimumPermission": "ListDatasetRwV2"},
+            "https://domino.example/api/projects/v1/projects/proj-1/shared-datasets",
+            None,
             {"Authorization": "Bearer test-token"},
             30,
         )
@@ -192,7 +197,7 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
 
     def fake_requests_get(url, params=None, headers=None, timeout=None):
         api_calls.append((url, params, headers, timeout))
-        if url.endswith("/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100"):
+        if url.endswith("/api/datasetrw/v2/datasets"):
             return _FakeResponse(
                 200,
                 {
@@ -201,18 +206,20 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
                     ]
                 },
             )
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
             return _FakeResponse(
                 200,
-                [
-                    {
-                        "datasetId": "ds-shared",
-                        "snapshotId": "snap-shared",
-                        "name": "quick-start",
-                        "uniqueName": "dataset-quick-start-ds-shared",
-                        "ownerProjectId": "owner-proj",
-                    }
-                ],
+                {"dataset": {"projectId": "proj-1", "sharedDatasetIds": ["ds-shared"]}},
+            )
+        if url.endswith("/api/datasetrw/v1/datasets/ds-shared"):
+            return _FakeResponse(
+                200,
+                {"dataset": {"id": "ds-shared", "name": "quick-start", "projectId": "owner-proj"}},
+            )
+        if url.endswith("/api/projects/v1/projects/owner-proj"):
+            return _FakeResponse(
+                200,
+                {"project": {"id": "owner-proj", "name": "Shared Owner Project", "ownerUsername": "shared-owner"}},
             )
         return _FakeResponse(404, {"error": "not found"})
 
@@ -237,7 +244,7 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
         ],
         "dataset_info": [
             {"id": "ds-1", "name": "AE"},
-            {"id": "ds-shared", "name": "quick-start"},
+            {"id": "ds-shared", "name": "quick-start", "owner_name": "shared-owner"},
         ],
         "netapp_files": [],
         "netapp_volumes": [],
@@ -247,14 +254,26 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
     }
     assert api_calls == [
         (
-            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
+            "https://domino.example/api/datasetrw/v2/datasets",
+            {"projectIdsToInclude": "proj-1", "includeProjectInfo": True, "limit": 100},
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://domino.example/api/projects/v1/projects/proj-1/shared-datasets",
             None,
             {"Authorization": "Bearer test-token"},
             30,
         ),
         (
-            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
-            {"minimumPermission": "ListDatasetRwV2"},
+            "https://domino.example/api/datasetrw/v1/datasets/ds-shared",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://domino.example/api/projects/v1/projects/owner-proj",
+            None,
             {"Authorization": "Bearer test-token"},
             30,
         ),
@@ -276,8 +295,8 @@ def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch
     monkeypatch.setattr(services, "get_domino_api_host", lambda: "https://domino.example")
 
     def fake_requests_get(url, params=None, headers=None, timeout=None):
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
-            return _FakeResponse(200, [])
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return _FakeResponse(200, {"dataset": {"projectId": "proj-1", "sharedDatasetIds": []}})
         return _FakeResponse(200, {"datasets": []})
 
     def fake_discover(project_id, token):
@@ -760,8 +779,8 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
 
     def fake_requests_get(url, params=None, headers=None, timeout=None):
         request_calls.append((url, params, headers, timeout))
-        if url.endswith("/v4/datasetrw/mounts-v2/proj-1/shared"):
-            return _FakeResponse(200, [])
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return _FakeResponse(200, {"dataset": {"projectId": "proj-1", "sharedDatasetIds": []}})
         return _FakeResponse(
             200,
             {
@@ -787,14 +806,14 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     assert response.get_json() == {"loaded": True, "dataset": "AE/reports/visit.csv"}
     assert request_calls == [
         (
-            "https://domino.example/api/datasetrw/v2/datasets?projectIdsToInclude=proj-1&limit=100",
-            None,
+            "https://domino.example/api/datasetrw/v2/datasets",
+            {"projectIdsToInclude": "proj-1", "includeProjectInfo": True, "limit": 100},
             {"Authorization": "Bearer test-token"},
             30,
         ),
         (
-            "https://domino.example/v4/datasetrw/mounts-v2/proj-1/shared",
-            {"minimumPermission": "ListDatasetRwV2"},
+            "https://domino.example/api/projects/v1/projects/proj-1/shared-datasets",
+            None,
             {"Authorization": "Bearer test-token"},
             30,
         )

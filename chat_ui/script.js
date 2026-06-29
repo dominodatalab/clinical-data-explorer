@@ -407,7 +407,12 @@ document.addEventListener('DOMContentLoaded', async () => {
             for (const ds of datasetInfo) {
                 if (!seenDatasets.has(ds.id)) {
                     seenDatasets.add(ds.id);
-                    sources.push({ id: ds.id, name: ds.name, type: 'dataset' });
+                    sources.push({
+                        id: ds.id,
+                        name: ds.name,
+                        displayName: formatOwnedSourceName(ds.owner_name, ds.name),
+                        type: 'dataset',
+                    });
                 }
             }
 
@@ -419,6 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     sources.push({
                         id: volumeKey,
                         name: vol.name || volumeKey,
+                        displayName: formatOwnedSourceName(vol.owner_name, vol.name || volumeKey),
                         type: 'netapp',
                         volumeKey: volumeKey,
                         volumeId: vol.id || '',
@@ -432,6 +438,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     sources.push({
                         id: nf.volume_key,
                         name: nf.volume_name || nf.display_name.split('/')[0],
+                        displayName: formatOwnedSourceName(nf.owner_name, nf.volume_name || nf.display_name.split('/')[0]),
                         type: 'netapp',
                         volumeKey: nf.volume_key,
                         volumeId: nf.volume_id || '',
@@ -441,6 +448,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
         state.fileBrowserState.sources = sources;
+    }
+
+    function formatOwnedSourceName(ownerName, sourceName) {
+        if (!ownerName || !sourceName) return sourceName;
+        return `${ownerName}/${sourceName}`;
     }
 
     function resolveNetAppDeeplink(data) {
