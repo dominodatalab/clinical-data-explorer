@@ -33,6 +33,7 @@ class DatasetLoadRequest:
         authorization_header: Raw Authorization header for Domino passthrough auth.
         project_id: Domino project ID for project-scoped dataset loads.
         dataset_id: Domino dataset ID for dataset-context loads.
+        file_path: Source-relative file path to load when it differs from the display name.
         snapshot_id: Snapshot identifier for snapshot-specific loads.
         source_type: Logical source type, such as ``"netapp"``.
         volume_key: NetApp volume key for NetApp-backed loads.
@@ -46,6 +47,7 @@ class DatasetLoadRequest:
     authorization_header: Optional[str] = None
     project_id: Optional[str] = None
     dataset_id: Optional[str] = None
+    file_path: Optional[str] = None
     snapshot_id: Optional[str] = None
     source_type: Optional[str] = None
     volume_key: Optional[str] = None
@@ -170,6 +172,7 @@ class DatasetLoadRequestQueue:
             authorization_header=entry.authorization_header,
             project_id=entry.project_id,
             dataset_id=entry.dataset_id,
+            file_path=entry.file_path,
             snapshot_id=entry.snapshot_id,
             source_type=entry.source_type,
             volume_key=entry.volume_key,

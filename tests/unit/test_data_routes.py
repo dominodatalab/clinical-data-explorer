@@ -4,6 +4,7 @@ import threading
 import time
 
 import backend.routes.data as data_routes
+import backend.services.dataset_reload_context as dataset_reload_context
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
 import backend.services.datasets as datasets_service
 
@@ -29,6 +30,7 @@ def _create_test_app(testing=False):
 
 @pytest.fixture(autouse=True)
 def stub_queue_mcp_dataframe_hooks(monkeypatch):
+    dataset_reload_context.clear_reload_contexts()
     queue = get_dataset_load_request_queue()
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
@@ -42,6 +44,8 @@ def stub_queue_mcp_dataframe_hooks(monkeypatch):
     )
     monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 0)
     monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: None)
+    yield
+    dataset_reload_context.clear_reload_contexts()
 
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
@@ -76,10 +80,51 @@ def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     assert captured_requests[0].authorization_header == "Bearer token-1"
     assert captured_requests[0].project_id is None
     assert captured_requests[0].dataset_id is None
+    assert captured_requests[0].file_path is None
     assert captured_requests[0].snapshot_id is None
     assert captured_requests[0].source_type is None
     assert captured_requests[0].volume_key is None
     assert captured_requests[0].snapshot_version is None
+
+
+def test_load_dataset_enqueues_file_path_request(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+
+    captured_requests = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-file-path")
+    monkeypatch.setattr(
+        data_routes,
+        "resolve_dataset_load_target",
+        lambda load_request: datasets_service.DatasetLoadTarget(
+            file_snapshot_path="/tmp/dataset/ds-1/snap-1/nested/adsl.csv",
+        ),
+    )
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(
+        data_routes,
+        "process_dataset_load_request",
+        lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+    )
+
+    with app.test_client() as client:
+        response = client.post(
+            "/dataset/load",
+            json={
+                "dataset": "Clinical Dataset",
+                "datasetId": "ds-1",
+                "filePath": "nested/adsl.csv",
+            },
+            headers={"Authorization": "Bearer token-1"},
+        )
+
+    assert response.status_code == 200
+    assert len(captured_requests) == 1
+    assert captured_requests[0].dataset == "Clinical Dataset"
+    assert captured_requests[0].dataset_id == "ds-1"
+    assert captured_requests[0].file_path == "nested/adsl.csv"
 
 
 def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeypatch):
@@ -290,20 +335,67 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
     assert queue.peek_all() == []
 
 
-def test_table_data_includes_reload_guidance_for_backend_errors(monkeypatch):
+def test_table_data_reloads_expired_dataframe_from_saved_context(monkeypatch):
     app = _create_test_app()
+    loaded_requests = []
+    table_calls = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reload")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_get",
+        lambda path, session_id=None, **kwargs: _FakeMcpResponse(200, {"dataset": None}),
+    )
+
+    def fake_mcp_post(path, json=None, **kwargs):
+        if path == "/dataframes/evict-stale":
+            return _FakeMcpResponse(200, {"evicted_dataframes": 1})
+        if path == "/table/data":
+            table_calls.append(json)
+            if len(table_calls) == 1:
+                return _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}})
+            return _FakeMcpResponse(200, {"rows": [{"USUBJID": "01"}], "total": 1})
+        raise AssertionError(f"unexpected MCP POST path: {path}")
 
     monkeypatch.setattr(
         data_routes,
-        "mcp_post",
-        lambda path, json=None: _FakeMcpResponse(
-            400,
-            {
-                "detail": {
-                    "error": "No dataset loaded.",
-                },
+        "process_dataset_load_request",
+        lambda load_request: loaded_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+    )
+    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+
+    with app.test_client() as client:
+        load_response = client.post(
+            "/dataset/load",
+            json={
+                "dataset": "Clinical Dataset",
+                "datasetId": "ds-1",
+                "snapshotId": "snap-1",
+                "filePath": "nested/adsl.csv",
             },
-        ),
+        )
+        response = client.post("/table/data", json={"page": 1, "page_size": 100})
+
+    assert load_response.status_code == 200
+    assert response.status_code == 200
+    assert response.get_json() == {"rows": [{"USUBJID": "01"}], "total": 1}
+    assert len(loaded_requests) == 2
+    assert [(request.dataset, request.dataset_id, request.snapshot_id, request.file_path) for request in loaded_requests] == [
+        ("Clinical Dataset", "ds-1", "snap-1", "nested/adsl.csv"),
+        ("Clinical Dataset", "ds-1", "snap-1", "nested/adsl.csv"),
+    ]
+    assert len(table_calls) == 2
+
+
+def test_table_data_reports_actionable_error_when_expired_data_has_no_reload_context(monkeypatch):
+    app = _create_test_app()
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-missing-context")
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_post",
+        lambda path, json=None, **kwargs: _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}}),
     )
 
     with app.test_client() as client:
@@ -311,8 +403,56 @@ def test_table_data_includes_reload_guidance_for_backend_errors(monkeypatch):
 
     assert response.status_code == 400
     assert response.get_json() == {
-        "error": "No dataset loaded.",
-        "description": "Please reload your data",
+        "error": "Your data expired and couldn't be reloaded. Please select the file again.",
+    }
+
+
+def test_table_data_reports_no_space_when_expired_data_reload_is_too_large(monkeypatch):
+    app = _create_test_app(testing=True)
+    load_attempts = {"count": 0}
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reload-too-large")
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_get",
+        lambda path, session_id=None, **kwargs: _FakeMcpResponse(200, {"dataset": None}),
+    )
+
+    def fake_mcp_post(path, json=None, **kwargs):
+        if path == "/dataframes/evict-stale":
+            return _FakeMcpResponse(200, {"evicted_dataframes": 1})
+        if path == "/table/data":
+            return _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}})
+        raise AssertionError(f"unexpected MCP POST path: {path}")
+
+    def fake_process_dataset_load_request(load_request):
+        load_attempts["count"] += 1
+        if load_attempts["count"] == 1:
+            return jsonify({"loaded": True, "dataset": load_request.dataset})
+        raise data_routes.file_size_limits.DataFileTooLarge(
+            "Clinical Dataset/nested/adsl.csv must be less than or equal to 10 bytes to be processable"
+        )
+
+    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+    monkeypatch.setattr(data_routes, "process_dataset_load_request", fake_process_dataset_load_request)
+
+    with app.test_client() as client:
+        load_response = client.post(
+            "/dataset/load",
+            json={
+                "dataset": "Clinical Dataset",
+                "datasetId": "ds-1",
+                "snapshotId": "snap-1",
+                "filePath": "nested/adsl.csv",
+            },
+        )
+        response = client.post("/table/data", json={"page": 1, "page_size": 100})
+
+    assert load_response.status_code == 200
+    assert response.status_code == 413
+    assert response.get_json() == {
+        "error": "your data expired and we couldn't reload it because there's not enough space",
     }
 
 

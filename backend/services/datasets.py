@@ -705,6 +705,19 @@ def _split_display_name_path(dataset_display_name: str) -> tuple[str, str]:
     return parts[0], parts[1]
 
 
+def _load_request_file_path(load_request: DatasetLoadRequest) -> str:
+    if load_request.file_path:
+        return load_request.file_path
+    return _split_display_name_path(load_request.dataset)[1]
+
+
+def _load_request_dataset_display_name(load_request: DatasetLoadRequest) -> str:
+    if not load_request.file_path:
+        return load_request.dataset
+    dataset_name = load_request.dataset.split('/', 1)[0]
+    return f'{dataset_name}/{load_request.file_path}'
+
+
 def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: str | int | None, file_path: str) -> str:
     snapshot_key = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
     return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
@@ -730,7 +743,7 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
     token = token or get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
     if load_request.source_type == 'netapp' and load_request.volume_key:
-        _, file_path = _split_display_name_path(load_request.dataset)
+        file_path = _load_request_file_path(load_request)
         snapshot_version = _resolve_netapp_snapshot_version(
             load_request.volume_key,
             load_request.snapshot_id,
@@ -748,7 +761,7 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
         )
 
     if load_request.dataset_id:
-        _, file_path = _split_display_name_path(load_request.dataset)
+        file_path = _load_request_file_path(load_request)
         snapshot_id = load_request.snapshot_id
         if not snapshot_id:
             from backend.services.dataset_load_request_file_size_resolver import _get_default_dataset_snapshot_id
@@ -762,7 +775,7 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
         )
 
     if load_request.project_id:
-        _, file_path = _split_display_name_path(load_request.dataset)
+        file_path = _load_request_file_path(load_request)
         from backend.services.dataset_load_request_file_size_resolver import (
             _get_default_dataset_snapshot_id,
             _resolve_project_dataset_id,
@@ -1097,10 +1110,11 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 def process_dataset_load_request(load_request: DatasetLoadRequest):
     """Process a queued dataset-load request through the appropriate load path."""
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
+    dataset_display_name = _load_request_dataset_display_name(load_request)
 
     if load_request.source_type == 'netapp' and load_request.volume_key:
         return load_netapp_volume_file(
-            load_request.dataset,
+            dataset_display_name,
             load_request.volume_key,
             load_request.snapshot_version,
             load_request.snapshot_id,
@@ -1110,7 +1124,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
 
     if load_request.dataset_id and load_request.snapshot_id:
         return load_dataset_file_from_snapshot(
-            load_request.dataset,
+            dataset_display_name,
             load_request.dataset_id,
             load_request.snapshot_id,
             token=token,
@@ -1119,7 +1133,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
 
     if load_request.dataset_id:
         return load_dataset_file_by_id(
-            load_request.dataset,
+            dataset_display_name,
             load_request.dataset_id,
             token=token,
             session_id=load_request.session_id,
@@ -1127,7 +1141,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
 
     if load_request.project_id:
         return load_dataset_via_api(
-            load_request.dataset,
+            dataset_display_name,
             load_request.project_id,
             token=token,
             session_id=load_request.session_id,

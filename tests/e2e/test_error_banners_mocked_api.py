@@ -1,8 +1,5 @@
 """Playwright checks for non-chat UI error banners using mocked API responses."""
 
-import json
-import time
-
 import pytest
 
 pytest.importorskip("playwright.sync_api")
@@ -116,119 +113,6 @@ def test_summary_and_snapshot_error_banners_from_mocked_api(page, chat_ui_static
     page.goto(f"{chat_ui_static_url}?datasetId=ds-1")
     page.locator('[data-testid="browse-files-button"]').click()
     _expect_banner(page, "Error loading snapshots: Snapshots exploded")
-
-
-def test_backend_data_error_banner_and_reload_button_refresh_dataset(page, chat_ui_static_url):
-    load_bodies = []
-    load_call_count = {"count": 0}
-
-    def load_then_reload_response(route):
-        load_call_count["count"] += 1
-        load_bodies.append(json.loads(route.request.post_data or "{}"))
-        if load_call_count["count"] > 1:
-            time.sleep(0.25)
-        return ok(load_response())
-
-    responses = install_api_routes(page, {
-        "dataset/load": load_then_reload_response,
-        "table/summary": error(
-            "No dataset loaded.",
-            status=400,
-            description="Please reload your data",
-        ),
-    })
-
-    page.goto(chat_ui_static_url)
-    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_disabled()
-    load_local_dataset(page)
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
-    page.locator('[data-testid="tab-chat"]').click()
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_visible()
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
-    page.locator('[data-testid="tab-explore"]').click()
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_visible()
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
-    page.locator('[data-testid="tab-table"]').click()
-
-    _expect_banner(
-        page,
-        "Error loading summary: No dataset loaded.: Please reload your data",
-    )
-
-    responses["table/summary"] = ok(summary_response())
-    _dismiss_banner(page)
-    page.locator('[data-testid="reload-dataset-btn"]').dispatch_event("click")
-    expect(page.locator("#loading-banner")).to_have_class(VISIBLE_CLASS_RE, timeout=5_000)
-    expect(page.locator("#loading-banner-text")).to_contain_text("Loading data...", timeout=5_000)
-    expect(page.locator('[data-testid="data-row"]').first).to_be_visible(timeout=5_000)
-    assert load_bodies == [
-        {"dataset": SAMPLE_DATASET, "filePath": SAMPLE_DATASET},
-        {"dataset": SAMPLE_DATASET, "filePath": SAMPLE_DATASET},
-    ]
-
-
-def test_reload_button_explains_when_url_cannot_identify_file(page, chat_ui_static_url):
-    load_calls = {"count": 0}
-
-    def load_response_count(_route):
-        load_calls["count"] += 1
-        return ok(load_response())
-
-    install_api_routes(page, {
-        "dataset/load": load_response_count,
-    })
-
-    page.goto(chat_ui_static_url)
-    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_disabled()
-    load_local_dataset(page)
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
-    page.evaluate("window.history.replaceState({}, '', '?projectId=project-1')")
-    expect(page.locator('[data-testid="reload-dataset-btn"]')).to_be_enabled()
-
-    page.locator('[data-testid="reload-dataset-btn"]').click()
-
-    _expect_banner(
-        page,
-        "Unable to reload data. Please select the file from the data selection modal.",
-    )
-    assert load_calls["count"] == 1
-
-
-def test_backend_data_error_banner_preempts_chat_request(page, chat_ui_static_url):
-    chat_calls = {"count": 0}
-
-    def chat_response(_route):
-        chat_calls["count"] += 1
-        return ok({"response": "This should not be rendered", "charts": []})
-
-    install_api_routes(page, {
-        "chat/status": ok({"configured": True}),
-        "chat": chat_response,
-        "dataset/metadata": error(
-            "No dataset loaded.",
-            status=400,
-            description="Please reload your data",
-        ),
-    })
-
-    page.goto(chat_ui_static_url)
-    expect(page.locator('[data-testid="browse-files-button"]')).to_be_visible(timeout=5_000)
-    load_local_dataset(page)
-    page.locator('[data-testid="tab-chat"]').click()
-    expect(page.locator('[data-testid="chat-input"]')).to_be_visible(timeout=5_000)
-
-    page.locator('[data-testid="chat-input"]').fill("summarize this data")
-    page.locator("#send-button").click()
-
-    _expect_banner(
-        page,
-        "Error checking data before chat request: No dataset loaded.: Please reload your data",
-    )
-    expect(page.locator('[data-testid="chat-input"]')).to_have_value("summarize this data")
-    expect(page.locator("#chat-box")).not_to_contain_text("summarize this data")
-    assert chat_calls["count"] == 0
 
 
 @pytest.mark.parametrize(

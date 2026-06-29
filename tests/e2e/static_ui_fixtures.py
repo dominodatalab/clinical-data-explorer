@@ -38,8 +38,8 @@ def ok(body):
     return 200, body
 
 
-def error(message, status=500, **extra):
-    return status, {"error": message, **extra}
+def error(message, status=500):
+    return status, {"error": message}
 
 
 def dataset_list_response():
@@ -145,7 +145,6 @@ def install_api_routes(page, overrides=None):
         "column_labels": ok({"available": False, "labels": {}}),
         "chat/status": ok({"configured": False}),
         "dataset/load": ok(load_response()),
-        "dataset/metadata": ok({"metadata": {}}),
         "table/data": ok(table_data_response()),
         "table/summary": ok(summary_response()),
         "table/column_stats/subject_id": ok(column_stats_response()),
@@ -167,13 +166,7 @@ def install_api_routes(page, overrides=None):
             route.continue_()
             return
 
-        if callable(response):
-            try:
-                status, body = response(route)
-            except TypeError:
-                status, body = response()
-        else:
-            status, body = response
+        status, body = response() if callable(response) else response
         route.fulfill(
             status=status,
             content_type="application/json",

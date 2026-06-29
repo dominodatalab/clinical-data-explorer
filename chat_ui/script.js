@@ -1,6 +1,6 @@
 import { state } from './core/state.js';
 import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
-import { hideErrorBanner, showErrorBanner } from './core/error-banner.js';
+import { showErrorBanner } from './core/error-banner.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
 import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js';
@@ -183,7 +183,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         loadSummaryData,
         persistUrl: replaceBrowserUrlWithCurrentView,
     });
-    initReloadDatasetButton();
 
     // Tab switching
     const tabButtons = document.querySelectorAll('.tab-button');
@@ -565,14 +564,14 @@ document.addEventListener('DOMContentLoaded', async () => {
         performDatasetLoad(datasetName, loadBody);
     }
 
-    function performDatasetLoad(datasetName, loadBody, { loadingMessage = `Loading ${datasetName}...` } = {}) {
+    function performDatasetLoad(datasetName, loadBody) {
         const isDatasetSwitch = state.currentDataset && state.currentDataset !== datasetName;
 
-        showLoadingBanner(loadingMessage);
+        showLoadingBanner(`Loading ${datasetName}...`);
         const browseBtn = document.getElementById('browse-files-button');
         browseBtn.disabled = true;
 
-        return fetchWithStatusCheck(apiUrl('dataset/load'), {
+        fetchWithStatusCheck(apiUrl('dataset/load'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(loadBody),
@@ -658,89 +657,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         })
         .finally(() => {
             browseBtn.disabled = false;
-            updateReloadDatasetButtonState();
             hideLoadingBanner();
         });
-    }
-
-    function initReloadDatasetButton() {
-        const reloadBtn = document.getElementById('reload-dataset-btn');
-        if (!reloadBtn) return;
-        updateReloadDatasetButtonState();
-
-        document.addEventListener('click', async (event) => {
-            const clickedReloadBtn = event.target.closest('#reload-dataset-btn');
-            if (!clickedReloadBtn || clickedReloadBtn.disabled) return;
-            hideErrorBanner();
-            showLoadingBanner('Loading data...');
-            const reloadContext = buildDatasetReloadContextFromBrowser();
-            if (!reloadContext) {
-                hideLoadingBanner();
-                showErrorBanner('Unable to reload data. Please select the file from the data selection modal.');
-                return;
-            }
-
-            clickedReloadBtn.disabled = true;
-            try {
-                await performDatasetLoad(reloadContext.datasetName, reloadContext.loadBody, {
-                    loadingMessage: 'Loading data...',
-                });
-            } finally {
-                updateReloadDatasetButtonState();
-            }
-        });
-    }
-
-    function updateReloadDatasetButtonState() {
-        const reloadBtn = document.getElementById('reload-dataset-btn');
-        if (reloadBtn) {
-            reloadBtn.disabled = !state.currentDataset;
-        }
-    }
-
-    function buildDatasetReloadContextFromBrowser() {
-        const params = new URLSearchParams(window.location.search);
-        const filePath = params.get('filePath');
-        const datasetName = params.get('dataset') || state.currentDataset;
-        if (!filePath || !datasetName) return null;
-
-        const loadBody = {
-            dataset: datasetName,
-            filePath,
-        };
-
-        const netAppVolumeId = params.get('netAppVolumeId') || params.get('volumeId');
-        const volumeKey = params.get('volumeKey');
-        const isNetApp = Boolean(volumeKey || netAppVolumeId);
-        if (isNetApp) {
-            if (!volumeKey) return null;
-            loadBody.sourceType = 'netapp';
-            loadBody.volumeKey = volumeKey;
-            if (netAppVolumeId) loadBody.volumeId = netAppVolumeId;
-            const snapshotId = params.get('netAppVolumeSnapshotId')
-                || params.get('snapshotId');
-            if (snapshotId && snapshotId !== 'latest') loadBody.snapshotId = snapshotId;
-            const snapshotVersion = params.get('snapshotVersion');
-            if (snapshotVersion != null && snapshotVersion !== '') loadBody.snapshotVersion = snapshotVersion;
-            return { datasetName, loadBody };
-        }
-
-        const datasetId = params.get('datasetId')
-            || params.get('loadDatasetId');
-        if (datasetId) {
-            loadBody.datasetId = datasetId;
-            const snapshotId = params.get('datasetSnapshotId')
-                || params.get('snapshotId');
-            if (snapshotId) loadBody.snapshotId = snapshotId;
-            return { datasetName, loadBody };
-        }
-
-        const projectId = params.get('projectId');
-        if (projectId) {
-            loadBody.projectId = projectId;
-        }
-
-        return { datasetName, loadBody };
     }
 
     // Loading banner functions

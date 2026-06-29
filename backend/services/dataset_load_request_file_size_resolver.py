@@ -22,14 +22,14 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
 
     if load_request.source_type == 'netapp':
         return _get_netapp_volume_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             load_request.volume_id,
             token=token,
         )
 
     if load_request.dataset_id and load_request.snapshot_id:
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             load_request.snapshot_id,
             token=token,
         )
@@ -37,7 +37,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
     if load_request.dataset_id:
         snapshot_id = _get_default_dataset_snapshot_id(load_request.dataset_id, token=token)
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             snapshot_id,
             token=token,
         )
@@ -46,7 +46,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
         dataset_id = _resolve_project_dataset_id(load_request.dataset, load_request.project_id, token=token)
         snapshot_id = _get_default_dataset_snapshot_id(dataset_id, token=token)
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             snapshot_id,
             token=token,
         )
@@ -62,15 +62,20 @@ def _split_dataset_file_path(dataset_display_name: str) -> str:
     return parts[1]
 
 
+def _load_request_file_path(load_request: "DatasetLoadRequest") -> str:
+    if load_request.file_path:
+        return load_request.file_path
+    return _split_dataset_file_path(load_request.dataset)
+
+
 def _get_netapp_volume_file_size(
-    volume_file_display_name: str,
+    file_path: str,
     volume_id: str | None,
     token=None,
 ) -> int:
     if not volume_id:
-        raise RuntimeError(f'Missing NetApp volume ID for {volume_file_display_name}')
+        raise RuntimeError(f'Missing NetApp volume ID for {file_path}')
 
-    file_path = _split_dataset_file_path(volume_file_display_name)
     metadata = get_netapp_volume_file_metadata(volume_id, file_path, token=token)
     file_size = metadata.get("fileSize")
     if file_size is None:
@@ -149,8 +154,7 @@ def _get_default_dataset_snapshot_id(dataset_id: str, token=None) -> str:
     return snapshots[0]["id"]
 
 
-def _get_dataset_snapshot_file_size(dataset_display_name: str, snapshot_id: str, token=None) -> int:
-    file_path = _split_dataset_file_path(dataset_display_name)
+def _get_dataset_snapshot_file_size(file_path: str, snapshot_id: str, token=None) -> int:
     metadata = get_dataset_snapshot_file_metadata(snapshot_id, file_path, token=token)
     file_size = metadata.get("fileSize")
     if file_size is None:

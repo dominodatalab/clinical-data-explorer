@@ -70,7 +70,7 @@ def test_get_dataset_snapshot_file_size_raises_not_found_for_missing_file_size(m
     monkeypatch.setattr(resolver, "get_dataset_snapshot_file_metadata", lambda *args, **kwargs: {})
 
     with pytest.raises(NotFound, match="Missing fileSize in metadata for reports/adsl.csv"):
-        resolver._get_dataset_snapshot_file_size("Study/reports/adsl.csv", "snap-1")
+        resolver._get_dataset_snapshot_file_size("reports/adsl.csv", "snap-1")
 
 
 def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
@@ -119,16 +119,41 @@ def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     ]
 
 
+def test_resolve_dataset_file_size_uses_explicit_file_path(monkeypatch):
+    calls = []
+    monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
+    monkeypatch.setattr(resolver, "_get_default_dataset_snapshot_id", lambda dataset_id, token=None: "snap-1")
+
+    def fake_get_dataset_snapshot_file_metadata(snapshot_id, file_path, token=None, api_host=None):
+        calls.append((snapshot_id, file_path, token))
+        return {"fileSize": 12345}
+
+    monkeypatch.setattr(resolver, "get_dataset_snapshot_file_metadata", fake_get_dataset_snapshot_file_metadata)
+
+    file_size = resolver.resolve_dataset_load_request_file_size(
+        DatasetLoadRequest(
+            dataset="Clinical Dataset",
+            session_id="sid-1",
+            authorization_header="Bearer passthrough",
+            dataset_id="ds-1",
+            file_path="nested/adsl.csv",
+        )
+    )
+
+    assert file_size == 12345
+    assert calls == [("snap-1", "nested/adsl.csv", "test-token")]
+
+
 def test_get_netapp_volume_file_size_raises_for_missing_volume_id():
-    with pytest.raises(RuntimeError, match="Missing NetApp volume ID for Safety Volume/reports/adsl.csv"):
-        resolver._get_netapp_volume_file_size("Safety Volume/reports/adsl.csv", None, token="test-token")
+    with pytest.raises(RuntimeError, match="Missing NetApp volume ID for reports/adsl.csv"):
+        resolver._get_netapp_volume_file_size("reports/adsl.csv", None, token="test-token")
 
 
 def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monkeypatch):
     monkeypatch.setattr(resolver, "get_netapp_volume_file_metadata", lambda *args, **kwargs: {})
 
     with pytest.raises(NotFound, match="Missing fileSize in metadata for reports/adsl.csv"):
-        resolver._get_netapp_volume_file_size("Safety Volume/reports/adsl.csv", "vol-id-123", token="test-token")
+        resolver._get_netapp_volume_file_size("reports/adsl.csv", "vol-id-123", token="test-token")
 
 
 def test_get_netapp_volume_file_metadata_raises_when_external_url_missing(monkeypatch):

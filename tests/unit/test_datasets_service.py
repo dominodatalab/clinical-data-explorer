@@ -767,6 +767,63 @@ def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, 
     assert captured == [(expected_args, expected_kwargs)]
 
 
+def test_process_dataset_load_request_uses_file_path_for_remote_load(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    captured = []
+
+    def fake_load_dataset_file_by_id(*args, **kwargs):
+        captured.append((args, kwargs))
+        return "ok"
+
+    monkeypatch.setattr(services, "load_dataset_file_by_id", fake_load_dataset_file_by_id)
+
+    result = services.process_dataset_load_request(
+        DatasetLoadRequest(
+            dataset="Clinical Dataset",
+            session_id="sid-file-path",
+            authorization_header="Bearer token-123",
+            dataset_id="ds-1",
+            file_path="nested/adsl.csv",
+        )
+    )
+
+    assert result == "ok"
+    assert captured == [
+        (
+            ("Clinical Dataset/nested/adsl.csv", "ds-1"),
+            {"token": "token-123", "session_id": "sid-file-path"},
+        )
+    ]
+
+
+def test_resolve_dataset_load_target_uses_file_path(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    class FakeFileCache:
+        def create_file_path(self, dataset_id, file_path, source_type, snapshot_key):
+            return f"/tmp/{source_type}/{dataset_id}/{snapshot_key}/{file_path}"
+
+    monkeypatch.setattr(services, "get_file_cache", lambda: FakeFileCache())
+    monkeypatch.setattr(services, "get_passthrough_token_from_authorization_header", lambda header: "token-123")
+
+    target = services.resolve_dataset_load_target(
+        DatasetLoadRequest(
+            dataset="Clinical Dataset",
+            session_id="sid-file-path",
+            authorization_header="Bearer token-123",
+            dataset_id="ds-1",
+            snapshot_id="snap-1",
+            file_path="nested/adsl.csv",
+        )
+    )
+
+    assert target.file_snapshot_path == "/tmp/dataset/ds-1/snap-1/nested/adsl.csv"
+    assert target.file_path == "nested/adsl.csv"
+    assert target.dataset_id == "ds-1"
+    assert target.snapshot_id == "snap-1"
+
+
 def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)

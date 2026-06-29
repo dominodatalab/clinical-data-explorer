@@ -280,20 +280,3 @@ test('fetchJson HTTP failures can still expose backend JSON through getApiErrorM
         );
     }
 });
-
-test('getApiErrorPayload preserves backend reload guidance', async () => {
-    const api = await loadApiModule();
-    const error = {
-        response: jsonResponse(400, {
-            error: 'No dataset loaded.',
-            description: 'Please reload your data',
-        }),
-    };
-
-    assert.deepEqual(await api.getApiErrorPayload(error), {
-        error: 'No dataset loaded.',
-        description: 'Please reload your data',
-    });
-
-    await api.getApiErrorPayload(error);
-});

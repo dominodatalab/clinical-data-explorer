@@ -89,8 +89,24 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
     pd.testing.assert_frame_equal(session_module.get_cache()["adae.csv"], reloaded_df)
 
 
+def test_get_current_df_raises_when_dataframe_was_expired():
+    session_module._current_user_id.set("expired-dataframe")
+    session_module._sessions["expired-dataframe"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adae.csv",
+        has_cached_dataframe=False,
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        session_module.get_current_df()
+
+    exc = excinfo.value
+    assert exc.status_code == 400
+    assert exc.detail == "No dataset loaded."
+
+
 def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     stale_df = pd.DataFrame({"subject_id": [1]})
     fresh_df = pd.DataFrame({"subject_id": [2]})
@@ -114,6 +130,7 @@ def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
 
 def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
     monkeypatch.setattr(session_module, "SESSION_MAX_COUNT", 2)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     oldest_df = pd.DataFrame({"subject_id": [1]})
@@ -142,6 +159,7 @@ def test_evict_stale_sessions_enforces_session_count_limit(monkeypatch):
 
 def test_evict_stale_sessions_keeps_cache_entries_used_by_active_sessions(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     shared_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["shared.csv"] = shared_df
@@ -160,6 +178,64 @@ def test_evict_stale_sessions_keeps_cache_entries_used_by_active_sessions(monkey
     pd.testing.assert_frame_equal(session_module.get_cache()["shared.csv"], shared_df)
 
 
+def test_evict_stale_sessions_removes_expired_dataframe_but_keeps_session(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    old_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["old.csv"] = old_df
+    session_module._sessions["old-dataframe"] = session_module.LoadedDataEntry(
+        file_snapshot_path="old.csv",
+        last_accessed=95.0,
+        dataframe_last_accessed=89.0,
+        dataframe_size_bytes=1234,
+    )
+
+    result = session_module._evict_stale_sessions()
+
+    assert "old-dataframe" in session_module._sessions
+    session = session_module._sessions["old-dataframe"]
+    assert session.has_cached_dataframe is False
+    assert session.dataframe_size_bytes == 0
+    assert result == session_module.SessionEvictionResult(evicted_sessions=0, evicted_dataframes=1)
+    assert "old.csv" not in session_module.get_cache()
+
+
+def test_evict_stale_sessions_keeps_shared_dataframe_for_active_session(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    shared_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["shared.csv"] = shared_df
+    session_module._sessions.update(
+        {
+            "old-dataframe": session_module.LoadedDataEntry(
+                file_snapshot_path="shared.csv",
+                last_accessed=95.0,
+                dataframe_last_accessed=89.0,
+                dataframe_size_bytes=1234,
+            ),
+            "fresh-dataframe": session_module.LoadedDataEntry(
+                file_snapshot_path="shared.csv",
+                last_accessed=95.0,
+                dataframe_last_accessed=95.0,
+                dataframe_size_bytes=1234,
+            ),
+        }
+    )
+
+    result = session_module._evict_stale_sessions()
+
+    assert session_module._sessions["old-dataframe"].has_cached_dataframe is False
+    assert session_module._sessions["fresh-dataframe"].has_cached_dataframe is True
+    assert result == session_module.SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
+    pd.testing.assert_frame_equal(session_module.get_cache()["shared.csv"], shared_df)
+    session_module._current_user_id.set("old-dataframe")
+    assert session_module.has_current_df("shared.csv") is False
+    session_module._current_user_id.set("fresh-dataframe")
+    assert session_module.has_current_df("shared.csv") is True
+
+
 def test_set_current_df_evicts_previous_dataset_for_same_session():
     first_df = pd.DataFrame({"subject_id": [1]})
     second_df = pd.DataFrame({"subject_id": [2]})
@@ -175,6 +251,7 @@ def test_set_current_df_evicts_previous_dataset_for_same_session():
 
 def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-6"})
     old_df = pd.DataFrame({"subject_id": [1]})
@@ -201,14 +278,16 @@ def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
 
 
 def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkeypatch):
-    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-7"})
     old_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["old.csv"] = old_df
     session_module._sessions["session-7"] = session_module.LoadedDataEntry(
         file_snapshot_path="old.csv",
-        last_accessed=89.0,
+        last_accessed=95.0,
+        dataframe_last_accessed=89.0,
     )
 
     client = TestClient(_mcp_app)
@@ -216,8 +295,9 @@ def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkey
     response = client.post("/dataframes/evict-stale")
 
     assert response.status_code == 200
-    assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
-    assert "session-7" not in session_module._sessions
+    assert response.json() == {"evicted_sessions": 0, "evicted_dataframes": 1}
+    assert "session-7" in session_module._sessions
+    assert session_module._sessions["session-7"].has_cached_dataframe is False
     assert "old.csv" not in session_module.get_cache()
 
 

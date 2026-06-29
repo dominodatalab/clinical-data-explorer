@@ -38,7 +38,6 @@
 
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
-import { showErrorBanner } from '../core/error-banner.js';
 import {
     renderBarChart,
     renderScatterChart,
@@ -159,7 +158,7 @@ async function loadChatHistory() {
     }
 }
 
-async function sendMessage() {
+function sendMessage() {
     const messageText = userInput.value.trim();
     if (messageText === '') {
         return;
@@ -167,11 +166,6 @@ async function sendMessage() {
 
     if (!state.currentDataset) {
         displayMessage('Please load a dataset first before asking questions.', 'system');
-        return;
-    }
-
-    const datasetReady = await ensureLoadedDatasetForChat();
-    if (!datasetReady) {
         return;
     }
 
@@ -229,18 +223,6 @@ async function sendMessage() {
         userInput.disabled = false;
         userInput.focus();
     });
-}
-
-async function ensureLoadedDatasetForChat() {
-    try {
-        await fetchJson(apiUrl('dataset/metadata'));
-        return true;
-    } catch (error) {
-        console.error('Error checking data before chat request:', error);
-        const message = await getApiErrorMessage(error, 'Please try again.');
-        showErrorBanner(`Error checking data before chat request: ${message}`);
-        return false;
-    }
 }
 
 function showThinkingAnimation() {
