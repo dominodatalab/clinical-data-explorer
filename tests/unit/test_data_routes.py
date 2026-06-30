@@ -32,17 +32,12 @@ def _create_test_app(testing=False):
 def stub_queue_mcp_dataframe_hooks(monkeypatch):
     reload_context_cache = {}
 
-    def fake_reload_context_post(path, session_id=None, json=None, **kwargs):
-        assert path == "/dataset/reload-context"
-        reload_context_cache[session_id] = json
-        return _FakeMcpResponse(200, {"stored": True})
-
     def fake_reload_context_get(path, session_id=None, **kwargs):
-        assert path == "/dataset/reload-context"
-        return _FakeMcpResponse(200, {"load_body": reload_context_cache.get(session_id)})
+        assert path == "/dataframe/current-session"
+        return _FakeMcpResponse(200, {"dataset": None, "reload_context": reload_context_cache.get(session_id)})
 
-    monkeypatch.setattr(dataset_reload_context, "mcp_post", fake_reload_context_post)
     monkeypatch.setattr(dataset_reload_context, "mcp_get", fake_reload_context_get)
+    monkeypatch.setattr(dataset_reload_context, "_test_reload_context_cache", reload_context_cache, raising=False)
 
     queue = get_dataset_load_request_queue()
     monkeypatch.setattr(
@@ -386,6 +381,12 @@ def test_table_data_reloads_expired_dataframe_from_saved_context(monkeypatch):
                 "filePath": "nested/adsl.csv",
             },
         )
+        dataset_reload_context._test_reload_context_cache["sid-reload"] = {
+            "dataset": "Clinical Dataset",
+            "datasetId": "ds-1",
+            "snapshotId": "snap-1",
+            "filePath": "nested/adsl.csv",
+        }
         response = client.post("/table/data", json={"page": 1, "page_size": 100})
 
     assert load_response.status_code == 200
@@ -458,6 +459,12 @@ def test_table_data_reports_no_space_when_expired_data_reload_is_too_large(monke
                 "filePath": "nested/adsl.csv",
             },
         )
+        dataset_reload_context._test_reload_context_cache["sid-reload-too-large"] = {
+            "dataset": "Clinical Dataset",
+            "datasetId": "ds-1",
+            "snapshotId": "snap-1",
+            "filePath": "nested/adsl.csv",
+        }
         response = client.post("/table/data", json={"page": 1, "page_size": 100})
 
     assert load_response.status_code == 200

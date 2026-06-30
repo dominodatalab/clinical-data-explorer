@@ -385,10 +385,12 @@ def test_evict_stale_dataframes_endpoint_removes_idle_reload_context(_mcp_app, m
     assert "session-context" not in session_module._get_dataset_reload_context_cache()
 
 
-def test_dataset_reload_context_endpoints_store_and_return_current_session_context(_mcp_app, monkeypatch):
+def test_dataset_load_stores_reload_context_in_current_session(_mcp_app, monkeypatch, tmp_path):
     monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 1000)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-context"})
+    dataset = tmp_path / "adsl.csv"
+    dataset.write_text("subject_id,arm\n1,A\n", encoding="utf-8")
     client = TestClient(_mcp_app)
 
     load_body = {
@@ -398,13 +400,13 @@ def test_dataset_reload_context_endpoints_store_and_return_current_session_conte
         "filePath": "nested/adsl.csv",
     }
 
-    save_response = client.post("/dataset/reload-context", json=load_body)
-    get_response = client.get("/dataset/reload-context")
+    save_response = client.post("/dataset/load", params={"file_snapshot_path": str(dataset)}, json=load_body)
+    current_session_response = client.get("/dataframe/current-session")
 
     assert save_response.status_code == 200
-    assert save_response.json() == {"stored": True}
-    assert get_response.status_code == 200
-    assert get_response.json() == {"load_body": load_body}
+    assert save_response.json()["dataset"] == str(dataset)
+    assert current_session_response.status_code == 200
+    assert current_session_response.json()["reload_context"] == load_body
 
 
 def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypatch):
@@ -601,7 +603,7 @@ def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app,
     response = client.get("/dataframe/current-session")
 
     assert response.status_code == 200
-    assert response.json() == {"dataset": "adsl.csv"}
+    assert response.json() == {"dataset": "adsl.csv", "reload_context": None}
 
 
 def test_load_current_df_reuses_matching_cached_dataframe(monkeypatch):

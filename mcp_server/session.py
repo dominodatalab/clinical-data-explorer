@@ -222,11 +222,6 @@ def get_dataset_reload_context() -> Optional[dict]:
     return context.load_body
 
 
-def clear_dataset_reload_context():
-    """Remove the reload body for the current session."""
-    _get_dataset_reload_context_cache().pop(_current_user_id.get(), None)
-
-
 def _get_source_file_size_bytes(file_snapshot_path: str) -> int:
     try:
         return os.path.getsize(file_snapshot_path)
@@ -240,6 +235,7 @@ def _set_current_df(
     file_snapshot_path: str,
     metadata: Optional[dict] = None,
     source_file_size_bytes: Optional[int] = None,
+    reload_context: Optional[dict] = None,
 ):
     """Store a DataFrame for the current session."""
     session_id = _current_user_id.get()
@@ -268,6 +264,8 @@ def _set_current_df(
     )
     if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
         _drop_unreferenced_cache_entries([previous_file_snapshot_path])
+    if reload_context:
+        set_dataset_reload_context(reload_context)
     _evict_stale_sessions()
 
 
@@ -307,9 +305,11 @@ def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadR
         return executor.submit(_create_dataframe_entry, file_snapshot_path).result()
 
 
-def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
+def load_current_df(file_snapshot_path: str, reload_context: Optional[dict] = None) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
     if has_current_df(file_snapshot_path):
+        if reload_context:
+            set_dataset_reload_context(reload_context)
         return get_cache()[file_snapshot_path]
 
     result = _create_dataframe_entry_in_thread(file_snapshot_path)
@@ -318,6 +318,7 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
         file_snapshot_path,
         result.metadata,
         source_file_size_bytes=result.source_file_size_bytes,
+        reload_context=reload_context,
     )
     return result.dataframe
 

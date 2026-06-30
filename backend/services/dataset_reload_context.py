@@ -4,7 +4,7 @@ from typing import Optional
 
 import requests
 
-from backend.session import mcp_get, mcp_post
+from backend.session import mcp_get
 
 
 @dataclass(frozen=True)
@@ -58,25 +58,16 @@ def context_from_load_body(load_body):
     )
 
 
-def save_reload_context(session_id, load_body):
-    context = context_from_load_body(load_body)
-    if context is None:
-        return None
-
-    mcp_post("/dataset/reload-context", session_id=session_id, json=context.to_load_body())
-    return context
-
-
 def get_reload_context(session_id):
     try:
-        response = mcp_get("/dataset/reload-context", session_id=session_id)
+        response = mcp_get("/dataframe/current-session", session_id=session_id)
     except requests.exceptions.RequestException:
         return None
 
     if response.status_code != 200:
         return None
 
-    load_body = response.json().get("load_body")
+    load_body = response.json().get("reload_context")
     if not load_body:
         return None
     return context_from_load_body(load_body)

@@ -44,7 +44,7 @@ from backend.services.datasets import (
     process_dataset_load_request,
     resolve_dataset_load_target,
 )
-from backend.services.dataset_reload_context import get_reload_context, save_reload_context
+from backend.services.dataset_reload_context import context_from_load_body, get_reload_context
 from backend.session import get_session_id, mcp_get, mcp_post
 
 logger = logging.getLogger(__name__)
@@ -150,6 +150,7 @@ def _load_dataset_from_request_json(request_json):
         return jsonify({'error': 'No dataset name provided'}), 400
 
     session_id = get_session_id()
+    reload_context = context_from_load_body(request_json)
     load_request = dataset_load_request_queue.DatasetLoadRequest(
         dataset=dataset_name,
         session_id=session_id,
@@ -162,15 +163,13 @@ def _load_dataset_from_request_json(request_json):
         volume_key=volume_key,
         volume_id=volume_id,
         snapshot_version=snapshot_version,
+        reload_context=reload_context.to_load_body() if reload_context else None,
     )
 
     try:
         target = resolve_dataset_load_target(load_request)
         if _get_current_session_dataset(session_id) == target.file_snapshot_path:
-            response = load_existing_session_dataframe(load_request, target)
-            if _result_status_code(response) < 400:
-                save_reload_context(session_id, request_json)
-            return response
+            return load_existing_session_dataframe(load_request, target)
 
         _evict_stale_dataframes_before_load()
         # TODO this could wait for a while. can we have a multi minute timeout on requests?
@@ -179,8 +178,6 @@ def _load_dataset_from_request_json(request_json):
             load_request,
             process_dataset_load_request,
         )
-        if _result_status_code(response) < 400:
-            save_reload_context(session_id, request_json)
         return response
     except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
         raise TooManyRequests(

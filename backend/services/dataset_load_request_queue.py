@@ -39,6 +39,7 @@ class DatasetLoadRequest:
         volume_key: NetApp volume key for NetApp-backed loads.
         volume_id: NetApp volume UUID for WebVFS-backed metadata requests.
         snapshot_version: NetApp snapshot version when applicable.
+        reload_context: Load body that MCP can store for backend reloads.
         enqueued_at: Timestamp recording when the request entered the queue.
     """
 
@@ -53,6 +54,7 @@ class DatasetLoadRequest:
     volume_key: Optional[str] = None
     volume_id: Optional[str] = None
     snapshot_version: Optional[int | str] = None
+    reload_context: Optional[dict] = None
     enqueued_at: float = field(default_factory=time.time)
 
 
@@ -178,6 +180,7 @@ class DatasetLoadRequestQueue:
             volume_key=entry.volume_key,
             volume_id=entry.volume_id,
             snapshot_version=entry.snapshot_version,
+            reload_context=entry.reload_context,
             enqueued_at=entry.enqueued_at,
         )
         queued_entry = _QueuedDatasetLoadRequest(entry)
