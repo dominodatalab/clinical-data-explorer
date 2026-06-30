@@ -49,14 +49,14 @@ def chat_history():
 
 
 def _ensure_dataset_loaded_for_chat():
-    response = mcp_request_with_expired_dataframe_reload(
+    response, error_payload, error_status_code = mcp_request_with_expired_dataframe_reload(
         lambda: mcp_get("/dataset/metadata"),
         lambda: dataframe_reload.try_reload_expired_dataframe(get_session_id()),
     )
+    if error_payload is not None:
+        return jsonify(error_payload), error_status_code
     if response.status_code == 200:
         return None
-    if hasattr(response, "get_json"):
-        return response
     return jsonify(mcp_error_payload(response, "Failed to check loaded data")), response.status_code
 
 

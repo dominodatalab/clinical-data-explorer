@@ -41,27 +41,27 @@ def mcp_request_with_expired_dataframe_reload(request_mcp_response, reload_expir
     """Reload expired session data, then retry the user's original MCP request once."""
     response = request_mcp_response()
     if not is_no_dataset_loaded_response(response):
-        return response
+        return response, None, None
 
     logger.warning(
         "MCP request reported no loaded dataset before reload attempt: %s",
         mcp_error_text(response, NO_DATASET_LOADED_MESSAGE),
     )
 
-    reloaded, error_response = reload_expired_dataframe()
+    reloaded, error_payload, error_status_code = reload_expired_dataframe()
     if not reloaded:
-        return error_response
+        return None, error_payload, error_status_code
 
-    return request_mcp_response()
+    return request_mcp_response(), None, None
 
 
 def proxied_mcp_json_response(request_mcp_response, fallback_error, reload_expired_dataframe):
-    response = mcp_request_with_expired_dataframe_reload(
+    response, error_payload, error_status_code = mcp_request_with_expired_dataframe_reload(
         request_mcp_response,
         reload_expired_dataframe,
     )
-    if hasattr(response, "get_json"):
-        return response
+    if error_payload is not None:
+        return jsonify(error_payload), error_status_code
     if response.status_code == 200:
         return jsonify(mcp_response_json(response))
     return jsonify(mcp_error_payload(response, fallback_error)), response.status_code

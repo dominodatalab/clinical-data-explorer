@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, make_response
+from flask import Flask
 
 import backend.routes.chat as chat_routes
 import backend.services.dataframe_reload as dataframe_reload
@@ -43,7 +43,7 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     monkeypatch.setattr(
         dataframe_reload,
         "try_reload_expired_dataframe",
-        lambda session_id: reload_calls.append(session_id) or (True, None),
+        lambda session_id: reload_calls.append(session_id) or (True, None, None),
     )
     monkeypatch.setattr(chat_routes, "get_agent_response", fake_get_agent_response)
 
@@ -73,7 +73,8 @@ def test_chat_reports_reload_context_error_without_calling_agent(monkeypatch):
         "try_reload_expired_dataframe",
         lambda session_id: (
             False,
-            make_response(jsonify({"error": "Your data expired and couldn't be reloaded. Please select the file again."}), 400),
+            {"error": "Your data expired and couldn't be reloaded. Please select the file again."},
+            400,
         ),
     )
 

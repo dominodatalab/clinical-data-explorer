@@ -3,7 +3,7 @@ import logging
 import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
-from flask import jsonify, make_response
+from flask import jsonify
 from werkzeug.exceptions import (
     HTTPException,
     RequestEntityTooLarge,
@@ -23,10 +23,6 @@ logger = logging.getLogger(__name__)
 
 DATA_RELOAD_MISSING_CONTEXT_MESSAGE = "Your data expired and couldn't be reloaded. Please select the file again."
 DATA_RELOAD_NO_SPACE_MESSAGE = "Your data expired and we couldn't reload it because there's not enough space"
-
-
-def _reload_failure_response(status_code, error_text):
-    return make_response(jsonify({"error": error_text}), status_code)
 
 
 def _result_error_text(result):
@@ -116,17 +112,17 @@ def load_dataset_from_request_json(request_json, session_id, authorization_heade
 def try_reload_expired_dataframe(session_id):
     context = get_reload_context(session_id)
     if context is None:
-        return False, make_response(jsonify({"error": DATA_RELOAD_MISSING_CONTEXT_MESSAGE}), 400)
+        return False, {"error": DATA_RELOAD_MISSING_CONTEXT_MESSAGE}, 400
 
     try:
         response = load_dataset_from_request_json(context.to_load_body(), session_id=session_id)
     except (RequestEntityTooLarge, TooManyRequests) as exc:
-        return False, make_response(jsonify({"error": DATA_RELOAD_NO_SPACE_MESSAGE}), exc.code)
+        return False, {"error": DATA_RELOAD_NO_SPACE_MESSAGE}, exc.code
     except HTTPException as exc:
-        return False, make_response(jsonify({"error": exc.description}), exc.code)
+        return False, {"error": exc.description}, exc.code
 
     status_code = result_status_code(response)
     if status_code >= 400:
         error_text = _result_error_text(response)
-        return False, _reload_failure_response(status_code, error_text)
-    return True, None
+        return False, {"error": error_text}, status_code
+    return True, None, None
