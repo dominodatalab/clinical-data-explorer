@@ -45,60 +45,22 @@ from backend.services.datasets import (
     resolve_dataset_load_target,
 )
 from backend.services.dataset_reload_context import context_from_load_body, get_reload_context
+from backend.services.mcp_proxy import (
+    proxied_mcp_json_response,
+    result_json,
+    result_status_code,
+)
 from backend.session import get_session_id, mcp_get, mcp_post
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('data', __name__)
 
-NO_DATASET_LOADED_MESSAGE = "No dataset loaded."
 DATA_RELOAD_MISSING_CONTEXT_MESSAGE = "Your data expired and couldn't be reloaded. Please select the file again."
 DATA_RELOAD_NO_SPACE_MESSAGE = "Your data expired and we couldn't reload it because there's not enough space"
 
 
-def _mcp_response_json(response):
-    try:
-        return response.json()
-    except ValueError:
-        return {}
-
-
-def _mcp_error_text(response, fallback):
-    detail = _mcp_response_json(response).get("detail", fallback)
-    if isinstance(detail, dict):
-        return detail.get("error") or detail.get("message") or fallback
-    return detail
-
-
-def _mcp_error_payload(response, fallback):
-    return {"error": _mcp_error_text(response, fallback)}
-
-
-def _is_no_dataset_loaded_response(response):
-    if response.status_code != 400:
-        return False
-    return NO_DATASET_LOADED_MESSAGE in str(_mcp_error_text(response, ""))
-
-
-def _result_status_code(result):
-    if isinstance(result, tuple) and len(result) >= 2:
-        return result[1]
-    return getattr(result, "status_code", 200)
-
-
-def _result_json(result):
-    if isinstance(result, tuple) and result:
-        return result[0].get_json(silent=True) or {}
-    if hasattr(result, "get_json"):
-        return result.get_json(silent=True) or {}
-    if hasattr(result, "json"):
-        return result.json() or {}
-    return {}
-
-
 def _reload_failure_response(status_code, error_text):
-    if status_code in (413, 429) or "capacity" in error_text.lower() or "too large" in error_text.lower():
-        return make_response(jsonify({"error": DATA_RELOAD_NO_SPACE_MESSAGE}), status_code)
     return make_response(jsonify({"error": error_text}), status_code)
 
 
@@ -174,11 +136,10 @@ def _load_dataset_from_request_json(request_json):
         _evict_stale_dataframes_before_load()
         # TODO this could wait for a while. can we have a multi minute timeout on requests?
         # should we have an expiration on requests?
-        response = dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
+        return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
             load_request,
             process_dataset_load_request,
         )
-        return response
     except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
         raise TooManyRequests(
             description="Sorry, we can't process your dataset, this server is at capacity."
@@ -202,33 +163,20 @@ def _try_reload_expired_dataframe():
     except HTTPException as exc:
         return False, make_response(jsonify({"error": exc.description}), exc.code)
 
-    status_code = _result_status_code(response)
+    status_code = result_status_code(response)
     if status_code >= 400:
-        error_text = _result_json(response).get("error", "Could not reload expired data")
+        error_text = result_json(response).get("error", "Could not reload expired data")
         return False, _reload_failure_response(status_code, error_text)
     return True, None
 
 
-def _mcp_request_with_expired_dataframe_reload(request_mcp_response):
-    """Reload expired session data, then retry the user's original MCP request once."""
-    response = request_mcp_response()
-    if not _is_no_dataset_loaded_response(response):
-        return response
-
-    reloaded, error_response = _try_reload_expired_dataframe()
-    if not reloaded:
-        return error_response
-
-    return request_mcp_response()
-
-
 def _proxied_mcp_json_response(request_mcp_response, fallback_error):
-    response = _mcp_request_with_expired_dataframe_reload(request_mcp_response)
-    if hasattr(response, "get_json"):
-        return response
-    if response.status_code == 200:
-        return jsonify(_mcp_response_json(response))
-    return jsonify(_mcp_error_payload(response, fallback_error)), response.status_code
+    return proxied_mcp_json_response(
+        request_mcp_response,
+        fallback_error,
+        _try_reload_expired_dataframe,
+        logger=logger,
+    )
 
 
 @bp.route('/dataset/metadata', methods=['GET'])

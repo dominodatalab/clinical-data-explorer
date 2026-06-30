@@ -19,7 +19,9 @@ from chat_agent import (
     is_chat_configured,
 )
 
-from backend.session import get_session_id
+from backend.routes.data import _try_reload_expired_dataframe
+from backend.services.mcp_proxy import mcp_error_payload, mcp_request_with_expired_dataframe_reload
+from backend.session import get_session_id, mcp_get
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +48,19 @@ def chat_history():
     return jsonify({'messages': get_history(session_id=get_session_id())})
 
 
+def _ensure_dataset_loaded_for_chat():
+    response = mcp_request_with_expired_dataframe_reload(
+        lambda: mcp_get("/dataset/metadata"),
+        _try_reload_expired_dataframe,
+        logger=logger,
+    )
+    if hasattr(response, "get_json"):
+        return response
+    if response.status_code == 200:
+        return None
+    return jsonify(mcp_error_payload(response, "Failed to check loaded data")), response.status_code
+
+
 @bp.route('/chat', methods=['POST'])
 def chat():
     # Check if chat is configured first
@@ -67,6 +82,10 @@ def chat():
 
     # Get response from the chat agent using the async function
     try:
+        dataset_error_response = _ensure_dataset_loaded_for_chat()
+        if dataset_error_response is not None:
+            return dataset_error_response
+
         agent_response = asyncio.run(get_agent_response(user_message, session_id=get_session_id()))
         # agent_response is now a dict with 'text' and 'charts' keys
         logger.info("Successfully got agent response")

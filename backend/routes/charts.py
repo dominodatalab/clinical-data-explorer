@@ -15,12 +15,22 @@ import logging
 import requests
 from flask import Blueprint, jsonify, request
 
-from backend.routes.data import _proxied_mcp_json_response
+from backend.routes.data import _try_reload_expired_dataframe
+from backend.services.mcp_proxy import proxied_mcp_json_response
 from backend.session import mcp_post
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('charts', __name__)
+
+
+def _proxied_mcp_json_response(request_mcp_response, fallback_error):
+    return proxied_mcp_json_response(
+        request_mcp_response,
+        fallback_error,
+        _try_reload_expired_dataframe,
+        logger=logger,
+    )
 
 
 @bp.route('/chart/bar_aggregation', methods=['POST'])
