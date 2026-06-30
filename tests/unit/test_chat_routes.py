@@ -1,6 +1,7 @@
 from flask import Flask, jsonify, make_response
 
 import backend.routes.chat as chat_routes
+import backend.services.dataframe_reload as dataframe_reload
 
 
 class _FakeMcpResponse:
@@ -40,9 +41,9 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
 
     monkeypatch.setattr(chat_routes, "mcp_get", fake_mcp_get)
     monkeypatch.setattr(
-        chat_routes,
-        "_try_reload_expired_dataframe",
-        lambda: reload_calls.append(True) or (True, None),
+        dataframe_reload,
+        "try_reload_expired_dataframe",
+        lambda session_id: reload_calls.append(session_id) or (True, None),
     )
     monkeypatch.setattr(chat_routes, "get_agent_response", fake_get_agent_response)
 
@@ -52,7 +53,7 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     assert response.status_code == 200
     assert response.get_json() == {"response": "loaded answer", "charts": []}
     assert metadata_calls == ["/dataset/metadata", "/dataset/metadata"]
-    assert reload_calls == [True]
+    assert reload_calls == ["sid-chat"]
     assert agent_calls == [("summarize the data", "sid-chat")]
 
 
@@ -68,9 +69,9 @@ def test_chat_reports_reload_context_error_without_calling_agent(monkeypatch):
         lambda path: _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}}),
     )
     monkeypatch.setattr(
-        chat_routes,
-        "_try_reload_expired_dataframe",
-        lambda: (
+        dataframe_reload,
+        "try_reload_expired_dataframe",
+        lambda session_id: (
             False,
             make_response(jsonify({"error": "Your data expired and couldn't be reloaded. Please select the file again."}), 400),
         ),
