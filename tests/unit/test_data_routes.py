@@ -401,6 +401,53 @@ def test_table_data_reloads_expired_dataframe_from_saved_context(monkeypatch):
     assert len(table_calls) == 2
 
 
+def test_column_values_reloads_expired_dataframe_from_saved_context(monkeypatch):
+    app = _create_test_app()
+    loaded_requests = []
+    column_value_calls = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-column-values-reload")
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+
+    def fake_mcp_get(path, params=None, **kwargs):
+        if path == "/table/column_values/treatment":
+            column_value_calls.append(params)
+            if len(column_value_calls) == 1:
+                return _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}})
+            return _FakeMcpResponse(200, {"values": ["Placebo"], "total_unique": 1})
+        raise AssertionError(f"unexpected MCP GET path: {path}")
+
+    monkeypatch.setattr(
+        dataframe_reload_helpers,
+        "process_dataset_load_request",
+        lambda load_request: loaded_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+    )
+    monkeypatch.setattr(data_routes, "mcp_get", fake_mcp_get)
+
+    with app.test_client() as client:
+        dataset_reload_context._test_reload_context_cache["sid-column-values-reload"] = {
+            "dataset": "Clinical Dataset",
+            "datasetId": "ds-1",
+            "snapshotId": "snap-1",
+            "filePath": "nested/adsl.csv",
+        }
+        response = client.get("/table/column_values/treatment?search=Pla&limit=10")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"values": ["Placebo"], "total_unique": 1}
+    assert len(loaded_requests) == 1
+    assert (
+        loaded_requests[0].dataset,
+        loaded_requests[0].dataset_id,
+        loaded_requests[0].snapshot_id,
+        loaded_requests[0].file_path,
+    ) == ("Clinical Dataset", "ds-1", "snap-1", "nested/adsl.csv")
+    assert column_value_calls == [
+        {"search": "Pla", "limit": "10"},
+        {"search": "Pla", "limit": "10"},
+    ]
+
+
 def test_table_data_reports_actionable_error_when_expired_data_has_no_reload_context(monkeypatch):
     app = _create_test_app()
 

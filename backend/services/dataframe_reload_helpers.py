@@ -32,9 +32,9 @@ def _result_error_text(result):
     return response.json().get("error", "Could not reload expired data")
 
 
-def _evict_stale_dataframes_before_load():
+def _evict_stale_dataframes_before_load(session_id):
     try:
-        response = mcp_post("/dataframes/evict-stale")
+        response = mcp_post("/dataframes/evict-stale", session_id=session_id)
         if response.status_code != 200:
             logger.warning("MCP stale DataFrame eviction returned HTTP %s", response.status_code)
     except requests.exceptions.ConnectionError:
@@ -93,7 +93,7 @@ def load_dataset_from_request_json(request_json, session_id, authorization_heade
         if _get_current_session_dataset(session_id) == target.file_snapshot_path:
             return load_existing_session_dataframe(load_request, target)
 
-        _evict_stale_dataframes_before_load()
+        _evict_stale_dataframes_before_load(session_id)
         return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
             load_request,
             process_dataset_load_request,
