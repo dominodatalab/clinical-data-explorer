@@ -32,15 +32,18 @@ from fastapi.encoders import jsonable_encoder
 from starlette.concurrency import run_in_threadpool
 
 from mcp_server.session import (
+    clear_dataset_reload_context,
     evict_current_session_dataframe,
     _evict_stale_sessions,
     _get_session_dataset_name,
+    get_dataset_reload_context,
     get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
     get_current_source_file_size_bytes,
     has_current_df,
     load_current_df,
+    set_dataset_reload_context,
     SessionEvictionResult,
 )
 from mcp_server.services.columns import (
@@ -119,7 +122,25 @@ def evict_stale_dataframes(request: Request):
     return SessionEvictionResult(
         evicted_sessions=middleware_result.evicted_sessions + route_result.evicted_sessions,
         evicted_dataframes=middleware_result.evicted_dataframes + route_result.evicted_dataframes,
+        evicted_reload_contexts=middleware_result.evicted_reload_contexts + route_result.evicted_reload_contexts,
     )
+
+
+@router.post("/dataset/reload-context", operation_id="set_dataset_reload_context")
+def set_dataset_reload_context_endpoint(load_body: dict):
+    set_dataset_reload_context(load_body)
+    return {"stored": True}
+
+
+@router.get("/dataset/reload-context", operation_id="get_dataset_reload_context")
+def get_dataset_reload_context_endpoint():
+    return {"load_body": get_dataset_reload_context()}
+
+
+@router.delete("/dataset/reload-context", operation_id="clear_dataset_reload_context")
+def clear_dataset_reload_context_endpoint():
+    clear_dataset_reload_context()
+    return {"cleared": True}
 
 
 @router.get("/dataframe/size", operation_id="get_current_dataframe_size")

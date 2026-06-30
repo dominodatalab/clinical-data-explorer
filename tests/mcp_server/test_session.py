@@ -14,10 +14,12 @@ import mcp_server.session as session_module
 @pytest.fixture(autouse=True)
 def clear_session_state():
     session_module._sessions.clear()
+    session_module._get_dataset_reload_context_cache().clear()
     session_module._current_user_id.set("default")
     session_module.get_cache().clear()
     yield
     session_module._sessions.clear()
+    session_module._get_dataset_reload_context_cache().clear()
     session_module._current_user_id.set("default")
     session_module.get_cache().clear()
 
@@ -201,6 +203,60 @@ def test_evict_stale_sessions_removes_expired_dataframe_but_keeps_session(monkey
     assert "old.csv" not in session_module.get_cache()
 
 
+def test_evict_stale_sessions_removes_expired_reload_context(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    session_module._get_dataset_reload_context_cache().update(
+        {
+            "stale-context": session_module.DatasetReloadContextEntry(
+                load_body={"dataset": "Clinical Dataset", "filePath": "nested/adsl.csv"},
+                created_at=89.0,
+            ),
+            "fresh-context": session_module.DatasetReloadContextEntry(
+                load_body={"dataset": "Clinical Dataset", "filePath": "nested/adae.csv"},
+                created_at=95.0,
+            ),
+        }
+    )
+
+    result = session_module._evict_stale_sessions()
+
+    assert "stale-context" not in session_module._get_dataset_reload_context_cache()
+    assert "fresh-context" in session_module._get_dataset_reload_context_cache()
+    assert result == session_module.SessionEvictionResult(
+        evicted_sessions=0,
+        evicted_dataframes=0,
+        evicted_reload_contexts=1,
+    )
+
+
+def test_evict_stale_sessions_removes_reload_context_for_expired_session(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    session_module._sessions["expired-session"] = session_module.LoadedDataEntry(
+        file_snapshot_path="old.csv",
+        last_accessed=89.0,
+    )
+    session_module._get_dataset_reload_context_cache()["expired-session"] = session_module.DatasetReloadContextEntry(
+        load_body={"dataset": "Clinical Dataset", "filePath": "nested/adsl.csv"},
+        created_at=95.0,
+    )
+
+    result = session_module._evict_stale_sessions()
+
+    assert "expired-session" not in session_module._sessions
+    assert "expired-session" not in session_module._get_dataset_reload_context_cache()
+    assert result == session_module.SessionEvictionResult(
+        evicted_sessions=1,
+        evicted_dataframes=0,
+        evicted_reload_contexts=1,
+    )
+
+
 def test_evict_stale_sessions_keeps_shared_dataframe_for_active_session(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
     monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 10)
@@ -295,10 +351,60 @@ def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkey
     response = client.post("/dataframes/evict-stale")
 
     assert response.status_code == 200
-    assert response.json() == {"evicted_sessions": 0, "evicted_dataframes": 1}
+    assert response.json() == {
+        "evicted_sessions": 0,
+        "evicted_dataframes": 1,
+        "evicted_reload_contexts": 0,
+    }
     assert "session-7" in session_module._sessions
     assert session_module._sessions["session-7"].has_cached_dataframe is False
     assert "old.csv" not in session_module.get_cache()
+
+
+def test_evict_stale_dataframes_endpoint_removes_idle_reload_context(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-context"})
+    session_module._get_dataset_reload_context_cache()["session-context"] = session_module.DatasetReloadContextEntry(
+        load_body={"dataset": "Clinical Dataset", "filePath": "nested/adsl.csv"},
+        created_at=89.0,
+    )
+
+    client = TestClient(_mcp_app)
+
+    response = client.post("/dataframes/evict-stale")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "evicted_sessions": 0,
+        "evicted_dataframes": 0,
+        "evicted_reload_contexts": 1,
+    }
+    assert "session-context" not in session_module._get_dataset_reload_context_cache()
+
+
+def test_dataset_reload_context_endpoints_store_and_return_current_session_context(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-context"})
+    client = TestClient(_mcp_app)
+
+    load_body = {
+        "dataset": "Clinical Dataset",
+        "datasetId": "ds-1",
+        "snapshotId": "snap-1",
+        "filePath": "nested/adsl.csv",
+    }
+
+    save_response = client.post("/dataset/reload-context", json=load_body)
+    get_response = client.get("/dataset/reload-context")
+
+    assert save_response.status_code == 200
+    assert save_response.json() == {"stored": True}
+    assert get_response.status_code == 200
+    assert get_response.json() == {"load_body": load_body}
 
 
 def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypatch):
@@ -395,7 +501,11 @@ def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_
     response = client.post("/dataframe/evict-current-session")
 
     assert response.status_code == 200
-    assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
+    assert response.json() == {
+        "evicted_sessions": 1,
+        "evicted_dataframes": 1,
+        "evicted_reload_contexts": 0,
+    }
     assert "session-current" not in session_module._sessions
     assert "session-other" in session_module._sessions
     assert "current.csv" not in session_module.get_cache()

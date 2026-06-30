@@ -1,7 +1,10 @@
 from dataclasses import dataclass
-import threading
 import time
 from typing import Optional
+
+import requests
+
+from backend.session import mcp_get, mcp_post
 
 
 @dataclass(frozen=True)
@@ -35,10 +38,6 @@ class DatasetReloadContext:
         return body
 
 
-_contexts: dict[str, DatasetReloadContext] = {}
-_lock = threading.Lock()
-
-
 def context_from_load_body(load_body):
     dataset = load_body.get("dataset")
     file_path = load_body.get("filePath")
@@ -64,21 +63,20 @@ def save_reload_context(session_id, load_body):
     if context is None:
         return None
 
-    with _lock:
-        _contexts[session_id] = context
+    mcp_post("/dataset/reload-context", session_id=session_id, json=context.to_load_body())
     return context
 
 
 def get_reload_context(session_id):
-    with _lock:
-        return _contexts.get(session_id)
+    try:
+        response = mcp_get("/dataset/reload-context", session_id=session_id)
+    except requests.exceptions.RequestException:
+        return None
 
+    if response.status_code != 200:
+        return None
 
-def clear_reload_context(session_id):
-    with _lock:
-        _contexts.pop(session_id, None)
-
-
-def clear_reload_contexts():
-    with _lock:
-        _contexts.clear()
+    load_body = response.json().get("load_body")
+    if not load_body:
+        return None
+    return context_from_load_body(load_body)

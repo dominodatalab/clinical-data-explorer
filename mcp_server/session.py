@@ -34,7 +34,12 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
 from mcp_server.auth import set_auth_header
-from mcp_server.config import DATAFRAME_MAX_AGE, SESSION_MAX_AGE, SESSION_MAX_COUNT
+from mcp_server.config import (
+    DATAFRAME_MAX_AGE,
+    DATASET_RELOAD_CONTEXT_MAX_AGE,
+    SESSION_MAX_AGE,
+    SESSION_MAX_COUNT,
+)
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 from mcp_server.services.httpclient import get_current_user
 
@@ -69,18 +74,31 @@ class DataFrameLoadResult:
     source_file_size_bytes: int
 
 
+@dataclass
+class DatasetReloadContextEntry:
+    load_body: dict
+    created_at: float = 0
+
+
 @dataclass(frozen=True)
 class SessionEvictionResult:
     evicted_sessions: int
     evicted_dataframes: int
+    evicted_reload_contexts: int = 0
 
 
 _sessions: Dict[str, LoadedDataEntry] = {}
+_dataset_reload_context_cache: Dict[str, DatasetReloadContextEntry] = {}
 
 
 @lru_cache(maxsize=1)
 def _get_sessions():
     return _sessions
+
+
+@lru_cache(maxsize=1)
+def _get_dataset_reload_context_cache():
+    return _dataset_reload_context_cache
 
 
 def get_cache():
@@ -136,14 +154,18 @@ def _drop_unreferenced_cache_entries(file_snapshot_paths: list[str]) -> int:
 def _evict_stale_sessions():
     """Remove expired sessions and dataframe cache entries."""
     sessions = _get_sessions()
+    dataset_reload_context_cache = _get_dataset_reload_context_cache()
     now = time.time()
     stale = [sid for sid, s in sessions.items()
              if now - s.last_accessed > SESSION_MAX_AGE]
     evicted_session_paths = []
+    evicted_reload_contexts = 0
     for sid in stale:
         logger.info(f"Evicting stale session: {sid}")
         evicted_session_paths.append(sessions[sid].file_snapshot_path)
         del sessions[sid]
+        if dataset_reload_context_cache.pop(sid, None) is not None:
+            evicted_reload_contexts += 1
     # If still over limit, evict oldest
     if len(sessions) > SESSION_MAX_COUNT:
         by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
@@ -151,6 +173,8 @@ def _evict_stale_sessions():
             logger.info(f"Evicting session (over limit): {sid}")
             evicted_session_paths.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
+            if dataset_reload_context_cache.pop(sid, None) is not None:
+                evicted_reload_contexts += 1
 
     stale_dataframe_paths = []
     for sid, session in sessions.items():
@@ -162,10 +186,45 @@ def _evict_stale_sessions():
             session.dataframe_size_bytes = 0
             stale_dataframe_paths.append(session.file_snapshot_path)
 
+    stale_reload_contexts = [
+        sid for sid, context in dataset_reload_context_cache.items()
+        if now - context.created_at > DATASET_RELOAD_CONTEXT_MAX_AGE
+    ]
+    for sid in stale_reload_contexts:
+        logger.info(f"Evicting stale dataset reload context for session: {sid}")
+        del dataset_reload_context_cache[sid]
+    evicted_reload_contexts += len(stale_reload_contexts)
+
     return SessionEvictionResult(
         evicted_sessions=len(evicted_session_paths),
         evicted_dataframes=_drop_unreferenced_cache_entries(evicted_session_paths + stale_dataframe_paths),
+        evicted_reload_contexts=evicted_reload_contexts,
     )
+
+
+def set_dataset_reload_context(load_body: dict):
+    """Store the reload body for the current session."""
+    session_id = _current_user_id.get()
+    _get_dataset_reload_context_cache()[session_id] = DatasetReloadContextEntry(
+        load_body=load_body,
+        created_at=time.time(),
+    )
+    _evict_stale_sessions()
+
+
+def get_dataset_reload_context() -> Optional[dict]:
+    """Return the reload body for the current session, if it has not expired."""
+    _evict_stale_sessions()
+    session_id = _current_user_id.get()
+    context = _get_dataset_reload_context_cache().get(session_id)
+    if context is None:
+        return None
+    return context.load_body
+
+
+def clear_dataset_reload_context():
+    """Remove the reload body for the current session."""
+    _get_dataset_reload_context_cache().pop(_current_user_id.get(), None)
 
 
 def _get_source_file_size_bytes(file_snapshot_path: str) -> int:

@@ -30,7 +30,20 @@ def _create_test_app(testing=False):
 
 @pytest.fixture(autouse=True)
 def stub_queue_mcp_dataframe_hooks(monkeypatch):
-    dataset_reload_context.clear_reload_contexts()
+    reload_context_cache = {}
+
+    def fake_reload_context_post(path, session_id=None, json=None, **kwargs):
+        assert path == "/dataset/reload-context"
+        reload_context_cache[session_id] = json
+        return _FakeMcpResponse(200, {"stored": True})
+
+    def fake_reload_context_get(path, session_id=None, **kwargs):
+        assert path == "/dataset/reload-context"
+        return _FakeMcpResponse(200, {"load_body": reload_context_cache.get(session_id)})
+
+    monkeypatch.setattr(dataset_reload_context, "mcp_post", fake_reload_context_post)
+    monkeypatch.setattr(dataset_reload_context, "mcp_get", fake_reload_context_get)
+
     queue = get_dataset_load_request_queue()
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
@@ -44,8 +57,6 @@ def stub_queue_mcp_dataframe_hooks(monkeypatch):
     )
     monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 0)
     monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: None)
-    yield
-    dataset_reload_context.clear_reload_contexts()
 
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
