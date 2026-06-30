@@ -53,7 +53,7 @@ bp = Blueprint('data', __name__)
 
 NO_DATASET_LOADED_MESSAGE = "No dataset loaded."
 DATA_RELOAD_MISSING_CONTEXT_MESSAGE = "Your data expired and couldn't be reloaded. Please select the file again."
-DATA_RELOAD_NO_SPACE_MESSAGE = "your data expired and we couldn't reload it because there's not enough space"
+DATA_RELOAD_NO_SPACE_MESSAGE = "Your data expired and we couldn't reload it because there's not enough space"
 
 
 def _mcp_response_json(response):
@@ -213,6 +213,7 @@ def _try_reload_expired_dataframe():
 
 
 def _mcp_request_with_expired_dataframe_reload(request_mcp_response):
+    """Reload expired session data, then retry the user's original MCP request once."""
     response = request_mcp_response()
     if not _is_no_dataset_loaded_response(response):
         return response

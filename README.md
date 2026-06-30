@@ -127,7 +127,9 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 | `DATA_FILE_CACHE_EXPIRATION_SECONDS` | `60` | How long backend download-file metadata entries are kept before cleanup runs. Applies to temporary files downloaded before handing them to the MCP server. |
 | `DATA_FILE_CACHE_MAX_ITEM_COUNT` | `100` | Maximum number of backend download-file metadata entries to retain before older entries are evicted and cleaned up. |
 | `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. |
-| `MCP_SESSION_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
+| `MCP_DATAFRAME_MAX_AGE` | `900` | Maximum idle age, in seconds, for a cached DataFrame before the DataFrame is evicted while session metadata can remain available. |
+| `MCP_SESSION_MAX_AGE` | `86400` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
+| `MCP_DATASET_RELOAD_CONTEXT_MAX_AGE` | `86400` | Maximum age, in seconds, for stored dataset reload context before it is evicted by MCP session cache cleanup. |
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
 
 #### Optional: AI Chat Feature

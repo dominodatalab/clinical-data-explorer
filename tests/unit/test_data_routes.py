@@ -463,7 +463,7 @@ def test_table_data_reports_no_space_when_expired_data_reload_is_too_large(monke
     assert load_response.status_code == 200
     assert response.status_code == 413
     assert response.get_json() == {
-        "error": "your data expired and we couldn't reload it because there's not enough space",
+        "error": "Your data expired and we couldn't reload it because there's not enough space",
     }
 
 
