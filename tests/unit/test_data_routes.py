@@ -4,7 +4,7 @@ import threading
 import time
 
 import backend.routes.data as data_routes
-import backend.services.dataframe_reload as dataframe_reload
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
 import backend.services.dataset_reload_context as dataset_reload_context
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
 import backend.services.datasets as datasets_service
@@ -63,9 +63,9 @@ def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     captured_requests = []
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-1")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
@@ -103,15 +103,15 @@ def test_load_dataset_enqueues_file_path_request(monkeypatch):
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-file-path")
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "resolve_dataset_load_target",
         lambda load_request: datasets_service.DatasetLoadTarget(
             file_snapshot_path="/tmp/dataset/ds-1/snap-1/nested/adsl.csv",
         ),
     )
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
@@ -142,7 +142,7 @@ def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeyp
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reuse")
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "mcp_get",
         lambda path, session_id=None, **kwargs: calls.append(("get", path, session_id))
         or _FakeMcpResponse(200, {"dataset": "datasets/adsl.csv"}),
@@ -154,12 +154,12 @@ def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeyp
         or _FakeMcpResponse(200, {"dataset": "datasets/adsl.csv", "columns": ["USUBJID"], "num_rows": 1}),
     )
     monkeypatch.setattr(
-        dataframe_reload.dataset_load_request_queue,
+        dataframe_reload_helpers.dataset_load_request_queue,
         "resolve_dataset_load_request_file_size",
         lambda load_request: (_ for _ in ()).throw(AssertionError("should not resolve file size")),
     )
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: (_ for _ in ()).throw(AssertionError("should not process load request")),
     )
@@ -188,9 +188,9 @@ def test_load_dataset_enqueues_netapp_request(monkeypatch):
     captured_requests = []
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-2")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
@@ -257,9 +257,9 @@ def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeyp
         order.append(("process", load_request.dataset))
         return jsonify({"loaded": True, "dataset": load_request.dataset})
 
-    monkeypatch.setattr(dataframe_reload, "mcp_post", fake_mcp_post)
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", fake_resolve)
-    monkeypatch.setattr(dataframe_reload, "process_dataset_load_request", fake_process)
+    monkeypatch.setattr(dataframe_reload_helpers, "mcp_post", fake_mcp_post)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", fake_resolve)
+    monkeypatch.setattr(dataframe_reload_helpers, "process_dataset_load_request", fake_process)
 
     with app.test_client() as client:
         response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
@@ -278,8 +278,8 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     app = _create_test_app(testing=True)
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-queue-full")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     with app.test_client() as client:
         response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
@@ -292,12 +292,12 @@ def test_load_dataset_returns_413_when_processor_rejects_large_file(monkeypatch)
     app = _create_test_app(testing=True)
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-too-large")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: (_ for _ in ()).throw(
-            dataframe_reload.file_size_limits.DataFileTooLarge("too-big.csv must be less than or equal to 10 bytes to be processable")
+            dataframe_reload_helpers.file_size_limits.DataFileTooLarge("too-big.csv must be less than or equal to 10 bytes to be processable")
         ),
     )
 
@@ -319,7 +319,7 @@ def test_load_dataset_surfaces_mcp_dataset_load_error(monkeypatch):
     )
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-mcp-failure")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     def fake_mcp_post(path, params, session_id=None):
         mcp_calls.append((path, params, session_id))
@@ -348,7 +348,7 @@ def test_table_data_reloads_expired_dataframe_from_saved_context(monkeypatch):
     table_calls = []
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reload")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
         data_routes,
         "mcp_get",
@@ -366,7 +366,7 @@ def test_table_data_reloads_expired_dataframe_from_saved_context(monkeypatch):
         raise AssertionError(f"unexpected MCP POST path: {path}")
 
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "process_dataset_load_request",
         lambda load_request: loaded_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
@@ -425,7 +425,7 @@ def test_table_data_reports_no_space_when_expired_data_reload_is_too_large(monke
     load_attempts = {"count": 0}
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reload-too-large")
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
         data_routes,
         "mcp_get",
@@ -443,12 +443,12 @@ def test_table_data_reports_no_space_when_expired_data_reload_is_too_large(monke
         load_attempts["count"] += 1
         if load_attempts["count"] == 1:
             return jsonify({"loaded": True, "dataset": load_request.dataset})
-        raise dataframe_reload.file_size_limits.DataFileTooLarge(
+        raise dataframe_reload_helpers.file_size_limits.DataFileTooLarge(
             "Clinical Dataset/nested/adsl.csv must be less than or equal to 10 bytes to be processable"
         )
 
     monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
-    monkeypatch.setattr(dataframe_reload, "process_dataset_load_request", fake_process_dataset_load_request)
+    monkeypatch.setattr(dataframe_reload_helpers, "process_dataset_load_request", fake_process_dataset_load_request)
 
     with app.test_client() as client:
         load_response = client.post(
@@ -486,9 +486,9 @@ def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypat
     processed = []
     responses = {}
 
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: queue)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: queue)
     monkeypatch.setattr(data_routes, "get_session_id", lambda: data_routes.request.headers["X-Test-Session-Id"])
-    monkeypatch.setattr(dataframe_reload.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(dataframe_reload_helpers.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
     def fake_process_dataset_load_request(load_request):
         with state_lock:
@@ -508,7 +508,7 @@ def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypat
             with state_lock:
                 active_processors["count"] -= 1
 
-    monkeypatch.setattr(dataframe_reload, "process_dataset_load_request", fake_process_dataset_load_request)
+    monkeypatch.setattr(dataframe_reload_helpers, "process_dataset_load_request", fake_process_dataset_load_request)
 
     def post_dataset(name, session_id):
         with app.test_client() as client:

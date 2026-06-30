@@ -1,7 +1,7 @@
 from flask import Flask
 
 import backend.routes.chat as chat_routes
-import backend.services.dataframe_reload as dataframe_reload
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
 
 
 class _FakeMcpResponse:
@@ -41,7 +41,7 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
 
     monkeypatch.setattr(chat_routes, "mcp_get", fake_mcp_get)
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "try_reload_expired_dataframe",
         lambda session_id: reload_calls.append(session_id) or (True, None, None),
     )
@@ -69,7 +69,7 @@ def test_chat_reports_reload_context_error_without_calling_agent(monkeypatch):
         lambda path: _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}}),
     )
     monkeypatch.setattr(
-        dataframe_reload,
+        dataframe_reload_helpers,
         "try_reload_expired_dataframe",
         lambda session_id: (
             False,

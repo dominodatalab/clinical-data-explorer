@@ -19,7 +19,7 @@ from chat_agent import (
     is_chat_configured,
 )
 
-import backend.services.dataframe_reload as dataframe_reload
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
 from backend.services.mcp_proxy import mcp_error_payload, mcp_request_with_expired_dataframe_reload
 from backend.session import get_session_id, mcp_get
 
@@ -51,7 +51,7 @@ def chat_history():
 def _ensure_dataset_loaded_for_chat():
     response, error_payload, error_status_code = mcp_request_with_expired_dataframe_reload(
         lambda: mcp_get("/dataset/metadata"),
-        lambda: dataframe_reload.try_reload_expired_dataframe(get_session_id()),
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(get_session_id()),
     )
     if error_payload is not None:
         return jsonify(error_payload), error_status_code

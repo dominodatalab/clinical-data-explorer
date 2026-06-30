@@ -34,7 +34,7 @@ from werkzeug.exceptions import (
 )
 
 from backend.services.column_labels import load_column_labels
-import backend.services.dataframe_reload as dataframe_reload
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
 from backend.services.mcp_proxy import proxied_mcp_json_response
 from backend.session import get_session_id, mcp_get, mcp_post
 
@@ -54,7 +54,7 @@ def _load_dataset_from_request_json(request_json):
     if not request_json.get('dataset'):
         return jsonify({'error': 'No dataset name provided'}), 400
 
-    return dataframe_reload.load_dataset_from_request_json(
+    return dataframe_reload_helpers.load_dataset_from_request_json(
         request_json,
         session_id=get_session_id(),
         authorization_header=request.headers.get('Authorization'),
@@ -65,7 +65,7 @@ def _proxied_mcp_json_response(request_mcp_response, fallback_error):
     return proxied_mcp_json_response(
         request_mcp_response,
         fallback_error,
-        lambda: dataframe_reload.try_reload_expired_dataframe(get_session_id()),
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(get_session_id()),
     )
 
 
