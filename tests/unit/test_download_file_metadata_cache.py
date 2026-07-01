@@ -103,6 +103,31 @@ def test_replacing_existing_entry_leaves_path_writable(tmp_path):
     assert second_path.read_text(encoding="utf-8") == "new contents"
 
 
+def test_replacing_expired_entry_leaves_path_writable(tmp_path):
+    now = [100.0]
+    cache = DownloadFileMetadataCache(temp_root=tmp_path, maxsize=10, ttl=1, timer=lambda: now[0])
+
+    first_path = cache.set(
+        source_type="dataset",
+        dataset_id="ds-1",
+        snapshot_id="snap-1",
+        file_name="reports/adsl.csv",
+    )
+    first_path.write_text("old contents", encoding="utf-8")
+
+    now[0] = 102.0
+    second_path = cache.set(
+        source_type="dataset",
+        dataset_id="ds-1",
+        snapshot_id="snap-1",
+        file_name="reports/adsl.csv",
+    )
+    second_path.write_text("new contents", encoding="utf-8")
+
+    assert second_path == first_path
+    assert second_path.read_text(encoding="utf-8") == "new contents"
+
+
 def test_get_file_cache_uses_cache_config_environment_variables(monkeypatch):
     monkeypatch.setenv("DATA_FILE_CACHE_EXPIRATION_SECONDS", "7")
     monkeypatch.setenv("DATA_FILE_CACHE_MAX_ITEM_COUNT", "3")
