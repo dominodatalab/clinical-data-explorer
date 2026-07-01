@@ -69,11 +69,13 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
     assert exc.detail == "No dataset loaded."
 
 
-def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
+def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch, tmp_path):
     reloaded_df = pd.DataFrame({"subject_id": [99], "arm": ["Reloaded"]})
+    data_file = tmp_path / "adae.csv"
+    data_file.write_text("subject_id,arm\n99,Reloaded\n")
     session_module._current_user_id.set("session-2")
     session_module._sessions["session-2"] = session_module.LoadedDataEntry(
-        file_snapshot_path="adae.csv",
+        file_snapshot_path=str(data_file),
         last_accessed=50.0,
     )
     load_calls = []
@@ -86,9 +88,27 @@ def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_
 
     df = session_module.get_current_df()
 
-    assert load_calls == ["adae.csv"]
+    assert load_calls == [str(data_file)]
     pd.testing.assert_frame_equal(df, reloaded_df)
-    pd.testing.assert_frame_equal(session_module.get_cache()["adae.csv"], reloaded_df)
+    pd.testing.assert_frame_equal(session_module.get_cache()[str(data_file)], reloaded_df)
+
+
+def test_get_current_df_reports_expired_when_cache_entry_and_source_file_are_missing(tmp_path):
+    missing_file = tmp_path / "domino_api_datasets" / "netapp" / "vol-1" / "unset_snapshot_id" / "adsl.csv"
+    session_module._current_user_id.set("missing-source-file")
+    session_module._sessions["missing-source-file"] = session_module.LoadedDataEntry(
+        file_snapshot_path=str(missing_file),
+        dataframe_size_bytes=123,
+    )
+
+    with pytest.raises(HTTPException) as excinfo:
+        session_module.get_current_df()
+
+    exc = excinfo.value
+    assert exc.status_code == 400
+    assert exc.detail == "No dataset loaded."
+    assert session_module._sessions["missing-source-file"].has_cached_dataframe is False
+    assert session_module._sessions["missing-source-file"].dataframe_size_bytes == 0
 
 
 def test_get_current_df_raises_when_dataframe_was_expired():

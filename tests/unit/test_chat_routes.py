@@ -22,7 +22,7 @@ def _create_test_app():
 
 def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     app = _create_test_app()
-    metadata_calls = []
+    dataset_check_calls = []
     reload_calls = []
     agent_calls = []
 
@@ -30,10 +30,10 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     monkeypatch.setattr(chat_routes, "get_session_id", lambda: "sid-chat")
 
     def fake_mcp_get(path):
-        metadata_calls.append(path)
-        if len(metadata_calls) == 1:
+        dataset_check_calls.append(path)
+        if len(dataset_check_calls) == 1:
             return _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}})
-        return _FakeMcpResponse(200, {"metadata": {"available": True}})
+        return _FakeMcpResponse(200, {"rows": 1})
 
     async def fake_get_agent_response(message, session_id="default"):
         agent_calls.append((message, session_id))
@@ -52,7 +52,7 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
 
     assert response.status_code == 200
     assert response.get_json() == {"response": "loaded answer", "charts": []}
-    assert metadata_calls == ["/dataset/metadata", "/dataset/metadata"]
+    assert dataset_check_calls == ["/dataset/info", "/dataset/info"]
     assert reload_calls == ["sid-chat"]
     assert agent_calls == [("summarize the data", "sid-chat")]
 

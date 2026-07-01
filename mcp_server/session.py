@@ -382,6 +382,15 @@ def get_current_df() -> pd.DataFrame:
     df = df_cache.get(session.file_snapshot_path)
     if df is None:
         logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
+        if not Path(session.file_snapshot_path).exists():
+            logger.warning(
+                "Cached DataFrame missing for user %s and source file is unavailable: %s",
+                session_id,
+                session.file_snapshot_path,
+            )
+            session.has_cached_dataframe = False
+            session.dataframe_size_bytes = 0
+            raise _dataframe_expired_exception()
         return load_current_df(session.file_snapshot_path)
     session.dataframe_last_accessed = time.time()
     return df
