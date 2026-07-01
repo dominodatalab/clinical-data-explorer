@@ -1,10 +1,13 @@
 from dataclasses import dataclass
+import logging
 import time
 from typing import Optional
 
 import requests
 
 from backend.session import mcp_get
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -61,13 +64,20 @@ def context_from_load_body(load_body):
 def get_reload_context(session_id):
     try:
         response = mcp_get("/dataframe/current-session", session_id=session_id)
-    except requests.exceptions.RequestException:
+    except requests.exceptions.RequestException as exc:
+        logger.warning("Could not get dataset reload context for session %s: %s", session_id, exc)
         return None
 
     if response.status_code != 200:
+        logger.warning(
+            "Could not get dataset reload context for session %s: MCP returned HTTP %s",
+            session_id,
+            response.status_code,
+        )
         return None
 
     load_body = response.json().get("reload_context")
     if not load_body:
+        logger.info("no load body found")
         return None
     return context_from_load_body(load_body)
