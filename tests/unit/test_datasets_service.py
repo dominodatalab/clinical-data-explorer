@@ -988,8 +988,8 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     ]
     assert clear_history_calls == ["sid-789"]
     assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert expected_path.exists()
+    assert expected_path.read_bytes() == b"col1,col2\n1,2\n"
 
 
 @pytest.mark.parametrize(
@@ -1100,8 +1100,8 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert request_get_calls == expected_request_get_calls
     assert clear_history_calls == ["sid-netapp"]
     assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert expected_path.exists()
+    assert expected_path.read_bytes() == b"VISIT,VALUE\n1,10\n"
 
 
 def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_omitted(

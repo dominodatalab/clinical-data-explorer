@@ -761,6 +761,20 @@ def _download_netapp_file_to_buffer(vol_client, volume, volume_key, file_name, s
     return io.BytesIO(response.content)
 
 
+def _cached_download_file_path(
+    dataset_id: str,
+    file_name: str,
+    source_type: SourceType,
+    snapshot_id: str = "unset_snapshot_id",
+) -> Path:
+    file_cache = get_file_cache()
+    snapshot_id = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
+    temp_path = file_cache.set(source_type, str(dataset_id), snapshot_id, str(file_name))
+    if temp_path.exists():
+        temp_path.write_bytes(b"")
+    return temp_path
+
+
 def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
     """Resolve a logical load request to the concrete MCP file path it would load."""
     token = token or get_passthrough_token_from_authorization_header(load_request.authorization_header)
@@ -984,30 +998,29 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
             logger.error(f"Snapshot file download failed: {response.status_code} - {response.text[:200]}")
             return jsonify({'error': f'Failed to download file from snapshot (HTTP {response.status_code})'}), response.status_code
 
-        # Save to session-specific temp directory
-        with data_file_path(dataset_id, file_path, 'dataset', snapshot_id) as temp_path:
-            logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
-            with open(temp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            logger.info(f"Downloaded snapshot file to {temp_path}")
+        temp_path = _cached_download_file_path(dataset_id, file_path, 'dataset', snapshot_id)
+        logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
+        with open(temp_path, 'wb') as f:
+            for chunk in response.iter_content(chunk_size=8192):
+                f.write(chunk)
+        logger.info(f"Downloaded snapshot file to {temp_path}")
 
-            # Load into MCP server
-            mcp_response = _mcp_load_dataset(temp_path, session_id, reload_context=reload_context)
+        # Load into MCP server
+        mcp_response = _mcp_load_dataset(temp_path, session_id, reload_context=reload_context)
 
-            if mcp_response.status_code == 200:
-                result = mcp_response.json()
-                result['dataset'] = dataset_display_name
-                # Identifier fields for snapshot-specific governance lookup
-                result['sourceType'] = 'dataset'
-                result['datasetId'] = dataset_id
-                result['snapshotId'] = snapshot_id
-                result['governanceFilename'] = file_path.split('/')[-1]
-                clear_history(session_id=session_id)
-                return jsonify(result)
-            else:
-                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-                return jsonify({'error': error_detail}), mcp_response.status_code
+        if mcp_response.status_code == 200:
+            result = mcp_response.json()
+            result['dataset'] = dataset_display_name
+            # Identifier fields for snapshot-specific governance lookup
+            result['sourceType'] = 'dataset'
+            result['datasetId'] = dataset_id
+            result['snapshotId'] = snapshot_id
+            result['governanceFilename'] = file_path.split('/')[-1]
+            clear_history(session_id=session_id)
+            return jsonify(result)
+        else:
+            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+            return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading snapshot file: {e}")
@@ -1089,51 +1102,50 @@ def load_netapp_volume_file(
         if file_name not in files:
             return jsonify({'error': f'File "{file_name}" not found in volume "{vol_name}"'}), 404
 
-        # Download to session-specific temp directory
-        with data_file_path(volume_key, file_name, 'netapp', snapshot_version) as temp_path:
-            logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
-            buf = _download_netapp_file_to_buffer(
-                vol_client,
-                volume,
-                volume_key,
-                file_name,
-                snapshot_version,
-                token,
-            )
-            file_size_bytes = len(buf.getbuffer())
-            file_size_limits.enforce(
-                dataset_display_name,
-                file_size_bytes,
-                additional_projected_dataframe_size_b=0,
-                used_memory_bytes=file_size_limits.get_memory_usage_snapshot_bytes(),
-            )
-            with open(temp_path, 'wb') as f:
-                f.write(buf.getbuffer())
-            logger.info(f"Downloaded {file_size_bytes} bytes to {temp_path}")
+        temp_path = _cached_download_file_path(volume_key, file_name, 'netapp', snapshot_version)
+        logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
+        buf = _download_netapp_file_to_buffer(
+            vol_client,
+            volume,
+            volume_key,
+            file_name,
+            snapshot_version,
+            token,
+        )
+        file_size_bytes = len(buf.getbuffer())
+        file_size_limits.enforce(
+            dataset_display_name,
+            file_size_bytes,
+            additional_projected_dataframe_size_b=0,
+            used_memory_bytes=file_size_limits.get_memory_usage_snapshot_bytes(),
+        )
+        with open(temp_path, 'wb') as f:
+            f.write(buf.getbuffer())
+        logger.info(f"Downloaded {file_size_bytes} bytes to {temp_path}")
 
-            # Tell the MCP server to load this file from the temp path
-            mcp_response = _mcp_load_dataset(temp_path, session_id, reload_context=reload_context)
+        # Tell the MCP server to load this file from the temp path
+        mcp_response = _mcp_load_dataset(temp_path, session_id, reload_context=reload_context)
 
-            if mcp_response.status_code == 200:
-                result = mcp_response.json()
-                result['dataset'] = dataset_display_name
-                # Identifier fields for governance lookup. Only when the load was
-                # pinned to a specific snapshot version can this match an attachment
-                # (r/w-head files cannot be attached to a bundle).
-                vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
-                result['sourceType'] = 'netapp'
-                if vol_id:
-                    result['volumeId'] = vol_id
-                if snapshot_version is not None and snapshot_version != '':
-                    result['snapshotVersion'] = snapshot_version
-                if snapshot_id:
-                    result['snapshotId'] = snapshot_id
-                result['governanceFilename'] = file_name.split('/')[-1]
-                clear_history(session_id=session_id)
-                return jsonify(result)
-            else:
-                error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
-                return jsonify({'error': error_detail}), mcp_response.status_code
+        if mcp_response.status_code == 200:
+            result = mcp_response.json()
+            result['dataset'] = dataset_display_name
+            # Identifier fields for governance lookup. Only when the load was
+            # pinned to a specific snapshot version can this match an attachment
+            # (r/w-head files cannot be attached to a bundle).
+            vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
+            result['sourceType'] = 'netapp'
+            if vol_id:
+                result['volumeId'] = vol_id
+            if snapshot_version is not None and snapshot_version != '':
+                result['snapshotVersion'] = snapshot_version
+            if snapshot_id:
+                result['snapshotId'] = snapshot_id
+            result['governanceFilename'] = file_name.split('/')[-1]
+            clear_history(session_id=session_id)
+            return jsonify(result)
+        else:
+            error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+            return jsonify({'error': error_detail}), mcp_response.status_code
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
