@@ -51,7 +51,10 @@ def chat_history():
 def _ensure_dataset_loaded_for_chat():
     response, error_payload, error_status_code = mcp_request_with_expired_dataframe_reload(
         lambda: mcp_get("/dataset/info"),
-        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(get_session_id()),
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(
+            get_session_id(),
+            authorization_header=request.headers.get('Authorization'),
+        ),
     )
     if error_payload is not None:
         return jsonify(error_payload), error_status_code

@@ -65,7 +65,10 @@ def _proxied_mcp_json_response(request_mcp_response, fallback_error):
     return proxied_mcp_json_response(
         request_mcp_response,
         fallback_error,
-        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(get_session_id()),
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(
+            get_session_id(),
+            authorization_header=request.headers.get('Authorization'),
+        ),
     )
 
 

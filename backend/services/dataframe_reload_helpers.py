@@ -119,13 +119,17 @@ def load_dataset_from_request_json(request_json, session_id, authorization_heade
         ) from exc
 
 
-def try_reload_expired_dataframe(session_id):
+def try_reload_expired_dataframe(session_id, authorization_header=None):
     context = get_reload_context(session_id)
     if context is None:
         return False, {"error": DATA_RELOAD_MISSING_CONTEXT_MESSAGE}, 400
 
     try:
-        response = load_dataset_from_request_json(context.to_load_body(), session_id=session_id)
+        response = load_dataset_from_request_json(
+            context.to_load_body(),
+            session_id=session_id,
+            authorization_header=authorization_header,
+        )
     except (RequestEntityTooLarge, TooManyRequests) as exc:
         return False, {"error": DATA_RELOAD_NO_SPACE_MESSAGE}, exc.code
     except HTTPException as exc:

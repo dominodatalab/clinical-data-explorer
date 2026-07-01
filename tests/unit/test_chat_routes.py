@@ -43,7 +43,9 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     monkeypatch.setattr(
         dataframe_reload_helpers,
         "try_reload_expired_dataframe",
-        lambda session_id: reload_calls.append(session_id) or (True, None, None),
+        lambda session_id, authorization_header=None: (
+            reload_calls.append((session_id, authorization_header)) or (True, None, None)
+        ),
     )
     monkeypatch.setattr(chat_routes, "get_agent_response", fake_get_agent_response)
 
@@ -57,7 +59,7 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     assert response.status_code == 200
     assert response.get_json() == {"response": "loaded answer", "charts": []}
     assert dataset_check_calls == ["/dataset/info", "/dataset/info"]
-    assert reload_calls == ["sid-chat"]
+    assert reload_calls == [("sid-chat", "Bearer token-1")]
     assert agent_calls == [("summarize the data", "sid-chat", "Bearer token-1")]
 
 
@@ -75,7 +77,7 @@ def test_chat_reports_reload_context_error_without_calling_agent(monkeypatch):
     monkeypatch.setattr(
         dataframe_reload_helpers,
         "try_reload_expired_dataframe",
-        lambda session_id: (
+        lambda session_id, authorization_header=None: (
             False,
             {"error": "Your data expired and couldn't be reloaded. Please select the file again."},
             400,

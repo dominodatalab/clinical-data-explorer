@@ -65,6 +65,9 @@ class DownloadFileMetadataCache(TTLCache):
         key = DownloadFileMetadataCache.create_key(dataset_id, file_name, source_type, snapshot_id)
         value = self.create_file_path(dataset_id, file_name, source_type, snapshot_id)
 
+        if key in self:
+            del self[key]
+
         os.makedirs(os.path.dirname(value), exist_ok=True)
 
         self[key] = value
