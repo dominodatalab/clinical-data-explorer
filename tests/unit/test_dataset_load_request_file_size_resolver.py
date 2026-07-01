@@ -73,10 +73,14 @@ def test_get_dataset_snapshot_file_size_raises_not_found_for_missing_file_size(m
         resolver._get_dataset_snapshot_file_size("reports/adsl.csv", "snap-1")
 
 
-def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
+def test_resolve_netapp_volume_file_size_from_remotefs_metadata(monkeypatch):
     calls = []
     monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: "https://domino.example")
+    monkeypatch.setattr(
+        resolver.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.domino.example",
+    )
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -87,8 +91,8 @@ def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
             "lastModified": 1780005039000,
             "mimeType": "application/vnd.apache.parquet",
             "name": "clinical1.parquet",
-            "previewUri": "/webvfs/remotefs/v1/volumes/vol-id-123/files/preview/clinical1.parquet",
-            "uri": "/webvfs/remotefs/v1/volumes/vol-id-123/files/raw/clinical1.parquet",
+            "previewUri": "/remotefs/v1/volumes/vol-id-123/files/preview/clinical1.parquet",
+            "uri": "/remotefs/v1/volumes/vol-id-123/files/raw/clinical1.parquet",
         }
 
     monkeypatch.setattr(resolver.httpclient, "get", fake_get)
@@ -107,7 +111,7 @@ def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     assert file_size == 88859
     assert calls == [
         (
-            "https://domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
+            "http://remotefs.domino.example/remotefs/v1/volumes/vol-id-123/files/metadata",
             {
                 "params": {"path": "clinical1.parquet"},
                 "headers": {
@@ -156,8 +160,8 @@ def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monk
         resolver._get_netapp_volume_file_size("reports/adsl.csv", "vol-id-123", token="test-token")
 
 
-def test_get_netapp_volume_file_metadata_raises_when_external_url_missing(monkeypatch):
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: None)
+def test_get_netapp_volume_file_metadata_raises_when_remotefs_host_missing(monkeypatch):
+    monkeypatch.setattr(resolver.config, "get_domino_remote_file_system_hostport", lambda: None)
 
-    with pytest.raises(RuntimeError, match="Domino external URL not configured"):
+    with pytest.raises(RuntimeError, match="RemoteFS host is not configured"):
         resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")

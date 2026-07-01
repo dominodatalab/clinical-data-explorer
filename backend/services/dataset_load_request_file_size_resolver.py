@@ -6,9 +6,9 @@ from typing import TYPE_CHECKING
 from werkzeug.exceptions import NotFound
 
 import backend.services.httpclient as httpclient
+from backend import config
 from backend.auth import (
     get_domino_api_host,
-    get_domino_external_url,
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
@@ -83,13 +83,22 @@ def _get_netapp_volume_file_size(
     return file_size
 
 
-def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
-    external_url = external_url or get_domino_external_url()
-    if not external_url:
-        raise RuntimeError('Domino external URL not configured')
+def _get_remotefs_host():
+    remotefs_host = config.get_domino_remote_file_system_hostport()
+    if not remotefs_host:
+        return None
+    if not remotefs_host.startswith('http'):
+        remotefs_host = f'http://{remotefs_host}'
+    return remotefs_host.rstrip('/')
+
+
+def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, remotefs_host=None):
+    remotefs_host = (remotefs_host or _get_remotefs_host())
+    if not remotefs_host:
+        raise RuntimeError('RemoteFS host is not configured')
 
     return httpclient.get(
-        f"{external_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
+        f"{remotefs_host}/remotefs/v1/volumes/{volume_id}/files/metadata",
         params={'path': file_path},
         headers={
             'accept': 'application/json',
