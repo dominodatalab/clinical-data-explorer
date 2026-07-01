@@ -44,6 +44,7 @@ from backend.auth import (
 )
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import get_file_cache
+import backend.services.file_size_limits as file_size_limits
 import backend.services.httpclient as httpclient
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
@@ -1080,9 +1081,16 @@ def load_netapp_volume_file(
             logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
             buf = io.BytesIO()
             target_file.download_fileobj(buf)
+            file_size_bytes = len(buf.getbuffer())
+            file_size_limits.enforce(
+                dataset_display_name,
+                file_size_bytes,
+                additional_projected_dataframe_size_b=0,
+                used_memory_bytes=file_size_limits.get_memory_usage_snapshot_bytes(),
+            )
             with open(temp_path, 'wb') as f:
                 f.write(buf.getbuffer())
-            logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
+            logger.info(f"Downloaded {file_size_bytes} bytes to {temp_path}")
 
             # Tell the MCP server to load this file from the temp path
             mcp_response = _mcp_load_dataset(temp_path, session_id, reload_context=reload_context)
@@ -1111,6 +1119,8 @@ def load_netapp_volume_file(
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
+    except file_size_limits.DataFileTooLarge:
+        raise
     except Exception as e:
         logger.error(f"Error loading NetApp volume file: {e}")
         logger.error(traceback.format_exc())

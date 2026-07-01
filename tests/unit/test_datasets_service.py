@@ -1128,3 +1128,35 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     assert netapp_client.get("list_snapshots_calls") == ["vol-123"]
     assert body["snapshotVersion"] == 9
     assert body["snapshotId"] == "snap-uuid-bbb"
+
+
+def test_load_netapp_volume_file_enforces_actual_downloaded_size(monkeypatch, tmp_path):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    monkeypatch.setattr(services.file_size_limits, "DATA_FILE_SIZE_LIMIT", 5)
+    monkeypatch.setattr(services.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 0)
+    monkeypatch.setattr(services.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+
+    install_fake_netapp_client(
+        monkeypatch,
+        {"vol-123": ["reports/visit.csv"]},
+        {"reports/visit.csv": b"VISIT,VALUE\n1,10\n"},
+    )
+
+    def fail_mcp_post(*args, **kwargs):
+        raise AssertionError("oversized file should not be sent to MCP")
+
+    monkeypatch.setattr(services, "mcp_post", fail_mcp_post)
+
+    with app.app_context(), pytest.raises(
+        services.file_size_limits.DataFileTooLarge,
+        match="Safety Volume/reports/visit.csv must be less than or equal to 5 bytes",
+    ):
+        services.load_netapp_volume_file(
+            "Safety Volume/reports/visit.csv",
+            "vol-123",
+        )

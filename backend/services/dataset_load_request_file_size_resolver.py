@@ -1,5 +1,6 @@
 """Resolve source file sizes for dataset-load memory admission."""
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
@@ -16,16 +17,27 @@ from backend.auth import (
 if TYPE_CHECKING:
     from backend.services.dataset_load_request_queue import DatasetLoadRequest
 
+logger = logging.getLogger(__name__)
+
 
 def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -> int:
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
     if load_request.source_type == 'netapp':
-        return _get_netapp_volume_file_size(
-            _load_request_file_path(load_request),
-            load_request.volume_id,
-            token=token,
-        )
+        file_path = _load_request_file_path(load_request)
+        try:
+            return _get_netapp_volume_file_size(
+                file_path,
+                load_request.volume_id,
+                token=token,
+            )
+        except (httpclient.HTTPClientError, NotFound, RuntimeError) as exc:
+            logger.warning(
+                "Could not resolve NetApp file size for %s before load; allowing load to continue: %s",
+                file_path,
+                exc,
+            )
+            return 0
 
     if load_request.dataset_id and load_request.snapshot_id:
         return _get_dataset_snapshot_file_size(

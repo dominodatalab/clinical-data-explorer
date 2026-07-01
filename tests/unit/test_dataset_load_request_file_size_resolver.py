@@ -123,6 +123,29 @@ def test_resolve_netapp_volume_file_size_from_remotefs_metadata(monkeypatch):
     ]
 
 
+def test_resolve_netapp_volume_file_size_falls_back_when_metadata_endpoint_is_missing(monkeypatch, caplog):
+    monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
+
+    def fake_get_netapp_volume_file_metadata(*args, **kwargs):
+        raise resolver.httpclient.HTTPClientError(404, "404 page not found")
+
+    monkeypatch.setattr(resolver, "get_netapp_volume_file_metadata", fake_get_netapp_volume_file_metadata)
+
+    file_size = resolver.resolve_dataset_load_request_file_size(
+        DatasetLoadRequest(
+            dataset="Safety Volume/clinical1.parquet",
+            session_id="sid-1",
+            authorization_header="Bearer passthrough",
+            source_type="netapp",
+            volume_key="vol-123",
+            volume_id="vol-id-123",
+        )
+    )
+
+    assert file_size == 0
+    assert "Could not resolve NetApp file size for clinical1.parquet before load" in caplog.text
+
+
 def test_resolve_dataset_file_size_uses_explicit_file_path(monkeypatch):
     calls = []
     monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
