@@ -526,7 +526,7 @@ def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(ca
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
     monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
-    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-3"})
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "user-default"})
     session_module._current_user_id.set(None)
     session_module._sessions["session-3"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
@@ -542,7 +542,7 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
 
     client = TestClient(app)
 
-    response = client.get("/session")
+    response = client.get("/session", headers={"X-Session-Id": "session-3"})
 
     assert response.status_code == 200
     assert response.json() == {"session_id": "session-3"}

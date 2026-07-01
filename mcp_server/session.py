@@ -119,7 +119,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request: Request, call_next):
         set_auth_header(request.headers)
 
-        session_id = _get_session_id()
+        session_id = request.headers.get("X-Session-Id") or _get_session_id()
 
         _current_user_id.set(session_id)
 
