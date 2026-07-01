@@ -36,6 +36,7 @@ def install_fake_netapp_client(monkeypatch, volume_files_by_key, file_contents_b
         "tokens": [],
         "get_volume_calls": [],
         "list_files_calls": [],
+        "get_file_url_calls": [],
         "updated_snapshot_versions": [],
         "downloaded_files": [],
     }
@@ -75,6 +76,10 @@ def install_fake_netapp_client(monkeypatch, volume_files_by_key, file_contents_b
         def list_files(self, volume_key):
             captured["list_files_calls"].append(volume_key)
             return volume_files_by_key[volume_key]
+
+        def get_file_url(self, volume_key, file_name):
+            captured["get_file_url_calls"].append((volume_key, file_name))
+            return f"https://files.example.test/{volume_key}/{file_name}"
 
         def list_snapshots(self, volume_unique_name):
             captured.setdefault("list_snapshots_calls", []).append(volume_unique_name)

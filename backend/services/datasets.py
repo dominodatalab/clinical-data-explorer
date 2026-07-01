@@ -745,6 +745,22 @@ def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, s
     return None
 
 
+def _download_netapp_file_to_buffer(vol_client, volume, volume_key, file_name, snapshot_version, token):
+    if snapshot_version is not None and snapshot_version != '':
+        buf = io.BytesIO()
+        volume.File(file_name).download_fileobj(buf)
+        return buf
+
+    file_url = vol_client.get_file_url(volume_key, file_name)
+    response = requests.get(
+        file_url,
+        headers={'Authorization': f'Bearer {token}'} if token else None,
+        timeout=120,
+    )
+    response.raise_for_status()
+    return io.BytesIO(response.content)
+
+
 def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
     """Resolve a logical load request to the concrete MCP file path it would load."""
     token = token or get_passthrough_token_from_authorization_header(load_request.authorization_header)
@@ -1073,14 +1089,17 @@ def load_netapp_volume_file(
         if file_name not in files:
             return jsonify({'error': f'File "{file_name}" not found in volume "{vol_name}"'}), 404
 
-        # Use volume.File() factory to get a downloadable file handle
-        target_file = volume.File(file_name)
-
         # Download to session-specific temp directory
         with data_file_path(volume_key, file_name, 'netapp', snapshot_version) as temp_path:
             logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
-            buf = io.BytesIO()
-            target_file.download_fileobj(buf)
+            buf = _download_netapp_file_to_buffer(
+                vol_client,
+                volume,
+                volume_key,
+                file_name,
+                snapshot_version,
+                token,
+            )
             file_size_bytes = len(buf.getbuffer())
             file_size_limits.enforce(
                 dataset_display_name,

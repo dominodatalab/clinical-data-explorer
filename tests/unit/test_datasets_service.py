@@ -16,13 +16,18 @@ from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
 
 class _FakeResponse:
-    def __init__(self, status_code, payload):
+    def __init__(self, status_code, payload, content=b""):
         self.status_code = status_code
         self._payload = payload
         self.text = json.dumps(payload)
+        self.content = content
 
     def json(self):
         return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.text)
 
 
 def _load_datasets_service(monkeypatch):
@@ -375,6 +380,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
     assert captured == {
         "tokens": ["test-token"],
         "get_volume_calls": [],
+        "get_file_url_calls": [],
         "list_files_calls": ["netapp-volume-Safety-Volume-nv-1"],
         "updated_snapshot_versions": [],
         "downloaded_files": [],
@@ -455,6 +461,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
     assert captured == {
         "tokens": ["test-token"],
         "get_volume_calls": ["netapp-volume-Safety-Volume-nv-1"],
+        "get_file_url_calls": [],
         "list_files_calls": [],
         "updated_snapshot_versions": ["9"],
         "downloaded_files": [],
@@ -1015,6 +1022,13 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
         {"vol-123": ["reports/visit.csv"]},
         {"reports/visit.csv": b"VISIT,VALUE\n1,10\n"},
     )
+    request_get_calls = []
+
+    def fake_requests_get(url, headers=None, timeout=None):
+        request_get_calls.append((url, headers, timeout))
+        return _FakeResponse(200, {}, content=b"VISIT,VALUE\n1,10\n")
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
 
     expected_path = (
         tmp_path
@@ -1065,10 +1079,25 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert netapp_client == {
         "tokens": ["test-token"],
         "get_volume_calls": ["vol-123"],
+        "get_file_url_calls": (
+            []
+            if snapshot_version is not None
+            else [("vol-123", "reports/visit.csv")]
+        ),
         "list_files_calls": [] if snapshot_version is not None else ["vol-123"],
         "updated_snapshot_versions": expected_updated_versions,
-        "downloaded_files": ["reports/visit.csv"],
+        "downloaded_files": ["reports/visit.csv"] if snapshot_version is not None else [],
     }
+    expected_request_get_calls = []
+    if snapshot_version is None:
+        expected_request_get_calls = [
+            (
+                "https://files.example.test/vol-123/reports/visit.csv",
+                {"Authorization": "Bearer test-token"},
+                120,
+            )
+        ]
+    assert request_get_calls == expected_request_get_calls
     assert clear_history_calls == ["sid-netapp"]
     assert mcp_paths == [expected_path]
     assert not expected_path.exists()
@@ -1145,6 +1174,11 @@ def test_load_netapp_volume_file_enforces_actual_downloaded_size(monkeypatch, tm
         monkeypatch,
         {"vol-123": ["reports/visit.csv"]},
         {"reports/visit.csv": b"VISIT,VALUE\n1,10\n"},
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(200, {}, content=b"VISIT,VALUE\n1,10\n"),
     )
 
     def fail_mcp_post(*args, **kwargs):
