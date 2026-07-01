@@ -35,8 +35,8 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
             return _FakeMcpResponse(400, {"detail": {"error": "No dataset loaded."}})
         return _FakeMcpResponse(200, {"rows": 1})
 
-    async def fake_get_agent_response(message, session_id="default"):
-        agent_calls.append((message, session_id))
+    async def fake_get_agent_response(message, session_id="default", authorization_header=None):
+        agent_calls.append((message, session_id, authorization_header))
         return {"text": "loaded answer", "charts": []}
 
     monkeypatch.setattr(chat_routes, "mcp_get", fake_mcp_get)
@@ -48,13 +48,17 @@ def test_chat_reloads_expired_dataframe_before_calling_agent(monkeypatch):
     monkeypatch.setattr(chat_routes, "get_agent_response", fake_get_agent_response)
 
     with app.test_client() as client:
-        response = client.post("/chat", json={"message": "summarize the data"})
+        response = client.post(
+            "/chat",
+            json={"message": "summarize the data"},
+            headers={"Authorization": "Bearer token-1"},
+        )
 
     assert response.status_code == 200
     assert response.get_json() == {"response": "loaded answer", "charts": []}
     assert dataset_check_calls == ["/dataset/info", "/dataset/info"]
     assert reload_calls == ["sid-chat"]
-    assert agent_calls == [("summarize the data", "sid-chat")]
+    assert agent_calls == [("summarize the data", "sid-chat", "Bearer token-1")]
 
 
 def test_chat_reports_reload_context_error_without_calling_agent(monkeypatch):

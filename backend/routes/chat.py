@@ -85,7 +85,13 @@ def chat():
         if dataset_error_response is not None:
             return dataset_error_response
 
-        agent_response = asyncio.run(get_agent_response(user_message, session_id=get_session_id()))
+        agent_response = asyncio.run(
+            get_agent_response(
+                user_message,
+                session_id=get_session_id(),
+                authorization_header=request.headers.get('Authorization'),
+            )
+        )
         # agent_response is now a dict with 'text' and 'charts' keys
         logger.info("Successfully got agent response")
         return jsonify({
