@@ -232,7 +232,7 @@ def test_evict_stale_sessions_removes_expired_reload_context(monkeypatch):
     )
 
 
-def test_evict_stale_sessions_removes_reload_context_for_expired_session(monkeypatch):
+def test_evict_stale_sessions_keeps_reload_context_for_expired_session(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 1000)
     monkeypatch.setattr(session_module, "DATASET_RELOAD_CONTEXT_MAX_AGE", 1000)
@@ -249,11 +249,11 @@ def test_evict_stale_sessions_removes_reload_context_for_expired_session(monkeyp
     result = session_module._evict_stale_sessions()
 
     assert "expired-session" not in session_module._sessions
-    assert "expired-session" not in session_module._get_dataset_reload_context_cache()
+    assert "expired-session" in session_module._get_dataset_reload_context_cache()
     assert result == session_module.SessionEvictionResult(
         evicted_sessions=1,
         evicted_dataframes=0,
-        evicted_reload_contexts=1,
+        evicted_reload_contexts=0,
     )
 
 

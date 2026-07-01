@@ -164,8 +164,6 @@ def _evict_stale_sessions():
         logger.info(f"Evicting stale session: {sid}")
         evicted_session_paths.append(sessions[sid].file_snapshot_path)
         del sessions[sid]
-        if dataset_reload_context_cache.pop(sid, None) is not None:
-            evicted_reload_contexts += 1
     # If still over limit, evict oldest
     if len(sessions) > SESSION_MAX_COUNT:
         by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
@@ -173,8 +171,6 @@ def _evict_stale_sessions():
             logger.info(f"Evicting session (over limit): {sid}")
             evicted_session_paths.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
-            if dataset_reload_context_cache.pop(sid, None) is not None:
-                evicted_reload_contexts += 1
 
     stale_dataframe_paths = []
     for sid, session in sessions.items():
