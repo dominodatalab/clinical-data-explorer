@@ -267,3 +267,33 @@ test('replaceBrowserUrlWithCurrentView persists current selection in address bar
     assert.equal(url.searchParams.get('filePath'), 'clinical.csv');
     assert.equal(url.searchParams.has('row'), false);
 });
+
+test('parseLoadContextFromUrl preserves dataset file path for reload context', async () => {
+    const { namespace } = await loadTableViewModule();
+    const params = new URLSearchParams(
+        'projectId=proj-1&dataset=other%2Fgold_vs_bitcoin.parquet&filePath=gold_vs_bitcoin.parquet&loadDatasetId=dataset-1&snapshotId=snapshot-1'
+    );
+
+    assert.deepEqual(JSON.parse(JSON.stringify(namespace.parseLoadContextFromUrl(params))), {
+        sourceType: 'dataset',
+        datasetId: 'dataset-1',
+        snapshotId: 'snapshot-1',
+        filePath: 'gold_vs_bitcoin.parquet',
+    });
+});
+
+test('parseLoadContextFromUrl preserves NetApp file path for reload context', async () => {
+    const { namespace } = await loadTableViewModule();
+    const params = new URLSearchParams(
+        'volumeKey=netapp-volume-Safety-123&volumeId=volume-1&snapshotId=snapshot-1&snapshotVersion=7&filePath=reports%2Fadlb.csv'
+    );
+
+    assert.deepEqual(JSON.parse(JSON.stringify(namespace.parseLoadContextFromUrl(params))), {
+        sourceType: 'netapp',
+        volumeKey: 'netapp-volume-Safety-123',
+        volumeId: 'volume-1',
+        snapshotId: 'snapshot-1',
+        snapshotVersion: 7,
+        filePath: 'reports/adlb.csv',
+    });
+});

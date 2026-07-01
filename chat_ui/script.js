@@ -536,11 +536,13 @@ document.addEventListener('DOMContentLoaded', async () => {
             if (pctx.volumeId) loadBody.volumeId = pctx.volumeId;
             if (pctx.snapshotId) loadBody.snapshotId = pctx.snapshotId;
             if (pctx.snapshotVersion != null) loadBody.snapshotVersion = pctx.snapshotVersion;
+            if (pctx.filePath || state.extensionFilePath) loadBody.filePath = pctx.filePath || state.extensionFilePath;
             return performDatasetLoad(datasetName, loadBody);
         }
         if (pctx && pctx.sourceType === 'dataset' && pctx.datasetId) {
             const loadBody = { dataset: datasetName, datasetId: pctx.datasetId };
             if (pctx.snapshotId) loadBody.snapshotId = pctx.snapshotId;
+            if (pctx.filePath || state.extensionFilePath) loadBody.filePath = pctx.filePath || state.extensionFilePath;
             return performDatasetLoad(datasetName, loadBody);
         }
 
@@ -559,6 +561,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             }
         } else if (state.extensionProjectId) {
             loadBody.projectId = state.extensionProjectId;
+        }
+        if (state.extensionFilePath) {
+            loadBody.filePath = state.extensionFilePath;
         }
 
         performDatasetLoad(datasetName, loadBody);
