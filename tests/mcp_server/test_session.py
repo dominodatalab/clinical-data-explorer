@@ -346,7 +346,7 @@ def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
 
     client = TestClient(app)
 
-    response = client.get("/session", headers={"X-Session-Id": "session-6"})
+    response = client.get("/session")
 
     assert response.status_code == 200
     assert response.json() == {"has_session": False}
@@ -446,7 +446,6 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypa
         dataframe_size_bytes=5678,
     )
 
-    session_module._current_user_id.set("session-size")
     client = TestClient(_mcp_app)
 
     response = client.get("/dataframe/size")
@@ -455,7 +454,8 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypa
     assert response.json() == {"dataframe_size_bytes": 1234}
 
 
-def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
+def test_dataset_info_endpoint_returns_source_file_size(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-size"})
     current_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["current.csv"] = current_df
     session_module._sessions["session-size"] = session_module.LoadedDataEntry(
@@ -465,7 +465,6 @@ def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
         source_file_size_bytes=42,
     )
 
-    session_module._current_user_id.set("session-size")
     client = TestClient(_mcp_app)
 
     response = client.get("/dataset/info")
@@ -544,11 +543,11 @@ def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(ca
     assert "No loaded DataFrame found for user missing-session" in caplog.text
 
 
-def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
+def test_session_middleware_sets_current_user_id_and_touches_existing_session(monkeypatch):
     monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
     monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "user-default"})
     session_module._current_user_id.set(None)
-    session_module._sessions["session-3"] = session_module.LoadedDataEntry(
+    session_module._sessions["user-default"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
     )
@@ -562,11 +561,11 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
 
     client = TestClient(app)
 
-    response = client.get("/session", headers={"X-Session-Id": "session-3"})
+    response = client.get("/session")
 
     assert response.status_code == 200
-    assert response.json() == {"session_id": "session-3"}
-    assert session_module._sessions["session-3"].last_accessed == 123.0
+    assert response.json() == {"session_id": "user-default"}
+    assert session_module._sessions["user-default"].last_accessed == 123.0
 
 
 def test_session_middleware_uses_current_user_when_header_is_missing(monkeypatch):

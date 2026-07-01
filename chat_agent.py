@@ -126,14 +126,12 @@ def _get_llm_model():
 
 
 def _create_agent_for_session(session_id: str, authorization_header: str | None = None) -> Agent | None:
-    """Create an agent with an MCP server connection bound to a specific session."""
+    """Create an agent with an MCP server connection for the current user."""
     llm_model = _get_llm_model()
     if llm_model is None:
         return None
 
-    # Each session's MCP connection carries the session ID header so the
-    # MCP server routes tool calls to the correct DataFrame.
-    headers = {'X-Session-Id': session_id}
+    headers = {}
     if authorization_header:
         headers['Authorization'] = authorization_header
     server = MCPServerSSE(

@@ -1,4 +1,4 @@
-from flask import Flask, session
+from flask import Flask
 
 from backend import config
 import backend.session as backend_session
@@ -10,7 +10,7 @@ def _create_test_app():
     return app
 
 
-def test_mcp_get_applies_default_timeout_and_session_header(monkeypatch):
+def test_mcp_get_applies_default_timeout_and_authorization_header(monkeypatch):
     app = _create_test_app()
     captured = []
     response = object()
@@ -22,9 +22,10 @@ def test_mcp_get_applies_default_timeout_and_session_header(monkeypatch):
     monkeypatch.setattr(config, "MCP_SERVER_URL", "http://mcp.example")
     monkeypatch.setattr(config, "MCP_REQUEST_TIMEOUT_SECONDS", 42)
     monkeypatch.setattr(backend_session.requests, "get", fake_get)
+    monkeypatch.setattr(backend_session, "get_current_user", lambda: {"id": "user-1"})
+    monkeypatch.setattr(backend_session, "get_passthrough_token", lambda: "token-1")
 
     with app.test_request_context("/"):
-        session["sid"] = "sid-123"
         result = backend_session.mcp_get("/dataset/data", params={"limit": "10"})
 
     assert result is response
@@ -32,7 +33,7 @@ def test_mcp_get_applies_default_timeout_and_session_header(monkeypatch):
         (
             ("http://mcp.example/dataset/data",),
             {
-                "headers": {"X-Session-Id": "sid-123"},
+                "headers": {"Authorization": "Bearer token-1"},
                 "params": {"limit": "10"},
                 "timeout": 42,
             },
@@ -65,7 +66,7 @@ def test_mcp_post_allows_explicit_timeout_override(monkeypatch):
         (
             ("http://mcp.example/table/data",),
             {
-                "headers": {"X-Trace-Id": "trace-1", "X-Session-Id": "sid-override"},
+                "headers": {"X-Trace-Id": "trace-1"},
                 "json": {"page": 1},
                 "timeout": 7,
             },

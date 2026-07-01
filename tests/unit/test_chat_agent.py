@@ -270,7 +270,7 @@ def test_get_history_returns_ui_transcript_with_chart_payloads():
     ]
 
 
-def test_create_agent_for_session_forwards_session_and_authorization_headers(monkeypatch):
+def test_create_agent_for_session_forwards_authorization_header(monkeypatch):
     created_servers = []
     created_agents = []
     llm_model = object()
@@ -298,7 +298,6 @@ def test_create_agent_for_session_forwards_session_and_authorization_headers(mon
     assert agent is created_agents[0]
     assert created_servers[0].kwargs["url"] == chat_agent.MCP_SERVER_URL
     assert created_servers[0].kwargs["headers"] == {
-        "X-Session-Id": "session-1",
         "Authorization": "Bearer token-1",
     }
     assert created_agents[0].args == (llm_model,)

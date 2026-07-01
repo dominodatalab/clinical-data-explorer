@@ -29,7 +29,7 @@ class DatasetLoadRequest:
 
     Fields:
         dataset: User-facing dataset/file identifier to load.
-        session_id: Flask/MCP session identifier that should own the load.
+        session_id: Logged-in Domino user ID that should own the load.
         authorization_header: Raw Authorization header for Domino passthrough auth.
         project_id: Domino project ID for project-scoped dataset loads.
         dataset_id: Domino dataset ID for dataset-context loads.
@@ -102,19 +102,23 @@ class DatasetLoadRequestQueue:
         # the cumulative projected DataFrame memory for every admitted request.
         self._projected_dataframe_size_bytes: Optional[int] = None
 
-    def _get_current_session_dataframe_size_bytes(self, session_id: str) -> int:
+    @staticmethod
+    def _mcp_headers(authorization_header: Optional[str] = None) -> dict[str, str]:
+        return {"Authorization": authorization_header} if authorization_header else {}
+
+    def _get_current_session_dataframe_size_bytes(self, authorization_header: Optional[str] = None) -> int:
         response = requests.get(
             f"{config.MCP_SERVER_URL}/dataframe/size",
-            headers={"X-Session-Id": session_id},
+            headers=self._mcp_headers(authorization_header),
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         return int(response.json()["dataframe_size_bytes"])
 
-    def _evict_current_session_dataframe(self, session_id: str) -> None:
+    def _evict_current_session_dataframe(self, authorization_header: Optional[str] = None) -> None:
         response = requests.post(
             f"{config.MCP_SERVER_URL}/dataframe/evict-current-session",
-            headers={"X-Session-Id": session_id},
+            headers=self._mcp_headers(authorization_header),
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -199,7 +203,7 @@ class DatasetLoadRequestQueue:
                 self._memory_usage_baseline_bytes = file_size_limits.get_memory_usage_snapshot_bytes()
                 self._projected_dataframe_size_bytes = 0
 
-            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(entry.session_id)
+            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(entry.authorization_header)
             adjusted_memory_usage_baseline_bytes = self._memory_usage_baseline_bytes
             if adjusted_memory_usage_baseline_bytes is not None:
                 adjusted_memory_usage_baseline_bytes = max(
@@ -217,7 +221,7 @@ class DatasetLoadRequestQueue:
                     additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
                     used_memory_bytes=adjusted_memory_usage_baseline_bytes,
                 )
-                self._evict_current_session_dataframe(entry.session_id)
+                self._evict_current_session_dataframe(entry.authorization_header)
             except Exception:
                 if started_busy_period:
                     self._reset_projected_memory_usage()

@@ -5,11 +5,10 @@ Extracted from `mcp_server/app.py` as step 2.3 of REFACTOR_PLAN.md §2
 FastAPI/Starlette middleware world).
 
 Each user session gets its own DataFrame so concurrent users don't clobber
-each other. The session ID comes from the `X-Session-Id` request header
-(set by the Flask proxy). A `"default"` session ID is used when no header
-is present (normal single-user mode). The active session ID is stored in
-a `contextvars.ContextVar` so it's correctly isolated per request even
-under concurrent async load.
+each other. The session ID is the logged-in Domino user ID resolved from
+the request's bearer token. The active session ID is stored in a
+`contextvars.ContextVar` so it's correctly isolated per request even under
+concurrent async load.
 
 Per the plan watch-out for §2: the session store is module-level state that
 every route reaches via `get_current_df()`. After this extraction, every
@@ -104,22 +103,27 @@ def _get_dataset_reload_context_cache():
 def get_cache():
     return dataframe_cache.get_cache()
 
-def _get_session_id():
-    """Return the current user's ID"""
-    user_id = _current_user_id.get()
-
-    if not user_id:
-        user_id = get_current_user()['id']
-        _current_user_id.set(user_id)
-
+def _initialize_session_id():
+    """Resolve the current user's ID for this request."""
+    user_id = get_current_user()['id']
+    _current_user_id.set(user_id)
     return user_id
 
+
+def _get_session_id():
+    """Return the current user's ID."""
+    user_id = _current_user_id.get()
+    if not user_id:
+        return _initialize_session_id()
+    return user_id
+
+
 class SessionMiddleware(BaseHTTPMiddleware):
-    """Extract X-Session-Id header and set it in contextvars for the request."""
+    """Resolve the logged-in user ID and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
         set_auth_header(request.headers)
 
-        session_id = request.headers.get("X-Session-Id") or _get_session_id()
+        session_id = _initialize_session_id()
 
         _current_user_id.set(session_id)
 
