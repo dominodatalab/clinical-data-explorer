@@ -424,7 +424,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                     sources.push({
                         id: volumeKey,
                         name: vol.name || volumeKey,
-                        displayName: formatOwnedSourceName(vol.owner_name, vol.name || volumeKey),
+                        displayName: formatSourceName(vol.project_name, vol.name || volumeKey),
                         type: 'netapp',
                         volumeKey: volumeKey,
                         volumeId: vol.id || '',
@@ -438,7 +438,10 @@ document.addEventListener('DOMContentLoaded', async () => {
                     sources.push({
                         id: nf.volume_key,
                         name: nf.volume_name || nf.display_name.split('/')[0],
-                        displayName: formatOwnedSourceName(nf.owner_name, nf.volume_name || nf.display_name.split('/')[0]),
+                        displayName: formatSourceName(
+                            nf.project_name,
+                            nf.volume_name || nf.display_name.split('/')[0],
+                        ),
                         type: 'netapp',
                         volumeKey: nf.volume_key,
                         volumeId: nf.volume_id || '',
@@ -451,8 +454,12 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     function formatOwnedSourceName(ownerName, sourceName) {
-        if (!ownerName || !sourceName) return sourceName;
-        return `${ownerName}/${sourceName}`;
+        return formatSourceName(ownerName, sourceName);
+    }
+
+    function formatSourceName(prefix, sourceName) {
+        if (!prefix || !sourceName) return sourceName;
+        return `${prefix}/${sourceName}`;
     }
 
     function resolveNetAppDeeplink(data) {
@@ -475,6 +482,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                 id: sample.volume_id,
                 name: sample.volume_name,
                 unique_name: sample.volume_key,
+                project_name: sample.project_name,
             };
         }
 
@@ -491,6 +499,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             sources.push({
                 id: volumeMeta.unique_name,
                 name: volumeMeta.name,
+                displayName: formatSourceName(volumeMeta.project_name, volumeMeta.name),
                 type: 'netapp',
                 volumeKey: volumeMeta.unique_name,
                 volumeId: volumeMeta.id,

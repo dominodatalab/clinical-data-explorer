@@ -60,6 +60,26 @@ def extension_dataset_list_response():
     }
 
 
+def extension_netapp_volume_list_response():
+    return {
+        "datasets": [],
+        "dataset_info": [],
+        "netapp_files": [{
+            "display_name": "Safety Volume/adsl.csv",
+            "volume_key": "netapp-volume-Safety-Volume-nv-1",
+            "volume_name": "Safety Volume",
+            "volume_id": "nv-1",
+            "project_name": "Safety Project",
+        }],
+        "netapp_volumes": [{
+            "id": "nv-1",
+            "name": "Safety Volume",
+            "unique_name": "netapp-volume-Safety-Volume-nv-1",
+            "project_name": "Safety Project",
+        }],
+    }
+
+
 def load_response(include_governance_context=False):
     response = {
         "columns": SAMPLE_COLUMNS,

@@ -111,6 +111,7 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
                     "volume_key": "vol-123",
                     "volume_name": "NetApp Volume",
                     "volume_id": "nv-1",
+                    "project_name": "Clinical Project",
                 }
             ],
             [
@@ -118,6 +119,7 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
                     "id": "nv-1",
                     "name": "NetApp Volume",
                     "unique_name": "vol-123",
+                    "project_name": "Clinical Project",
                 }
             ],
         ),
@@ -149,6 +151,7 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
                 "volume_key": "vol-123",
                 "volume_name": "NetApp Volume",
                 "volume_id": "nv-1",
+                "project_name": "Clinical Project",
             }
         ],
         "netapp_volumes": [
@@ -156,6 +159,7 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
                 "id": "nv-1",
                 "name": "NetApp Volume",
                 "unique_name": "vol-123",
+                "project_name": "Clinical Project",
             }
         ],
         "current_dataset": None,
@@ -328,6 +332,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
                 "id": "nv-1",
                 "name": "Safety Volume",
                 "uniqueName": "netapp-volume-Safety-Volume-nv-1",
+                "projects": [{"projectId": "proj-1", "name": "Safety Project"}],
             },
         )
 
@@ -349,12 +354,14 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
             "volume_key": "netapp-volume-Safety-Volume-nv-1",
             "volume_name": "Safety Volume",
             "volume_id": "nv-1",
+            "project_name": "Safety Project",
         },
         {
             "display_name": "Safety Volume/adam.xpt",
             "volume_key": "netapp-volume-Safety-Volume-nv-1",
             "volume_name": "Safety Volume",
             "volume_id": "nv-1",
+            "project_name": "Safety Project",
         },
     ]
     assert netapp_volumes == [
@@ -362,6 +369,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
             "id": "nv-1",
             "name": "Safety Volume",
             "unique_name": "netapp-volume-Safety-Volume-nv-1",
+            "project_name": "Safety Project",
         }
     ]
     assert api_calls == [
@@ -401,6 +409,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
                     "id": "nv-1",
                     "name": "Safety Volume",
                     "uniqueName": "netapp-volume-Safety-Volume-nv-1",
+                    "projects": [{"projectId": "proj-1", "name": "Safety Project"}],
                 },
             )
         if url.endswith("/snapshots/snap-2"):
@@ -429,6 +438,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
             "volume_key": "netapp-volume-Safety-Volume-nv-1",
             "volume_name": "Safety Volume",
             "volume_id": "nv-1",
+            "project_name": "Safety Project",
         },
     ]
     assert netapp_volumes == [
@@ -436,6 +446,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
             "id": "nv-1",
             "name": "Safety Volume",
             "unique_name": "netapp-volume-Safety-Volume-nv-1",
+            "project_name": "Safety Project",
         }
     ]
     assert api_calls == [
@@ -457,6 +468,82 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
         "get_volume_calls": ["netapp-volume-Safety-Volume-nv-1"],
         "list_files_calls": [],
         "updated_snapshot_versions": ["9"],
+        "downloaded_files": [],
+    }
+
+
+def test_discover_netapp_files_for_project_uses_matching_remotefs_project(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setattr(
+        services.config,
+        "get_domino_remote_file_system_hostport",
+        lambda: "remotefs.example",
+    )
+
+    api_calls = []
+
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        return _FakeResponse(
+            200,
+            {
+                "data": [
+                    {
+                        "id": "nv-1",
+                        "name": "Safety Volume",
+                        "uniqueName": "netapp-volume-Safety-Volume-nv-1",
+                        "projects": [
+                            {"projectId": "other-proj", "name": "Other Project"},
+                            {"projectId": "proj-1", "name": "Safety Project"},
+                        ],
+                    },
+                ],
+            },
+        )
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+
+    captured = install_fake_netapp_client(
+        monkeypatch,
+        {
+            "netapp-volume-Safety-Volume-nv-1": ["adsl.csv"],
+        },
+        {},
+    )
+
+    netapp_files, netapp_volumes = services.discover_netapp_files_for_project("proj-1", "test-token")
+
+    assert netapp_files == [
+        {
+            "display_name": "Safety Volume/adsl.csv",
+            "volume_key": "netapp-volume-Safety-Volume-nv-1",
+            "volume_name": "Safety Volume",
+            "volume_id": "nv-1",
+            "project_name": "Safety Project",
+        },
+    ]
+    assert netapp_volumes == [
+        {
+            "id": "nv-1",
+            "name": "Safety Volume",
+            "unique_name": "netapp-volume-Safety-Volume-nv-1",
+            "project_name": "Safety Project",
+        },
+    ]
+    assert api_calls == [
+        (
+            "http://remotefs.example/remotefs/v1/volumes",
+            {"status": ["Active"], "project_id": ["proj-1"]},
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+    ]
+    assert captured == {
+        "tokens": ["test-token"],
+        "get_volume_calls": [],
+        "list_files_calls": ["netapp-volume-Safety-Volume-nv-1"],
+        "updated_snapshot_versions": [],
         "downloaded_files": [],
     }
 
@@ -515,6 +602,7 @@ def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
                     "volume_key": "netapp-volume-Safety-Volume-nv-1",
                     "volume_name": "Safety Volume",
                     "volume_id": "nv-1",
+                    "project_name": "Safety Project",
                 }
             ],
             [
@@ -522,6 +610,7 @@ def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
                     "id": "nv-1",
                     "name": "Safety Volume",
                     "unique_name": "netapp-volume-Safety-Volume-nv-1",
+                    "project_name": "Safety Project",
                 }
             ],
         )
@@ -540,6 +629,7 @@ def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
                 "volume_key": "netapp-volume-Safety-Volume-nv-1",
                 "volume_name": "Safety Volume",
                 "volume_id": "nv-1",
+                "project_name": "Safety Project",
             }
         ],
         "netapp_volumes": [
@@ -547,6 +637,7 @@ def test_list_netapp_volume_files_by_id_returns_extension_payload(monkeypatch):
                 "id": "nv-1",
                 "name": "Safety Volume",
                 "unique_name": "netapp-volume-Safety-Volume-nv-1",
+                "project_name": "Safety Project",
             }
         ],
         "current_dataset": None,

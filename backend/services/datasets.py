@@ -176,19 +176,35 @@ def _raise_remotefs_http_exception(response, resource_name):
     raise exc
 
 
-def _netapp_volume_metadata(vol):
+def _netapp_project_name(vol, project_id=None):
+    projects = vol.get('projects') or []
+    if project_id:
+        for project in projects:
+            if project.get('projectId') == project_id:
+                return project.get('name')
+        return None
+    if projects:
+        return projects[0].get('name')
+    return None
+
+
+def _netapp_volume_metadata(vol, project_id=None):
     if not isinstance(vol, dict):
         return None
 
     vol_name = vol.get('name', '')
     vol_id = vol.get('id', '')
-    vol_unique_name = vol.get('uniqueName', vol.get('unique_name', f'netapp-volume-{vol_name}-{vol_id}'))
+    vol_unique_name = vol.get('uniqueName')
+    project_name = _netapp_project_name(vol, project_id)
 
-    return {
+    metadata = {
         'id': vol_id,
         'name': vol_name,
         'unique_name': vol_unique_name,
     }
+    if project_name:
+        metadata['project_name'] = project_name
+    return metadata
 
 
 def _first_non_empty(*values):
@@ -239,7 +255,7 @@ def _list_netapp_files(vol_client, volume_key, token, snapshot_id=None):
     return [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
 
 
-def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
+def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None, project_id=None):
     if not volumes:
         return [], []
 
@@ -251,7 +267,7 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
     seen_volumes = set()
 
     for vol in volumes:
-        volume_meta = _netapp_volume_metadata(vol)
+        volume_meta = _netapp_volume_metadata(vol, project_id)
         if not volume_meta or volume_meta['unique_name'] in seen_volumes:
             continue
 
@@ -263,12 +279,15 @@ def _discover_netapp_files_from_volumes(volumes, token, snapshot_id=None):
             for fname in files:
                 ext = os.path.splitext(fname)[1].lower()
                 if ext in SUPPORTED_EXTENSIONS:
-                    netapp_files.append({
+                    entry = {
                         'display_name': f"{volume_meta['name']}/{fname}",
                         'volume_key': volume_meta['unique_name'],
                         'volume_name': volume_meta['name'],
                         'volume_id': volume_meta['id'],
-                    })
+                    }
+                    if volume_meta.get('project_name'):
+                        entry['project_name'] = volume_meta['project_name']
+                    netapp_files.append(entry)
         except Exception as e:
             logger.warning(f"Failed to list files for NetApp volume {volume_meta['id']}: {e}")
 
@@ -280,18 +299,19 @@ def discover_netapp_files_for_project(project_id, token):
     Queries the RemoteFS microservice for volumes attached to the project,
     then lists supported files in each volume using the domino_data SDK.
     Returns (netapp_files, netapp_volumes):
-      - netapp_files: list of {display_name, volume_key, volume_name, volume_id}
-      - netapp_volumes: list of {id, name, unique_name} for every volume,
-        even ones whose r/w head currently has no supported files. The
+      - netapp_files: list of {display_name, volume_key, volume_name, volume_id,
+        project_name}
+      - netapp_volumes: list of {id, name, unique_name, project_name} for every
+        volume, even ones whose r/w head currently has no supported files. The
         netapp deeplink flow needs the volume registry to resolve a
         netAppVolumeId in the URL when the target file lives only in a
         non-current snapshot.
     """
     volumes = _fetch_remotefs_volumes(
         token,
-        {'status': 'Active', 'project_id': project_id},
+        {'status': ['Active'], 'project_id': [project_id]},
     )
-    return _discover_netapp_files_from_volumes(volumes, token)
+    return _discover_netapp_files_from_volumes(volumes, token, project_id=project_id)
 
 
 def discover_netapp_files_for_volume(volume_id, token, snapshot_id=None):
