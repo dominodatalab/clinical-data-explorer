@@ -1,4 +1,5 @@
 import logging
+from pathlib import Path
 
 import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
@@ -59,6 +60,12 @@ def _get_current_session_dataset(session_id):
     return response.json().get("dataset")
 
 
+def _can_load_existing_session_dataframe(target):
+    if target.source_type in ("dataset", "netapp"):
+        return Path(target.file_snapshot_path).exists()
+    return True
+
+
 def load_dataset_from_request_json(request_json, session_id, authorization_header=None):
     dataset_name = request_json.get('dataset')
     project_id = request_json.get('projectId')
@@ -90,7 +97,10 @@ def load_dataset_from_request_json(request_json, session_id, authorization_heade
 
     try:
         target = resolve_dataset_load_target(load_request)
-        if _get_current_session_dataset(session_id) == target.file_snapshot_path:
+        if (
+            _get_current_session_dataset(session_id) == target.file_snapshot_path
+            and _can_load_existing_session_dataframe(target)
+        ):
             return load_existing_session_dataframe(load_request, target)
 
         _evict_stale_dataframes_before_load(session_id)

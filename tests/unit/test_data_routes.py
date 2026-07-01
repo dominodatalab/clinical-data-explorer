@@ -448,6 +448,50 @@ def test_column_values_reloads_expired_dataframe_from_saved_context(monkeypatch)
     ]
 
 
+def test_load_dataset_redownloads_when_current_session_cache_file_is_missing(monkeypatch, tmp_path):
+    app = _create_test_app()
+    loaded_requests = []
+    missing_cache_file = tmp_path / "domino_api_datasets" / "netapp" / "vol-1" / "unset_snapshot_id" / "adsl.csv"
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-missing-cache")
+    monkeypatch.setattr(
+        dataframe_reload_helpers,
+        "_get_current_session_dataset",
+        lambda session_id: str(missing_cache_file),
+    )
+    monkeypatch.setattr(
+        dataframe_reload_helpers,
+        "resolve_dataset_load_target",
+        lambda load_request: datasets_service.DatasetLoadTarget(
+            file_snapshot_path=str(missing_cache_file),
+            source_type="netapp",
+            volume_key="vol-1",
+            file_path="adsl.csv",
+        ),
+    )
+    monkeypatch.setattr(
+        dataframe_reload_helpers,
+        "process_dataset_load_request",
+        lambda load_request: loaded_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+    )
+
+    with app.test_client() as client:
+        response = client.post(
+            "/dataset/load",
+            json={
+                "dataset": "Clinical Volume/adsl.csv",
+                "filePath": "adsl.csv",
+                "sourceType": "netapp",
+                "volumeKey": "vol-1",
+            },
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"loaded": True, "dataset": "Clinical Volume/adsl.csv"}
+    assert len(loaded_requests) == 1
+    assert loaded_requests[0].dataset == "Clinical Volume/adsl.csv"
+
+
 def test_table_data_reports_actionable_error_when_expired_data_has_no_reload_context(monkeypatch):
     app = _create_test_app()
 
