@@ -17,12 +17,13 @@ import logging
 import sys
 
 from backend import config
-from backend.routes.charts import bp as charts_bp
 from backend.routes.chat import bp as chat_bp
 from backend.routes.data import bp as data_bp
+from backend.routes.charts import bp as charts_bp
 from backend.routes.datasets import bp as datasets_bp
 from backend.routes.governance import bp as governance_bp
 from backend.routes.launch_context import bp as launch_context_bp
+from backend.session import initialize_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -88,10 +89,14 @@ def create_app():
     # This ensures Flask correctly handles X-Forwarded-* headers from the proxy
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
+    @app.before_request
+    def initialize_request_session_id():
+        initialize_session_id()
+
     _register_static_routes(app)
-    app.register_blueprint(charts_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(data_bp)
+    app.register_blueprint(charts_bp)
     app.register_blueprint(datasets_bp)
     app.register_blueprint(governance_bp)
     app.register_blueprint(launch_context_bp)

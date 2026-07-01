@@ -300,6 +300,35 @@ export function generatePermalink() {
     return buildPermalinkUrl().toString();
 }
 
+export function parseLoadContextFromUrl(params = new URLSearchParams(window.location.search)) {
+    const volumeKeyParam = params.get('volumeKey');
+    const loadDatasetIdParam = params.get('loadDatasetId');
+    const snapshotIdParam = params.get('snapshotId');
+    const snapshotVersionParam = params.get('snapshotVersion');
+    const filePathParam = params.get('filePath') || null;
+    if (volumeKeyParam) {
+        return {
+            sourceType: 'netapp',
+            volumeKey: volumeKeyParam,
+            volumeId: params.get('volumeId') || null,
+            snapshotId: snapshotIdParam || null,
+            snapshotVersion: snapshotVersionParam != null && snapshotVersionParam !== ''
+                ? parseInt(snapshotVersionParam, 10)
+                : null,
+            filePath: filePathParam,
+        };
+    }
+    if (loadDatasetIdParam) {
+        return {
+            sourceType: 'dataset',
+            datasetId: loadDatasetIdParam,
+            snapshotId: snapshotIdParam || null,
+            filePath: filePathParam,
+        };
+    }
+    return null;
+}
+
 function copyPermalink() {
     const url = buildPermalinkUrl();
 
@@ -340,27 +369,7 @@ function parsePermalinkFromUrl() {
 
     // Parse snapshot/source identity embedded by generatePermalink so the
     // auto-loader can target the exact snapshot (not just latest).
-    const volumeKeyParam = params.get('volumeKey');
-    const loadDatasetIdParam = params.get('loadDatasetId');
-    const snapshotIdParam = params.get('snapshotId');
-    const snapshotVersionParam = params.get('snapshotVersion');
-    if (volumeKeyParam) {
-        tableState.pendingLoadContext = {
-            sourceType: 'netapp',
-            volumeKey: volumeKeyParam,
-            volumeId: params.get('volumeId') || null,
-            snapshotId: snapshotIdParam || null,
-            snapshotVersion: snapshotVersionParam != null && snapshotVersionParam !== ''
-                ? parseInt(snapshotVersionParam, 10)
-                : null,
-        };
-    } else if (loadDatasetIdParam) {
-        tableState.pendingLoadContext = {
-            sourceType: 'dataset',
-            datasetId: loadDatasetIdParam,
-            snapshotId: snapshotIdParam || null,
-        };
-    }
+    tableState.pendingLoadContext = parseLoadContextFromUrl(params);
     
     // Parse page number
     const pageParam = params.get('page');

@@ -15,22 +15,34 @@ import logging
 import requests
 from flask import Blueprint, jsonify, request
 
-from backend.session import mcp_post
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
+from backend.services.mcp_proxy import proxied_mcp_json_response
+from backend.session import get_session_id, mcp_post
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('charts', __name__)
 
 
+def _proxied_mcp_json_response(request_mcp_response, fallback_error):
+    return proxied_mcp_json_response(
+        request_mcp_response,
+        fallback_error,
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(
+            get_session_id(),
+            authorization_header=request.headers.get('Authorization'),
+        ),
+    )
+
+
 @bp.route('/chart/bar_aggregation', methods=['POST'])
 def get_bar_chart_data():
     """Get aggregated data for bar charts"""
     try:
-        response = mcp_post("/chart/bar_aggregation", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get bar chart data')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/chart/bar_aggregation", json=request.json),
+            'Failed to get bar chart data',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for bar chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -43,11 +55,10 @@ def get_bar_chart_data():
 def get_xy_chart_data():
     """Get data for scatter/area charts with optional aggregation"""
     try:
-        response = mcp_post("/chart/xy_data", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get XY chart data')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/chart/xy_data", json=request.json),
+            'Failed to get XY chart data',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for XY chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -60,11 +71,10 @@ def get_xy_chart_data():
 def get_time_series_data():
     """Get aggregated time series data"""
     try:
-        response = mcp_post("/chart/time_series", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get time series data')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/chart/time_series", json=request.json),
+            'Failed to get time series data',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for time series")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -77,11 +87,10 @@ def get_time_series_data():
 def get_histogram_data():
     """Get histogram data for a single column"""
     try:
-        response = mcp_post("/chart/histogram", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get histogram data')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/chart/histogram", json=request.json),
+            'Failed to get histogram data',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for histogram")
         return jsonify({'error': 'Could not connect to MCP server'}), 503

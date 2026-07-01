@@ -1,8 +1,9 @@
-from backend.app import create_app
+import backend.app as backend_app
 
 
-def _create_error_handler_test_app():
-    app = create_app()
+def _create_error_handler_test_app(monkeypatch):
+    monkeypatch.setattr(backend_app, "initialize_session_id", lambda: "user-1")
+    app = backend_app.create_app()
     app.config["PROPAGATE_EXCEPTIONS"] = False
 
     @app.route("/test-unhandled-error")
@@ -12,8 +13,8 @@ def _create_error_handler_test_app():
     return app
 
 
-def test_unhandled_exception_returns_json_500():
-    app = _create_error_handler_test_app()
+def test_unhandled_exception_returns_json_500(monkeypatch):
+    app = _create_error_handler_test_app(monkeypatch)
 
     with app.test_client() as client:
         response = client.get("/test-unhandled-error")
@@ -27,8 +28,8 @@ def test_unhandled_exception_returns_json_500():
     }
 
 
-def test_http_exception_handler_still_returns_original_status():
-    app = _create_error_handler_test_app()
+def test_http_exception_handler_still_returns_original_status(monkeypatch):
+    app = _create_error_handler_test_app(monkeypatch)
 
     with app.test_client() as client:
         response = client.get("/not-found")

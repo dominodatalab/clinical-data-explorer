@@ -270,6 +270,40 @@ def test_get_history_returns_ui_transcript_with_chart_payloads():
     ]
 
 
+def test_create_agent_for_session_forwards_authorization_header(monkeypatch):
+    created_servers = []
+    created_agents = []
+    llm_model = object()
+
+    class FakeMCPServerSSE:
+        def __init__(self, **kwargs):
+            self.kwargs = kwargs
+            created_servers.append(self)
+
+    class FakeAgentCtor:
+        def __init__(self, *args, **kwargs):
+            self.args = args
+            self.kwargs = kwargs
+            created_agents.append(self)
+
+    monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: llm_model)
+    monkeypatch.setattr(chat_agent, "MCPServerSSE", FakeMCPServerSSE)
+    monkeypatch.setattr(chat_agent, "Agent", FakeAgentCtor)
+
+    agent = chat_agent._create_agent_for_session(
+        "session-1",
+        authorization_header="Bearer token-1",
+    )
+
+    assert agent is created_agents[0]
+    assert created_servers[0].kwargs["url"] == chat_agent.MCP_SERVER_URL
+    assert created_servers[0].kwargs["headers"] == {
+        "Authorization": "Bearer token-1",
+    }
+    assert created_agents[0].args == (llm_model,)
+    assert created_agents[0].kwargs["toolsets"] == [created_servers[0]]
+
+
 def test_get_agent_response_raises_when_chat_is_not_configured():
     with pytest.raises(RuntimeError, match="Chat is not configured"):
         asyncio.run(chat_agent.get_agent_response("hello", session_id="session-1"))
@@ -286,7 +320,7 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, **kwargs: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show me age", session_id="session-1")
@@ -346,7 +380,7 @@ def test_get_agent_response_keeps_chart_payloads_in_message_history(monkeypatch)
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, **kwargs: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show a chart", session_id="session-chart")
@@ -369,7 +403,7 @@ def test_get_agent_response_caps_message_history(monkeypatch):
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, **kwargs: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("hello", session_id="session-1")
@@ -396,7 +430,7 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
     fallback_agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: mcp_agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, **kwargs: mcp_agent)
     monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda: fallback_agent)
 
     response = asyncio.run(

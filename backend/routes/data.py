@@ -28,23 +28,14 @@ and `data` tracks the plan's target layout, not the URL pluralization.
 import logging
 
 import requests
-import backend.services.dataset_load_request_queue as dataset_load_request_queue
-import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
 from werkzeug.exceptions import (
-    BadRequest,
-    RequestEntityTooLarge,
     ServiceUnavailable,
-    TooManyRequests,
-    abort,
 )
 
 from backend.services.column_labels import load_column_labels
-from backend.services.datasets import (
-    load_existing_session_dataframe,
-    process_dataset_load_request,
-    resolve_dataset_load_target,
-)
+import backend.services.dataframe_reload_helpers as dataframe_reload_helpers
+from backend.services.mcp_proxy import proxied_mcp_json_response
 from backend.session import get_session_id, mcp_get, mcp_post
 
 logger = logging.getLogger(__name__)
@@ -52,83 +43,33 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('data', __name__)
 
 
-def _evict_stale_dataframes_before_load():
-    try:
-        response = mcp_post("/dataframes/evict-stale")
-        if response.status_code != 200:
-            logger.warning("MCP stale DataFrame eviction returned HTTP %s", response.status_code)
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to MCP server to evict stale DataFrames before dataset load")
-    except requests.exceptions.RequestException as exc:
-        logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
-
-
-def _get_current_session_dataset(session_id):
-    try:
-        response = mcp_get("/dataframe/current-session", session_id=session_id)
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to MCP server to check current session DataFrame")
-        return None
-    except requests.exceptions.RequestException as exc:
-        logger.warning("Could not check current session DataFrame: %s", exc)
-        return None
-
-    if response.status_code != 200:
-        logger.warning("MCP current session DataFrame check returned HTTP %s", response.status_code)
-        return None
-    return response.json().get("dataset")
-
-
 @bp.route('/dataset/load', methods=['POST'])
 def load_dataset():
     """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
     request_json = request.get_json(silent=True) or {}
-    dataset_name = request_json.get('dataset')
-    project_id = request_json.get('projectId')
-    dataset_id = request_json.get('datasetId')
-    snapshot_id = request_json.get('snapshotId')
-    source_type = request_json.get('sourceType')
-    volume_key = request_json.get('volumeKey')
-    volume_id = request_json.get('volumeId')
-    snapshot_version = request_json.get('snapshotVersion')
-    if not dataset_name:
+    return _load_dataset_from_request_json(request_json)
+
+
+def _load_dataset_from_request_json(request_json):
+    if not request_json.get('dataset'):
         return jsonify({'error': 'No dataset name provided'}), 400
 
-    session_id = get_session_id()
-    load_request = dataset_load_request_queue.DatasetLoadRequest(
-        dataset=dataset_name,
-        session_id=session_id,
+    return dataframe_reload_helpers.load_dataset_from_request_json(
+        request_json,
+        session_id=get_session_id(),
         authorization_header=request.headers.get('Authorization'),
-        project_id=project_id,
-        dataset_id=dataset_id,
-        snapshot_id=snapshot_id,
-        source_type=source_type,
-        volume_key=volume_key,
-        volume_id=volume_id,
-        snapshot_version=snapshot_version,
     )
 
-    try:
-        target = resolve_dataset_load_target(load_request)
-        if _get_current_session_dataset(session_id) == target.file_snapshot_path:
-            return load_existing_session_dataframe(load_request, target)
 
-        _evict_stale_dataframes_before_load()
-        # TODO this could wait for a while. can we have a multi minute timeout on requests?
-        # should we have an expiration on requests?
-        return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
-            load_request,
-            process_dataset_load_request,
-        )
-    except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
-        raise TooManyRequests(
-            description="Sorry, we can't process your dataset, this server is at capacity."
-        ) from exc
-
-    except file_size_limits.DataFileTooLarge as exc:
-        raise RequestEntityTooLarge(
-            description=str(exc),
-        ) from exc
+def _proxied_mcp_json_response(request_mcp_response, fallback_error):
+    return proxied_mcp_json_response(
+        request_mcp_response,
+        fallback_error,
+        lambda: dataframe_reload_helpers.try_reload_expired_dataframe(
+            get_session_id(),
+            authorization_header=request.headers.get('Authorization'),
+        ),
+    )
 
 
 @bp.route('/dataset/metadata', methods=['GET'])
@@ -140,31 +81,23 @@ def get_dataset_metadata():
     Any unhandled Exception bubbles to the same handler as a 500.
     """
     try:
-        response = mcp_get("/dataset/metadata")
+        return _proxied_mcp_json_response(
+            lambda: mcp_get("/dataset/metadata"),
+            'No dataset loaded. Please load a dataset first.',
+        )
     except requests.exceptions.ConnectionError as exc:
         logger.error("Could not connect to MCP server for dataset metadata")
         raise ServiceUnavailable(description="Could not connect to MCP server") from exc
-
-    if response.status_code == 200:
-        return jsonify(response.json())
-    if response.status_code == 400:
-        raise BadRequest(description="No dataset loaded. Please load a dataset first.")
-    error_detail = response.json().get('detail', 'Failed to get dataset metadata')
-    abort(response.status_code, description=error_detail)
 
 
 @bp.route('/dataset/data', methods=['GET'])
 def get_dataset_data():
     """Get the current dataset data and metadata for visualization"""
     try:
-        response = mcp_get("/dataset/data")
-        if response.status_code == 200:
-            return jsonify(response.json())
-        elif response.status_code == 400:
-            return jsonify({'error': 'No dataset loaded. Please load a dataset first.'}), 400
-        else:
-            error_detail = response.json().get('detail', 'Failed to get dataset data')
-            return jsonify({'error': error_detail}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_get("/dataset/data"),
+            'No dataset loaded. Please load a dataset first.',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server")
         return jsonify({'error': 'Could not connect to MCP server. Make sure it is running on port 8888.'}), 503
@@ -179,11 +112,10 @@ def get_dataset_data():
 def get_table_data():
     """Get paginated table data with filtering and sorting"""
     try:
-        response = mcp_post("/table/data", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get table data')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/table/data", json=request.json),
+            'Failed to get table data',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for table data")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -209,11 +141,10 @@ def get_column_values(column):
         if request.args.get('syntax'):
             params['syntax'] = request.args.get('syntax')
 
-        response = mcp_get(f"/table/column_values/{column}", params=params)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get column values')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_get(f"/table/column_values/{column}", params=params),
+            'Failed to get column values',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for column values")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -226,11 +157,10 @@ def get_column_values(column):
 def get_table_summary():
     """Get summary statistics for filtered data"""
     try:
-        response = mcp_post("/table/summary", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get summary')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/table/summary", json=request.json),
+            'Failed to get summary',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for summary")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -252,11 +182,10 @@ def get_column_stats(column):
         if request.args.get('syntax'):
             params['syntax'] = request.args.get('syntax')
 
-        response = mcp_get(f"/table/column_stats/{column}", params=params)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get column stats')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_get(f"/table/column_stats/{column}", params=params),
+            'Failed to get column stats',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for column stats")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -285,12 +214,10 @@ def get_column_labels():
 def expression_filter():
     """Filter table data using expression syntax (SAS, R, or Python)"""
     try:
-        response = mcp_post("/table/expression_filter", json=request.json)
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            error_detail = response.json().get('detail', 'Failed to apply expression filter')
-            return jsonify({'error': error_detail}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_post("/table/expression_filter", json=request.json),
+            'Failed to apply expression filter',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for expression filter")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
@@ -303,11 +230,10 @@ def expression_filter():
 def get_expression_samples():
     """Get sample column data for generating expression examples"""
     try:
-        response = mcp_get("/table/expression_samples")
-        if response.status_code == 200:
-            return jsonify(response.json())
-        else:
-            return jsonify({'error': response.json().get('detail', 'Failed to get expression samples')}), response.status_code
+        return _proxied_mcp_json_response(
+            lambda: mcp_get("/table/expression_samples"),
+            'Failed to get expression samples',
+        )
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to MCP server for expression samples")
         return jsonify({'error': 'Could not connect to MCP server'}), 503

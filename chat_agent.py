@@ -125,17 +125,18 @@ def _get_llm_model():
     return _llm_model
 
 
-def _create_agent_for_session(session_id: str) -> Agent | None:
-    """Create an agent with an MCP server connection bound to a specific session."""
+def _create_agent_for_session(session_id: str, authorization_header: str | None = None) -> Agent | None:
+    """Create an agent with an MCP server connection for the current user."""
     llm_model = _get_llm_model()
     if llm_model is None:
         return None
 
-    # Each session's MCP connection carries the session ID header so the
-    # MCP server routes tool calls to the correct DataFrame.
+    headers = {}
+    if authorization_header:
+        headers['Authorization'] = authorization_header
     server = MCPServerSSE(
         url=MCP_SERVER_URL,
-        headers={'Authorization': f'Bearer {session_id}'},
+        headers=headers,
     )
     return Agent(llm_model, toolsets=[server], system_prompt=SYSTEM_PROMPT, retries=5)
 
@@ -212,7 +213,11 @@ def get_history(session_id: str = 'default') -> list[dict]:
     return transcript
 
 
-async def get_agent_response(message: str, session_id: str = 'default') -> dict:
+async def get_agent_response(
+    message: str,
+    session_id: str = 'default',
+    authorization_header: str | None = None,
+) -> dict:
     """Gets a response from the agent, running with MCP servers.
     Returns a dict with 'text' and optional 'charts' list.
     Raises RuntimeError if chat is not configured."""
@@ -220,7 +225,7 @@ async def get_agent_response(message: str, session_id: str = 'default') -> dict:
     if not is_chat_configured():
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
-    current_agent = _create_agent_for_session(session_id)
+    current_agent = _create_agent_for_session(session_id, authorization_header=authorization_header)
     if current_agent is None:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 

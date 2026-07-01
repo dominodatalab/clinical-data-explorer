@@ -16,13 +16,18 @@ from .fixtures import install_fake_dataset_client, install_fake_netapp_client
 
 
 class _FakeResponse:
-    def __init__(self, status_code, payload):
+    def __init__(self, status_code, payload, content=b""):
         self.status_code = status_code
         self._payload = payload
         self.text = json.dumps(payload)
+        self.content = content
 
     def json(self):
         return self._payload
+
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(self.text)
 
 
 def _load_datasets_service(monkeypatch):
@@ -375,6 +380,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
     assert captured == {
         "tokens": ["test-token"],
         "get_volume_calls": [],
+        "get_file_url_calls": [],
         "list_files_calls": ["netapp-volume-Safety-Volume-nv-1"],
         "updated_snapshot_versions": [],
         "downloaded_files": [],
@@ -455,6 +461,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
     assert captured == {
         "tokens": ["test-token"],
         "get_volume_calls": ["netapp-volume-Safety-Volume-nv-1"],
+        "get_file_url_calls": [],
         "list_files_calls": [],
         "updated_snapshot_versions": ["9"],
         "downloaded_files": [],
@@ -767,6 +774,63 @@ def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, 
     assert captured == [(expected_args, expected_kwargs)]
 
 
+def test_process_dataset_load_request_uses_file_path_for_remote_load(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    captured = []
+
+    def fake_load_dataset_file_by_id(*args, **kwargs):
+        captured.append((args, kwargs))
+        return "ok"
+
+    monkeypatch.setattr(services, "load_dataset_file_by_id", fake_load_dataset_file_by_id)
+
+    result = services.process_dataset_load_request(
+        DatasetLoadRequest(
+            dataset="Clinical Dataset",
+            session_id="sid-file-path",
+            authorization_header="Bearer token-123",
+            dataset_id="ds-1",
+            file_path="nested/adsl.csv",
+        )
+    )
+
+    assert result == "ok"
+    assert captured == [
+        (
+            ("Clinical Dataset/nested/adsl.csv", "ds-1"),
+            {"token": "token-123", "session_id": "sid-file-path"},
+        )
+    ]
+
+
+def test_resolve_dataset_load_target_uses_file_path(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    class FakeFileCache:
+        def create_file_path(self, dataset_id, file_path, source_type, snapshot_key):
+            return f"/tmp/{source_type}/{dataset_id}/{snapshot_key}/{file_path}"
+
+    monkeypatch.setattr(services, "get_file_cache", lambda: FakeFileCache())
+    monkeypatch.setattr(services, "get_passthrough_token_from_authorization_header", lambda header: "token-123")
+
+    target = services.resolve_dataset_load_target(
+        DatasetLoadRequest(
+            dataset="Clinical Dataset",
+            session_id="sid-file-path",
+            authorization_header="Bearer token-123",
+            dataset_id="ds-1",
+            snapshot_id="snap-1",
+            file_path="nested/adsl.csv",
+        )
+    )
+
+    assert target.file_snapshot_path == "/tmp/dataset/ds-1/snap-1/nested/adsl.csv"
+    assert target.file_path == "nested/adsl.csv"
+    assert target.dataset_id == "ds-1"
+    assert target.snapshot_id == "snap-1"
+
+
 def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
@@ -924,8 +988,8 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
     ]
     assert clear_history_calls == ["sid-789"]
     assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert expected_path.exists()
+    assert expected_path.read_bytes() == b"col1,col2\n1,2\n"
 
 
 @pytest.mark.parametrize(
@@ -958,6 +1022,13 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
         {"vol-123": ["reports/visit.csv"]},
         {"reports/visit.csv": b"VISIT,VALUE\n1,10\n"},
     )
+    request_get_calls = []
+
+    def fake_requests_get(url, headers=None, timeout=None):
+        request_get_calls.append((url, headers, timeout))
+        return _FakeResponse(200, {}, content=b"VISIT,VALUE\n1,10\n")
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
 
     expected_path = (
         tmp_path
@@ -1008,14 +1079,29 @@ def test_load_netapp_volume_file_uses_data_file_path_for_none_and_int_snapshot_v
     assert netapp_client == {
         "tokens": ["test-token"],
         "get_volume_calls": ["vol-123"],
+        "get_file_url_calls": (
+            []
+            if snapshot_version is not None
+            else [("vol-123", "reports/visit.csv")]
+        ),
         "list_files_calls": [] if snapshot_version is not None else ["vol-123"],
         "updated_snapshot_versions": expected_updated_versions,
-        "downloaded_files": ["reports/visit.csv"],
+        "downloaded_files": ["reports/visit.csv"] if snapshot_version is not None else [],
     }
+    expected_request_get_calls = []
+    if snapshot_version is None:
+        expected_request_get_calls = [
+            (
+                "https://files.example.test/vol-123/reports/visit.csv",
+                {"Authorization": "Bearer test-token"},
+                120,
+            )
+        ]
+    assert request_get_calls == expected_request_get_calls
     assert clear_history_calls == ["sid-netapp"]
     assert mcp_paths == [expected_path]
-    assert not expected_path.exists()
-    assert not expected_path.parent.exists()
+    assert expected_path.exists()
+    assert expected_path.read_bytes() == b"VISIT,VALUE\n1,10\n"
 
 
 def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_omitted(
@@ -1071,3 +1157,40 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     assert netapp_client.get("list_snapshots_calls") == ["vol-123"]
     assert body["snapshotVersion"] == 9
     assert body["snapshotId"] == "snap-uuid-bbb"
+
+
+def test_load_netapp_volume_file_enforces_actual_downloaded_size(monkeypatch, tmp_path):
+    services = _load_datasets_service(monkeypatch)
+    app = Flask(__name__)
+
+    monkeypatch.setattr(services, "get_passthrough_token", lambda: "test-token")
+    monkeypatch.setattr(services.tempfile, "gettempdir", lambda: str(tmp_path))
+    monkeypatch.setattr(services, "get_session_id", lambda: "sid-netapp")
+    monkeypatch.setattr(services.file_size_limits, "DATA_FILE_SIZE_LIMIT", 5)
+    monkeypatch.setattr(services.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 0)
+    monkeypatch.setattr(services.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
+
+    install_fake_netapp_client(
+        monkeypatch,
+        {"vol-123": ["reports/visit.csv"]},
+        {"reports/visit.csv": b"VISIT,VALUE\n1,10\n"},
+    )
+    monkeypatch.setattr(
+        services.requests,
+        "get",
+        lambda *args, **kwargs: _FakeResponse(200, {}, content=b"VISIT,VALUE\n1,10\n"),
+    )
+
+    def fail_mcp_post(*args, **kwargs):
+        raise AssertionError("oversized file should not be sent to MCP")
+
+    monkeypatch.setattr(services, "mcp_post", fail_mcp_post)
+
+    with app.app_context(), pytest.raises(
+        services.file_size_limits.DataFileTooLarge,
+        match="Safety Volume/reports/visit.csv must be less than or equal to 5 bytes",
+    ):
+        services.load_netapp_volume_file(
+            "Safety Volume/reports/visit.csv",
+            "vol-123",
+        )

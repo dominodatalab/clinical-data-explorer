@@ -27,7 +27,7 @@ import logging
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Body, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
 from starlette.concurrency import run_in_threadpool
 
@@ -35,6 +35,7 @@ from mcp_server.session import (
     evict_current_session_dataframe,
     _evict_stale_sessions,
     _get_session_dataset_name,
+    get_dataset_reload_context,
     get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
@@ -66,10 +67,11 @@ async def list_datasets():
 
 @router.post("/dataset/load", operation_id="load_dataset")
 async def load_dataset_endpoint(
-    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
+    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load"),
+    reload_context: dict | None = Body(default=None),
 ):
     """Load a specific dataset file and return column metadata."""
-    df = await run_in_threadpool(load_current_df, file_snapshot_path)
+    df = await run_in_threadpool(load_current_df, file_snapshot_path, reload_context)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)
@@ -119,6 +121,7 @@ def evict_stale_dataframes(request: Request):
     return SessionEvictionResult(
         evicted_sessions=middleware_result.evicted_sessions + route_result.evicted_sessions,
         evicted_dataframes=middleware_result.evicted_dataframes + route_result.evicted_dataframes,
+        evicted_reload_contexts=middleware_result.evicted_reload_contexts + route_result.evicted_reload_contexts,
     )
 
 
@@ -132,7 +135,10 @@ def get_current_dataframe_size():
 def get_current_session_dataframe():
     """Return the current session's loaded dataset identifier, if any."""
     dataset = _get_session_dataset_name()
-    return {"dataset": dataset if dataset and has_current_df(dataset) else None}
+    return {
+        "dataset": dataset if dataset and has_current_df(dataset) else None,
+        "reload_context": get_dataset_reload_context(),
+    }
 
 
 @router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe")

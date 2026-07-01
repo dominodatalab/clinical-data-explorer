@@ -1,14 +1,15 @@
 """Resolve source file sizes for dataset-load memory admission."""
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
 from werkzeug.exceptions import NotFound
 
 import backend.services.httpclient as httpclient
+from backend import config
 from backend.auth import (
     get_domino_api_host,
-    get_domino_external_url,
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
@@ -16,20 +17,31 @@ from backend.auth import (
 if TYPE_CHECKING:
     from backend.services.dataset_load_request_queue import DatasetLoadRequest
 
+logger = logging.getLogger(__name__)
+
 
 def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -> int:
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
     if load_request.source_type == 'netapp':
-        return _get_netapp_volume_file_size(
-            load_request.dataset,
-            load_request.volume_id,
-            token=token,
-        )
+        file_path = _load_request_file_path(load_request)
+        try:
+            return _get_netapp_volume_file_size(
+                file_path,
+                load_request.volume_id,
+                token=token,
+            )
+        except (httpclient.HTTPClientError, NotFound, RuntimeError) as exc:
+            logger.warning(
+                "Could not resolve NetApp file size for %s before load; allowing load to continue: %s",
+                file_path,
+                exc,
+            )
+            return 0
 
     if load_request.dataset_id and load_request.snapshot_id:
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             load_request.snapshot_id,
             token=token,
         )
@@ -37,7 +49,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
     if load_request.dataset_id:
         snapshot_id = _get_default_dataset_snapshot_id(load_request.dataset_id, token=token)
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             snapshot_id,
             token=token,
         )
@@ -46,7 +58,7 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
         dataset_id = _resolve_project_dataset_id(load_request.dataset, load_request.project_id, token=token)
         snapshot_id = _get_default_dataset_snapshot_id(dataset_id, token=token)
         return _get_dataset_snapshot_file_size(
-            load_request.dataset,
+            _load_request_file_path(load_request),
             snapshot_id,
             token=token,
         )
@@ -62,15 +74,20 @@ def _split_dataset_file_path(dataset_display_name: str) -> str:
     return parts[1]
 
 
+def _load_request_file_path(load_request: "DatasetLoadRequest") -> str:
+    if load_request.file_path:
+        return load_request.file_path
+    return _split_dataset_file_path(load_request.dataset)
+
+
 def _get_netapp_volume_file_size(
-    volume_file_display_name: str,
+    file_path: str,
     volume_id: str | None,
     token=None,
 ) -> int:
     if not volume_id:
-        raise RuntimeError(f'Missing NetApp volume ID for {volume_file_display_name}')
+        raise RuntimeError(f'Missing NetApp volume ID for {file_path}')
 
-    file_path = _split_dataset_file_path(volume_file_display_name)
     metadata = get_netapp_volume_file_metadata(volume_id, file_path, token=token)
     file_size = metadata.get("fileSize")
     if file_size is None:
@@ -78,13 +95,22 @@ def _get_netapp_volume_file_size(
     return file_size
 
 
-def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
-    external_url = external_url or get_domino_external_url()
-    if not external_url:
-        raise RuntimeError('Domino external URL not configured')
+def _get_remotefs_host():
+    remotefs_host = config.get_domino_remote_file_system_hostport()
+    if not remotefs_host:
+        return None
+    if not remotefs_host.startswith('http'):
+        remotefs_host = f'http://{remotefs_host}'
+    return remotefs_host.rstrip('/')
+
+
+def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, remotefs_host=None):
+    remotefs_host = (remotefs_host or _get_remotefs_host())
+    if not remotefs_host:
+        raise RuntimeError('RemoteFS host is not configured')
 
     return httpclient.get(
-        f"{external_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
+        f"{remotefs_host}/remotefs/v1/volumes/{volume_id}/files/metadata",
         params={'path': file_path},
         headers={
             'accept': 'application/json',
@@ -149,8 +175,7 @@ def _get_default_dataset_snapshot_id(dataset_id: str, token=None) -> str:
     return snapshots[0]["id"]
 
 
-def _get_dataset_snapshot_file_size(dataset_display_name: str, snapshot_id: str, token=None) -> int:
-    file_path = _split_dataset_file_path(dataset_display_name)
+def _get_dataset_snapshot_file_size(file_path: str, snapshot_id: str, token=None) -> int:
     metadata = get_dataset_snapshot_file_metadata(snapshot_id, file_path, token=token)
     file_size = metadata.get("fileSize")
     if file_size is None:
