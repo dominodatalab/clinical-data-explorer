@@ -18,6 +18,10 @@ class _FakeMcpResponse:
     def json(self):
         return self._payload
 
+    def raise_for_status(self):
+        if self.status_code >= 400:
+            raise RuntimeError(f"HTTP {self.status_code}")
+
 
 def _create_test_app(testing=False):
     app = Flask(__name__)
@@ -33,15 +37,15 @@ def stub_queue_mcp_dataframe_hooks(monkeypatch):
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
         "_get_current_session_dataframe_size_bytes",
-        lambda self, session_id: 0,
+        lambda self, authorization_header: 0,
     )
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
         "_evict_current_session_dataframe",
-        lambda self, session_id: None,
+        lambda self, authorization_header: None,
     )
-    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 0)
-    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: None)
+    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda authorization_header: 0)
+    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda authorization_header: None)
 
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
@@ -185,6 +189,78 @@ def test_load_dataset_does_not_enqueue_invalid_request():
     assert queue.peek_all() == []
 
 
+def test_load_dataset_queues_download_without_dataframe_creation(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+
+    captured_requests = []
+    evict_calls = []
+
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-download")
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_post",
+        lambda path, **kwargs: (_ for _ in ()).throw(AssertionError("should not call MCP")),
+    )
+    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda authorization_header: 789)
+    monkeypatch.setattr(
+        queue,
+        "_evict_current_session_dataframe",
+        lambda authorization_header: evict_calls.append(authorization_header),
+    )
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 123)
+    monkeypatch.setattr(data_routes.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 456)
+    monkeypatch.setattr(
+        data_routes.file_size_limits,
+        "enforce",
+        lambda file_name, file_size, additional_projected_dataframe_size_b, used_memory_bytes: None,
+    )
+    monkeypatch.setattr(
+        data_routes,
+        "process_dataset_load_request",
+        lambda load_request: captured_requests.append(load_request)
+        or jsonify({"file_snapshot_path": "/tmp/adsl.csv", "dataset": load_request.dataset}),
+    )
+
+    with app.test_client() as client:
+        response = client.post(
+            "/dataset/load",
+            json={
+                "dataset": "Study/reports/adsl.csv",
+                "datasetId": "ds-1",
+                "snapshotId": "snap-1",
+                "createDataframe": False,
+            },
+            headers={"Authorization": "Bearer token-download"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"file_snapshot_path": "/tmp/adsl.csv", "dataset": "Study/reports/adsl.csv"}
+    assert queue.peek_all() == []
+    assert evict_calls == []
+    assert len(captured_requests) == 1
+    assert captured_requests[0].dataset == "Study/reports/adsl.csv"
+    assert captured_requests[0].session_id == "sid-download"
+    assert captured_requests[0].authorization_header == "Bearer token-download"
+    assert captured_requests[0].dataset_id == "ds-1"
+    assert captured_requests[0].snapshot_id == "snap-1"
+    assert captured_requests[0].create_dataframe is False
+
+
+def test_load_dataset_download_only_does_not_enqueue_invalid_request():
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={"createDataframe": False})
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "No dataset name provided"}
+    assert queue.peek_all() == []
+
+
 def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeypatch):
     queue = get_dataset_load_request_queue()
     queue.clear()
@@ -227,6 +303,7 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
 
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-full")
 
     with app.test_client() as client:
         response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})

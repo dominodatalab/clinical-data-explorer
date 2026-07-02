@@ -767,6 +767,36 @@ def test_process_dataset_load_request_dispatches_to_correct_loader(monkeypatch, 
     assert captured == [(expected_args, expected_kwargs)]
 
 
+def test_process_dataset_load_request_downloads_only_when_dataframe_creation_disabled(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    load_request = DatasetLoadRequest(
+        dataset="Study/reports/adsl.csv",
+        session_id="sid-download",
+        authorization_header="Bearer token-123",
+        dataset_id="ds-1",
+        snapshot_id="snap-1",
+        create_dataframe=False,
+    )
+    captured = []
+
+    monkeypatch.setattr(
+        services,
+        "process_dataset_download_file_request",
+        lambda request: captured.append(request) or "downloaded",
+    )
+    monkeypatch.setattr(
+        services,
+        "load_dataset_file_from_snapshot",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not load dataframe")),
+    )
+
+    result = services.process_dataset_load_request(load_request)
+
+    assert result == "downloaded"
+    assert captured == [load_request]
+
+
 def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)

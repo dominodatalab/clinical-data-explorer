@@ -67,7 +67,13 @@ def chat():
 
     # Get response from the chat agent using the async function
     try:
-        agent_response = asyncio.run(get_agent_response(user_message, session_id=get_session_id()))
+        agent_response = asyncio.run(
+            get_agent_response(
+                user_message,
+                session_id=get_session_id(),
+                authorization_header=request.headers.get('Authorization'),
+            )
+        )
         # agent_response is now a dict with 'text' and 'charts' keys
         logger.info("Successfully got agent response")
         return jsonify({

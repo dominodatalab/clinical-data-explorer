@@ -1,7 +1,8 @@
 """Pytest fixtures shared across contract tests.
 
-The MCP server stores DataFrames in per-session dicts keyed by the X-Session-Id
-header. Each test gets a fresh UUID so tests can't bleed state into each other.
+The MCP server stores DataFrames in per-session dicts keyed by the current
+Domino user ID. Each test gets a fresh user ID so tests can't bleed state into
+each other.
 """
 import sys
 import uuid
@@ -24,14 +25,16 @@ def _mcp_app():
 
 
 @pytest.fixture
-def mcp_client(_mcp_app):
-    """TestClient with a unique session ID header and sample.csv pre-loaded.
+def mcp_client(_mcp_app, monkeypatch):
+    """TestClient with a unique user ID and sample.csv pre-loaded.
 
     Yields a ready-to-use client whose subsequent requests all target the
     same session, so /dataset/info and friends can see the loaded DataFrame.
     """
     session_id = f"test-{uuid.uuid4().hex}"
-    client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
+    import mcp_server.session as session_module
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": session_id})
+    client = TestClient(_mcp_app, headers={"Authorization": "Bearer test-token"})
 
     # Load the sample dataset via the public API — no internal poking.
     resp = client.post("/dataset/load", params={"file_snapshot_path": str(SAMPLE_CSV)})

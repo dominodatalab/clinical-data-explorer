@@ -26,11 +26,13 @@ def test_set_current_df_stores_dataframe_and_session_metadata():
     df = pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
     session_module._current_user_id.set("session-1")
 
-    session_module._set_current_df(df, "adsl.csv")
+    reload_context = {"dataset": "Study/adsl.csv", "datasetId": "ds-1"}
+    session_module._set_current_df(df, "adsl.csv", reload_context=reload_context)
 
     assert session_module._get_session_dataset_name() == "adsl.csv"
     assert session_module._sessions["session-1"].file_snapshot_path == "adsl.csv"
     assert session_module._sessions["session-1"].dataframe_size_bytes > 0
+    assert session_module._sessions["session-1"].reload_context.load_body == reload_context
     pd.testing.assert_frame_equal(session_module.get_current_df(), df)
 
 
@@ -69,24 +71,70 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [99], "arm": ["Reloaded"]})
+    reload_context = {"dataset": "Study/adae.csv", "datasetId": "ds-1", "snapshotId": "snap-1"}
     session_module._current_user_id.set("session-2")
     session_module._sessions["session-2"] = session_module.LoadedDataEntry(
         file_snapshot_path="adae.csv",
+        dataframe_exists=False,
         last_accessed=50.0,
+        dataframe_size_bytes=0,
+        reload_context=session_module.DatasetReloadContextEntry(load_body=reload_context),
     )
     load_calls = []
+    download_calls = []
+
+    def fake_download_dataset_file(load_body):
+        download_calls.append(load_body)
+        return "/tmp/redownloaded/adae.csv"
 
     def fake_load_dataset(file_snapshot_path):
         load_calls.append(file_snapshot_path)
         return reloaded_df
 
+    monkeypatch.setattr(session_module, "download_dataset_file", fake_download_dataset_file)
     monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
+    monkeypatch.setattr(session_module.objsize, "get_deep_size", lambda dataframe: 4321)
 
     df = session_module.get_current_df()
 
-    assert load_calls == ["adae.csv"]
+    assert download_calls == [reload_context]
+    assert load_calls == ["/tmp/redownloaded/adae.csv"]
     pd.testing.assert_frame_equal(df, reloaded_df)
-    pd.testing.assert_frame_equal(session_module.get_cache()["adae.csv"], reloaded_df)
+    pd.testing.assert_frame_equal(session_module.get_cache()["/tmp/redownloaded/adae.csv"], reloaded_df)
+    assert session_module._sessions["session-2"].file_snapshot_path == "/tmp/redownloaded/adae.csv"
+    assert session_module._sessions["session-2"].dataframe_exists is True
+    assert session_module._sessions["session-2"].dataframe_size_bytes == 4321
+    assert session_module._sessions["session-2"].reload_context.load_body == reload_context
+
+
+def test_download_dataset_file_posts_to_dataset_load_without_dataframe_creation(monkeypatch):
+    calls = []
+
+    class FakeResponse:
+        status_code = 200
+        text = ""
+
+        def json(self):
+            return {"file_snapshot_path": "/tmp/redownloaded/adae.csv"}
+
+    monkeypatch.setattr(session_module, "get_passthrough_token", lambda: "token-123")
+    monkeypatch.setattr(
+        session_module.requests,
+        "post",
+        lambda url, json, headers, timeout: calls.append((url, json, headers, timeout)) or FakeResponse(),
+    )
+
+    result = session_module.download_dataset_file({"dataset": "Study/adae.csv", "datasetId": "ds-1"})
+
+    assert result == "/tmp/redownloaded/adae.csv"
+    assert calls == [
+        (
+            f"{session_module.BACKEND_SERVER_URL}/dataset/load",
+            {"dataset": "Study/adae.csv", "datasetId": "ds-1", "createDataframe": False},
+            {"Authorization": "Bearer token-123"},
+            120,
+        )
+    ]
 
 
 def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
@@ -109,6 +157,47 @@ def test_evict_stale_sessions_removes_idle_sessions(monkeypatch):
     assert "fresh" in session_module._sessions
     assert result == session_module.SessionEvictionResult(evicted_sessions=1, evicted_dataframes=1)
     assert "stale.csv" not in session_module.get_cache()
+    pd.testing.assert_frame_equal(session_module.get_cache()["fresh.csv"], fresh_df)
+
+
+def test_evict_stale_sessions_removes_idle_dataframe_but_keeps_session(monkeypatch):
+    monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 1000)
+    monkeypatch.setattr(session_module, "DATAFRAME_MAX_AGE", 10)
+    monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    old_df = pd.DataFrame({"subject_id": [1]})
+    fresh_df = pd.DataFrame({"subject_id": [2]})
+    reload_context = {"dataset": "Study/old.csv", "datasetId": "ds-1"}
+    session_module.get_cache()["old.csv"] = old_df
+    session_module.get_cache()["fresh.csv"] = fresh_df
+    session_module._sessions.update(
+        {
+            "old-dataframe": session_module.LoadedDataEntry(
+                file_snapshot_path="old.csv",
+                last_accessed=95.0,
+                dataframe_size_bytes=1234,
+                dataframe_last_accessed=89.0,
+                reload_context=session_module.DatasetReloadContextEntry(load_body=reload_context),
+            ),
+            "fresh-dataframe": session_module.LoadedDataEntry(
+                file_snapshot_path="fresh.csv",
+                last_accessed=95.0,
+                dataframe_size_bytes=5678,
+                dataframe_last_accessed=95.0,
+            ),
+        }
+    )
+
+    result = session_module._evict_stale_sessions()
+
+    assert result == session_module.SessionEvictionResult(evicted_sessions=0, evicted_dataframes=1)
+    assert set(session_module._sessions) == {"old-dataframe", "fresh-dataframe"}
+    old_session = session_module._sessions["old-dataframe"]
+    assert old_session.file_snapshot_path == "old.csv"
+    assert old_session.dataframe_exists is False
+    assert old_session.dataframe_size_bytes == 0
+    assert old_session.dataframe_last_accessed is None
+    assert old_session.reload_context.load_body == reload_context
+    assert "old.csv" not in session_module.get_cache()
     pd.testing.assert_frame_equal(session_module.get_cache()["fresh.csv"], fresh_df)
 
 
@@ -176,6 +265,7 @@ def test_set_current_df_evicts_previous_dataset_for_same_session():
 def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-6"})
     old_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["old.csv"] = old_df
     session_module._sessions["session-6"] = session_module.LoadedDataEntry(
@@ -192,7 +282,7 @@ def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
 
     client = TestClient(app)
 
-    response = client.get("/session", headers={"X-Session-Id": "session-6"})
+    response = client.get("/session")
 
     assert response.status_code == 200
     assert response.json() == {"has_session": False}
@@ -202,6 +292,7 @@ def test_session_middleware_evicts_idle_session_before_touching_it(monkeypatch):
 def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkeypatch):
     monkeypatch.setattr(session_module, "SESSION_MAX_AGE", 10)
     monkeypatch.setattr(session_module.time, "time", lambda: 100.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-7"})
     old_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["old.csv"] = old_df
     session_module._sessions["session-7"] = session_module.LoadedDataEntry(
@@ -219,7 +310,7 @@ def test_evict_stale_dataframes_endpoint_removes_idle_dataframe(_mcp_app, monkey
     assert "old.csv" not in session_module.get_cache()
 
 
-def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
+def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app, monkeypatch):
     current_df = pd.DataFrame({"subject_id": [1]})
     other_df = pd.DataFrame({"subject_id": [2]})
     session_module.get_cache()["current.csv"] = current_df
@@ -235,7 +326,7 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
         dataframe_size_bytes=5678,
     )
 
-    session_module._current_user_id.set("session-size")
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-size"})
     client = TestClient(_mcp_app)
 
     response = client.get("/dataframe/size")
@@ -244,7 +335,7 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
     assert response.json() == {"dataframe_size_bytes": 1234}
 
 
-def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
+def test_dataset_info_endpoint_returns_source_file_size(_mcp_app, monkeypatch):
     current_df = pd.DataFrame({"subject_id": [1]})
     session_module.get_cache()["current.csv"] = current_df
     session_module._sessions["session-size"] = session_module.LoadedDataEntry(
@@ -254,7 +345,7 @@ def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
         source_file_size_bytes=42,
     )
 
-    session_module._current_user_id.set("session-size")
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-size"})
     client = TestClient(_mcp_app)
 
     response = client.get("/dataset/info")
@@ -289,7 +380,7 @@ def test_get_current_dataframe_size_logs_warning_when_session_is_missing(caplog)
     assert "No loaded DataFrame found for user missing-session" in caplog.text
 
 
-def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_mcp_app):
+def test_evict_current_session_dataframe_endpoint_removes_only_current_dataframe(_mcp_app, monkeypatch):
     current_df = pd.DataFrame({"subject_id": [1]})
     other_df = pd.DataFrame({"subject_id": [2]})
     session_module.get_cache()["current.csv"] = current_df
@@ -305,15 +396,17 @@ def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_
         dataframe_size_bytes=5678,
     )
 
-    session_module._current_user_id.set("session-current")
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current"})
     client = TestClient(_mcp_app)
 
     response = client.post("/dataframe/evict-current-session")
 
     assert response.status_code == 200
-    assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
-    assert "session-current" not in session_module._sessions
+    assert response.json() == {"evicted_sessions": 0, "evicted_dataframes": 1}
+    assert "session-current" in session_module._sessions
     assert "session-other" in session_module._sessions
+    assert session_module._sessions["session-current"].dataframe_exists is False
+    assert session_module._sessions["session-current"].dataframe_size_bytes == 0
     assert "current.csv" not in session_module.get_cache()
     pd.testing.assert_frame_equal(session_module.get_cache()["other.csv"], other_df)
 
@@ -353,7 +446,8 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
     assert session_module._sessions["session-3"].last_accessed == 123.0
 
 
-def test_session_middleware_defaults_session_id_when_header_is_missing():
+def test_session_middleware_uses_current_user_when_header_is_missing(monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "default"})
     app = FastAPI()
     app.add_middleware(session_module.SessionMiddleware)
 
@@ -374,10 +468,15 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
     dataset.write_text("subject_id,arm\n1,A\n2,B\n", encoding="utf-8")
     tiny_cache = LRUCache(maxsize=1, getsizeof=lambda value: 2)
     monkeypatch.setattr(dataframe_cache, "get_cache", lambda: tiny_cache)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-too-big"})
 
     client = TestClient(_mcp_app, raise_server_exceptions=False)
 
-    response = client.post("/dataset/load", params={"file_snapshot_path": str(dataset)})
+    response = client.post(
+        "/dataset/load",
+        params={"file_snapshot_path": str(dataset)},
+        json={"dataset": str(dataset)},
+    )
 
     assert response.status_code == 413
     assert response.json() == {
@@ -421,7 +520,7 @@ def test_load_current_df_reuses_matching_cached_dataframe(monkeypatch):
         lambda file_snapshot_path: (_ for _ in ()).throw(AssertionError("should not reload")),
     )
 
-    df = session_module.load_current_df("adsl.csv")
+    df = session_module.load_current_df("adsl.csv", reload_context={"dataset": "adsl.csv"})
 
     pd.testing.assert_frame_equal(df, cached_df)
 
@@ -439,7 +538,7 @@ def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
     monkeypatch.setattr(session_module, "load_dataset", fake_load_dataset)
     monkeypatch.setattr(session_module.objsize, "get_deep_size", lambda dataframe: 4321)
 
-    df = session_module.load_current_df("adsl.csv")
+    df = session_module.load_current_df("adsl.csv", reload_context={"dataset": "adsl.csv"})
 
     assert loader_thread_names
     assert loader_thread_names[0] != caller_thread_name

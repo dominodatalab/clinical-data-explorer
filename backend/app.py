@@ -23,6 +23,7 @@ from backend.routes.data import bp as data_bp
 from backend.routes.datasets import bp as datasets_bp
 from backend.routes.governance import bp as governance_bp
 from backend.routes.launch_context import bp as launch_context_bp
+from backend.session import refresh_current_user_id
 
 logger = logging.getLogger(__name__)
 
@@ -89,6 +90,11 @@ def create_app():
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
 
     _register_static_routes(app)
+
+    @app.before_request
+    def cache_current_user_id():
+        refresh_current_user_id()
+
     app.register_blueprint(charts_bp)
     app.register_blueprint(chat_bp)
     app.register_blueprint(data_bp)

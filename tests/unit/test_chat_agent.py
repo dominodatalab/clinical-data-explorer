@@ -286,7 +286,7 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show me age", session_id="session-1")
@@ -346,7 +346,7 @@ def test_get_agent_response_keeps_chart_payloads_in_message_history(monkeypatch)
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show a chart", session_id="session-chart")
@@ -369,7 +369,7 @@ def test_get_agent_response_caps_message_history(monkeypatch):
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("hello", session_id="session-1")
@@ -396,7 +396,7 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
     fallback_agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: mcp_agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: mcp_agent)
     monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda: fallback_agent)
 
     response = asyncio.run(

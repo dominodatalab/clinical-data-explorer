@@ -20,7 +20,6 @@ from dataclasses import dataclass
 import io
 import logging
 import os
-import shutil
 import tempfile
 import traceback
 from pathlib import Path
@@ -28,6 +27,7 @@ from pathlib import Path
 import requests
 from flask import jsonify
 from werkzeug.exceptions import (
+    BadRequest,
     Forbidden,
     HTTPException,
     InternalServerError,
@@ -710,6 +710,14 @@ def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: 
     return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
 
 
+def _create_download_cache_file(source_type: SourceType, dataset_id: str, snapshot_id: str | int | None, file_path: str) -> Path:
+    snapshot_key = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
+    temp_path = get_file_cache().set(str(source_type), str(dataset_id), snapshot_key, str(file_path))
+    if temp_path.exists():
+        temp_path.write_bytes(b"")
+    return temp_path
+
+
 def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, snapshot_version, token=None):
     if snapshot_version not in (None, ''):
         return snapshot_version
@@ -807,6 +815,26 @@ def load_existing_session_dataframe(load_request: DatasetLoadRequest, target: Da
     if target.file_path:
         result['governanceFilename'] = target.file_path.split('/')[-1]
     return jsonify(result)
+
+
+def _dataset_file_metadata_response(load_request: DatasetLoadRequest, target: DatasetLoadTarget) -> dict:
+    result = {
+        'dataset': load_request.dataset,
+        'file_snapshot_path': target.file_snapshot_path,
+    }
+    if target.source_type:
+        result['sourceType'] = target.source_type
+    if target.dataset_id:
+        result['datasetId'] = target.dataset_id
+    if target.snapshot_id and target.snapshot_id != 'latest':
+        result['snapshotId'] = target.snapshot_id
+    if target.volume_id:
+        result['volumeId'] = target.volume_id
+    if target.snapshot_version not in (None, ''):
+        result['snapshotVersion'] = target.snapshot_version
+    if target.file_path:
+        result['governanceFilename'] = target.file_path.split('/')[-1]
+    return result
 
 
 def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None):
@@ -908,53 +936,20 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
     Unlike DatasetClient which always uses the active snapshot,
     this uses /v4/datasetrw/snapshot/{snapshotId}/file/raw to download from any snapshot.
     """
-    api_host = get_domino_api_host()
-    token = token or get_passthrough_token()
     session_id = session_id or get_session_id()
-    if not token:
-        return jsonify({'error': 'Authentication required.'}), 401
-
-    if not api_host:
-        return jsonify({'error': 'Domino API host not configured'}), 500
-
-    # Parse "dataset_name/file_path" format (may include subdirectory paths)
-    parts = dataset_display_name.split('/', 1)
-    if len(parts) != 2:
-        return jsonify({'error': f'Invalid dataset reference: {dataset_display_name}'}), 400
-
-    ds_name, file_path = parts
 
     try:
-
-        headers = {'Authorization': f'Bearer {token}'}
-        # Download file from specific snapshot via raw content API
-        download_url = f'{api_host}/v4/datasetrw/snapshot/{snapshot_id}/file/raw'
-        response = requests.get(
-            download_url,
-            params={'path': file_path, 'download': 'true'},
-            headers=headers,
-            timeout=120,
-            stream=True
+        target = download_dataset_file_from_snapshot_to_cache(
+            dataset_display_name,
+            dataset_id,
+            snapshot_id,
+            token=token,
         )
-
-        if response.status_code in (401, 403):
-            return jsonify({'error': 'Access denied. Your session may have expired.'}), response.status_code
-        if response.status_code != 200:
-            logger.error(f"Snapshot file download failed: {response.status_code} - {response.text[:200]}")
-            return jsonify({'error': f'Failed to download file from snapshot (HTTP {response.status_code})'}), response.status_code
-
-        # Save to session-specific temp directory
-        with data_file_path(dataset_id, file_path, 'dataset', snapshot_id) as temp_path:
-            logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
-            with open(temp_path, 'wb') as f:
-                for chunk in response.iter_content(chunk_size=8192):
-                    f.write(chunk)
-            logger.info(f"Downloaded snapshot file to {temp_path}")
-
+        try:
             # Load into MCP server
             mcp_response = mcp_post(
                 "/dataset/load",
-                params={'file_snapshot_path': temp_path},
+                params={'file_snapshot_path': target.file_snapshot_path},
                 session_id=session_id,
             )
 
@@ -965,20 +960,78 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
                 result['sourceType'] = 'dataset'
                 result['datasetId'] = dataset_id
                 result['snapshotId'] = snapshot_id
-                result['governanceFilename'] = file_path.split('/')[-1]
+                result['governanceFilename'] = target.file_path.split('/')[-1]
                 clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
                 return jsonify({'error': error_detail}), mcp_response.status_code
+        finally:
+            get_file_cache().remove('dataset', dataset_id, snapshot_id, target.file_path)
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading snapshot file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
+    except HTTPException as e:
+        return jsonify({'error': e.description}), e.code
     except Exception as e:
         logger.error(f"Error loading file from snapshot: {e}")
         logger.error(traceback.format_exc())
         return jsonify({'error': f'Error loading file from snapshot: {str(e)}'}), 500
+
+
+def download_dataset_file_from_snapshot_to_cache(dataset_display_name, dataset_id, snapshot_id, token=None) -> DatasetLoadTarget:
+    """Download a Domino dataset snapshot file into the backend cache."""
+    api_host = get_domino_api_host()
+    token = token or get_passthrough_token()
+    if not token:
+        raise Unauthorized('Authentication required.')
+
+    if not api_host:
+        raise InternalServerError('Domino API host not configured')
+
+    parts = dataset_display_name.split('/', 1)
+    if len(parts) != 2:
+        raise BadRequest(f'Invalid dataset reference: {dataset_display_name}')
+
+    _, file_path = parts
+
+    headers = {'Authorization': f'Bearer {token}'}
+    download_url = f'{api_host}/v4/datasetrw/snapshot/{snapshot_id}/file/raw'
+    response = requests.get(
+        download_url,
+        params={'path': file_path, 'download': 'true'},
+        headers=headers,
+        timeout=120,
+        stream=True
+    )
+
+    if response.status_code == 401:
+        raise Unauthorized('Access denied. Your session may have expired.')
+    if response.status_code == 403:
+        raise Forbidden('Access denied. Your session may have expired.')
+    if response.status_code == 404:
+        raise NotFound(f'File "{file_path}" not found in snapshot "{snapshot_id}"')
+    if response.status_code != 200:
+        logger.error(f"Snapshot file download failed: {response.status_code} - {response.text[:200]}")
+        exc = HTTPException(description=f'Failed to download file from snapshot (HTTP {response.status_code})')
+        exc.code = response.status_code
+        raise exc
+
+    temp_path = _create_download_cache_file('dataset', dataset_id, snapshot_id, file_path)
+    logger.info(f"Downloading {file_path} from snapshot {snapshot_id} to {temp_path}")
+    with open(temp_path, 'wb') as f:
+        for chunk in response.iter_content(chunk_size=8192):
+            f.write(chunk)
+    logger.info(f"Downloaded snapshot file to {temp_path}")
+
+    return DatasetLoadTarget(
+        file_snapshot_path=str(temp_path),
+        dataset_id=dataset_id,
+        snapshot_id=snapshot_id,
+        source_type='dataset',
+        file_path=file_path,
+    )
 
 
 def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None, token=None, session_id=None):
@@ -993,73 +1046,21 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
             populate governance context in the response. The SDK pins the read
             by version, but governance attachments are keyed by snapshotId.
     """
-    token = token or get_passthrough_token()
     session_id = session_id or get_session_id()
-    if not token:
-        return jsonify({'error': 'Authentication required. Please ensure you are accessing this app through Domino.'}), 401
-
-    # Parse "volume_name/file_name" format
-    # TODO why not send names separately?
-    parts = dataset_display_name.split('/', 1)
-    if len(parts) != 2:
-        return jsonify({'error': f'Invalid volume file reference: {dataset_display_name}'}), 400
-
-    vol_name, file_name = parts
 
     try:
-        from domino_data.netapp_volumes import NetAppVolumeClient
-        vol_client = NetAppVolumeClient(token=token)
-        volume = vol_client.get_volume(volume_key)
-
-        # The SDK pins reads by version (int), but the netapp deeplink URL
-        # carries only a snapshot UUID. When we have an id but no version
-        # (e.g. the user landed via a netAppVolumeFileContext URL), look up
-        # the version from the volume's snapshot list.
-        if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
-            try:
-                snaps = vol_client.list_snapshots(volume_unique_name=volume_key) or []
-                for s in snaps:
-                    if s.id == snapshot_id:
-                        snapshot_version = s.version
-                        break
-            except Exception as e:
-                logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
-
-        # Pin the volume to a specific snapshot so list_files / File() operate
-        # against that snapshot's contents rather than the r/w head.
-        if snapshot_version is not None and snapshot_version != '':
-            from domino_data.data_sources import NetAppVolumeConfig
-            volume.update(NetAppVolumeConfig(snapshot_version=str(snapshot_version)))
-
-        # Verify the file exists. For snapshot reads we list via the volume
-        # (which respects the pinned snapshot); otherwise list via the client
-        # (r/w head).
-        if snapshot_version is not None and snapshot_version != '':
-            file_objects = volume.list_files() or []
-            files = [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
-        else:
-            files = vol_client.list_files(volume_key)
-
-        # TODO is there a way to check for membership via the vol_client?
-        if file_name not in files:
-            return jsonify({'error': f'File "{file_name}" not found in volume "{vol_name}"'}), 404
-
-        # Use volume.File() factory to get a downloadable file handle
-        target_file = volume.File(file_name)
-
-        # Download to session-specific temp directory
-        with data_file_path(volume_key, file_name, 'netapp', snapshot_version) as temp_path:
-            logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
-            buf = io.BytesIO()
-            target_file.download_fileobj(buf)
-            with open(temp_path, 'wb') as f:
-                f.write(buf.getbuffer())
-            logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
-
+        target = download_netapp_volume_file_to_cache(
+            dataset_display_name,
+            volume_key,
+            snapshot_version,
+            snapshot_id,
+            token=token,
+        )
+        try:
             # Tell the MCP server to load this file from the temp path
             mcp_response = mcp_post(
                 "/dataset/load",
-                params={'file_snapshot_path': temp_path},
+                params={'file_snapshot_path': target.file_snapshot_path},
                 session_id=session_id,
             )
 
@@ -1069,24 +1070,28 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
                 # Identifier fields for governance lookup. Only when the load was
                 # pinned to a specific snapshot version can this match an attachment
                 # (r/w-head files cannot be attached to a bundle).
-                vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
                 result['sourceType'] = 'netapp'
-                if vol_id:
-                    result['volumeId'] = vol_id
-                if snapshot_version is not None and snapshot_version != '':
-                    result['snapshotVersion'] = snapshot_version
-                if snapshot_id:
-                    result['snapshotId'] = snapshot_id
-                result['governanceFilename'] = file_name.split('/')[-1]
+                if target.volume_id:
+                    result['volumeId'] = target.volume_id
+                if target.snapshot_version is not None and target.snapshot_version != '':
+                    result['snapshotVersion'] = target.snapshot_version
+                if target.snapshot_id:
+                    result['snapshotId'] = target.snapshot_id
+                result['governanceFilename'] = target.file_path.split('/')[-1]
                 clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
                 return jsonify({'error': error_detail}), mcp_response.status_code
+        finally:
+            snapshot_key = "unset_snapshot_id" if target.snapshot_version in (None, '') else target.snapshot_version
+            get_file_cache().remove('netapp', volume_key, snapshot_key, target.file_path)
 
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
+    except HTTPException as e:
+        return jsonify({'error': e.description}), e.code
     except Exception as e:
         logger.error(f"Error loading NetApp volume file: {e}")
         logger.error(traceback.format_exc())
@@ -1094,8 +1099,95 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         return jsonify({'error': f'Error loading file from volume: {str(e)}'}), 500
 
 
+def download_netapp_volume_file_to_cache(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None, token=None) -> DatasetLoadTarget:
+    """Download a NetApp volume file into the backend cache."""
+    token = token or get_passthrough_token()
+    if not token:
+        raise Unauthorized('Authentication required. Please ensure you are accessing this app through Domino.')
+
+    parts = dataset_display_name.split('/', 1)
+    if len(parts) != 2:
+        raise BadRequest(f'Invalid volume file reference: {dataset_display_name}')
+
+    vol_name, file_name = parts
+
+    from domino_data.netapp_volumes import NetAppVolumeClient
+    vol_client = NetAppVolumeClient(token=token)
+    volume = vol_client.get_volume(volume_key)
+
+    if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
+        try:
+            snaps = vol_client.list_snapshots(volume_unique_name=volume_key) or []
+            for s in snaps:
+                if s.id == snapshot_id:
+                    snapshot_version = s.version
+                    break
+        except Exception as e:
+            logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
+
+    if snapshot_version is not None and snapshot_version != '':
+        from domino_data.data_sources import NetAppVolumeConfig
+        volume.update(NetAppVolumeConfig(snapshot_version=str(snapshot_version)))
+
+    if snapshot_version is not None and snapshot_version != '':
+        file_objects = volume.list_files() or []
+        files = [f.key if hasattr(f, 'key') else str(f) for f in file_objects]
+    else:
+        files = vol_client.list_files(volume_key)
+
+    if file_name not in files:
+        raise NotFound(f'File "{file_name}" not found in volume "{vol_name}"')
+
+    target_file = volume.File(file_name)
+    temp_path = _create_download_cache_file('netapp', volume_key, snapshot_version, file_name)
+    logger.info(f"Downloading {file_name} from NetApp volume {volume_key} to {temp_path}")
+    buf = io.BytesIO()
+    target_file.download_fileobj(buf)
+    with open(temp_path, 'wb') as f:
+        f.write(buf.getbuffer())
+    logger.info(f"Downloaded {len(buf.getbuffer())} bytes to {temp_path}")
+
+    vol_id = getattr(volume, 'id', None) or getattr(volume, 'volume_id', None)
+    return DatasetLoadTarget(
+        file_snapshot_path=str(temp_path),
+        source_type='netapp',
+        volume_key=volume_key,
+        volume_id=vol_id,
+        snapshot_id=snapshot_id,
+        snapshot_version=snapshot_version,
+        file_path=file_name,
+    )
+
+
+def process_dataset_download_file_request(load_request: DatasetLoadRequest):
+    """Process a queued dataset request through file resolution and download only."""
+    token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
+    target = resolve_dataset_load_target(load_request, token=token)
+
+    if target.source_type == 'netapp' and target.volume_key:
+        target = download_netapp_volume_file_to_cache(
+            load_request.dataset,
+            target.volume_key,
+            target.snapshot_version,
+            target.snapshot_id,
+            token=token,
+        )
+    elif target.dataset_id and target.snapshot_id:
+        target = download_dataset_file_from_snapshot_to_cache(
+            load_request.dataset,
+            target.dataset_id,
+            target.snapshot_id,
+            token=token,
+        )
+
+    return jsonify(_dataset_file_metadata_response(load_request, target))
+
+
 def process_dataset_load_request(load_request: DatasetLoadRequest):
     """Process a queued dataset-load request through the appropriate load path."""
+    if not load_request.create_dataframe:
+        return process_dataset_download_file_request(load_request)
+
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
     if load_request.source_type == 'netapp' and load_request.volume_key:

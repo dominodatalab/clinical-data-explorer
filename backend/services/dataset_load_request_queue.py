@@ -29,7 +29,7 @@ class DatasetLoadRequest:
 
     Fields:
         dataset: User-facing dataset/file identifier to load.
-        session_id: Flask/MCP session identifier that should own the load.
+        session_id: Current Domino user ID that owns the load.
         authorization_header: Raw Authorization header for Domino passthrough auth.
         project_id: Domino project ID for project-scoped dataset loads.
         dataset_id: Domino dataset ID for dataset-context loads.
@@ -38,6 +38,9 @@ class DatasetLoadRequest:
         volume_key: NetApp volume key for NetApp-backed loads.
         volume_id: NetApp volume UUID for WebVFS-backed metadata requests.
         snapshot_version: NetApp snapshot version when applicable.
+        create_dataframe: Whether the processor will create/load a DataFrame.
+            False is used for download-only requests that must not evict the
+            current MCP session DataFrame.
         enqueued_at: Timestamp recording when the request entered the queue.
     """
 
@@ -51,6 +54,7 @@ class DatasetLoadRequest:
     volume_key: Optional[str] = None
     volume_id: Optional[str] = None
     snapshot_version: Optional[int | str] = None
+    create_dataframe: bool = True
     enqueued_at: float = field(default_factory=time.time)
 
 
@@ -98,19 +102,22 @@ class DatasetLoadRequestQueue:
         # the cumulative projected DataFrame memory for every admitted request.
         self._projected_dataframe_size_bytes: Optional[int] = None
 
-    def _get_current_session_dataframe_size_bytes(self, session_id: str) -> int:
+    def _mcp_headers(self, authorization_header: Optional[str]) -> dict:
+        return {"Authorization": authorization_header} if authorization_header else {}
+
+    def _get_current_session_dataframe_size_bytes(self, authorization_header: Optional[str]) -> int:
         response = requests.get(
             f"{config.MCP_SERVER_URL}/dataframe/size",
-            headers={"X-Session-Id": session_id},
+            headers=self._mcp_headers(authorization_header),
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
         return int(response.json()["dataframe_size_bytes"])
 
-    def _evict_current_session_dataframe(self, session_id: str) -> None:
+    def _evict_current_session_dataframe(self, authorization_header: Optional[str]) -> None:
         response = requests.post(
             f"{config.MCP_SERVER_URL}/dataframe/evict-current-session",
-            headers={"X-Session-Id": session_id},
+            headers=self._mcp_headers(authorization_header),
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
@@ -175,6 +182,7 @@ class DatasetLoadRequestQueue:
             volume_key=entry.volume_key,
             volume_id=entry.volume_id,
             snapshot_version=entry.snapshot_version,
+            create_dataframe=entry.create_dataframe,
             enqueued_at=entry.enqueued_at,
         )
         queued_entry = _QueuedDatasetLoadRequest(entry)
@@ -193,7 +201,9 @@ class DatasetLoadRequestQueue:
                 self._memory_usage_baseline_bytes = file_size_limits.get_memory_usage_snapshot_bytes()
                 self._projected_dataframe_size_bytes = 0
 
-            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(entry.session_id)
+            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(
+                entry.authorization_header
+            )
             adjusted_memory_usage_baseline_bytes = self._memory_usage_baseline_bytes
             if adjusted_memory_usage_baseline_bytes is not None:
                 adjusted_memory_usage_baseline_bytes = max(
@@ -211,7 +221,8 @@ class DatasetLoadRequestQueue:
                     additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
                     used_memory_bytes=adjusted_memory_usage_baseline_bytes,
                 )
-                self._evict_current_session_dataframe(entry.session_id)
+                if entry.create_dataframe:
+                    self._evict_current_session_dataframe(entry.authorization_header)
             except Exception:
                 if started_busy_period:
                     self._reset_projected_memory_usage()
