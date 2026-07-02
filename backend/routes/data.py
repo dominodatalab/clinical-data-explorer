@@ -79,41 +79,44 @@ def _get_current_session_dataset(session_id):
     return response.json().get("dataset")
 
 
-@bp.route('/dataset/load', methods=['POST'])
-def load_dataset():
-    """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
+def _dataset_load_request_from_body():
     request_json = request.get_json(silent=True) or {}
     dataset_name = request_json.get('dataset')
-    project_id = request_json.get('projectId')
-    dataset_id = request_json.get('datasetId')
-    snapshot_id = request_json.get('snapshotId')
-    source_type = request_json.get('sourceType')
-    volume_key = request_json.get('volumeKey')
-    volume_id = request_json.get('volumeId')
-    snapshot_version = request_json.get('snapshotVersion')
     if not dataset_name:
-        return jsonify({'error': 'No dataset name provided'}), 400
+        raise BadRequest('No dataset name provided')
 
     session_id = get_session_id()
-    load_request = dataset_load_request_queue.DatasetLoadRequest(
+    return dataset_load_request_queue.DatasetLoadRequest(
         dataset=dataset_name,
         session_id=session_id,
         authorization_header=request.headers.get('Authorization'),
-        project_id=project_id,
-        dataset_id=dataset_id,
-        snapshot_id=snapshot_id,
-        source_type=source_type,
-        volume_key=volume_key,
-        volume_id=volume_id,
-        snapshot_version=snapshot_version,
+        project_id=request_json.get('projectId'),
+        dataset_id=request_json.get('datasetId'),
+        snapshot_id=request_json.get('snapshotId'),
+        source_type=request_json.get('sourceType'),
+        volume_key=request_json.get('volumeKey'),
+        volume_id=request_json.get('volumeId'),
+        snapshot_version=request_json.get('snapshotVersion'),
+        create_dataframe=request_json.get('createDataframe', True),
     )
 
-    try:
-        target = resolve_dataset_load_target(load_request)
-        if _get_current_session_dataset(session_id) == target.file_snapshot_path:
-            return load_existing_session_dataframe(load_request, target)
 
-        _evict_stale_dataframes_before_load()
+@bp.route('/dataset/load', methods=['POST'])
+def load_dataset():
+    """Load a specific dataset. In extension mode (projectId or datasetId in body), downloads via Domino API first."""
+    try:
+        load_request = _dataset_load_request_from_body()
+    except BadRequest:
+        return jsonify({'error': 'No dataset name provided'}), 400
+
+    try:
+        if load_request.create_dataframe:
+            target = resolve_dataset_load_target(load_request)
+            if _get_current_session_dataset(load_request.session_id) == target.file_snapshot_path:
+                return load_existing_session_dataframe(load_request, target)
+
+            _evict_stale_dataframes_before_load()
+
         # TODO this could wait for a while. can we have a multi minute timeout on requests?
         # should we have an expiration on requests?
         return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(

@@ -115,6 +115,7 @@ Configure the following environment variables in your Domino project settings:
 | `MCP_HOST` | `0.0.0.0` | Host interface for the MCP FastAPI/Uvicorn server. |
 | `MCP_WORKERS` | `1` | Uvicorn worker count. Keep this at `1` because MCP sessions and loaded DataFrames are process-local. |
 | `MCP_SERVER_URL` | `http://127.0.0.1:3333` | URL used by the Flask backend when proxying requests to the MCP server. |
+| `BACKEND_SERVER_URL` | `http://localhost:${MAIN_APP_PORT:-8888}` | URL used by the MCP server when it needs the Flask backend to redownload a dataset file. |
 | `FLASK_APP_KEEPALIVE_TIMEOUT` | `10` | Keepalive timeout for the backend server |
 | `MCP_APP_KEEPALIVE_TIMEOUT` | `10` | Keepalive timeout for the mcp server |
 
@@ -127,7 +128,8 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 | `DATA_FILE_CACHE_EXPIRATION_SECONDS` | `60` | How long backend download-file metadata entries are kept before cleanup runs. Applies to temporary files downloaded before handing them to the MCP server. |
 | `DATA_FILE_CACHE_MAX_ITEM_COUNT` | `100` | Maximum number of backend download-file metadata entries to retain before older entries are evicted and cleaned up. |
 | `MCP_SERVER_DATAFRAME_CACHE_SIZE_B` | `1073741824` | Maximum size, in bytes, of the MCP server's in-memory DataFrame cache. |
-| `MCP_SESSION_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
+| `DATAFRAME_MAX_AGE` | `900` | Maximum idle age, in seconds, for MCP DataFrames before the DataFrame cache entry is evicted while preserving session metadata. |
+| `MCP_SESSION_MAX_AGE` | `86400` | Maximum idle age, in seconds, for MCP session metadata before the session is evicted. |
 | `MCP_SESSION_MAX_COUNT` | `50` | Maximum number of MCP sessions to retain before the oldest sessions are evicted. |
 
 #### Optional: AI Chat Feature

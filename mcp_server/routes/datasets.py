@@ -29,6 +29,7 @@ import numpy as np
 import pandas as pd
 from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.encoders import jsonable_encoder
+from pydantic import BaseModel
 from starlette.concurrency import run_in_threadpool
 
 from mcp_server.session import (
@@ -54,6 +55,15 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
+class ReloadContextRequest(BaseModel):
+    dataset_name: str
+    project_id: str | None
+    dataset_id: str | None
+    snapshot_id: str | None
+    source_type: str | None
+    volume_key: str | None
+    volume_id: str | None
+    snapshot_version: str | None
 
 @router.get("/datasets/list", response_model=DatasetList)
 async def list_datasets():
@@ -66,10 +76,11 @@ async def list_datasets():
 
 @router.post("/dataset/load", operation_id="load_dataset")
 async def load_dataset_endpoint(
-    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
+    file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load"),
+    reload_context: dict | None = None,
 ):
     """Load a specific dataset file and return column metadata."""
-    df = await run_in_threadpool(load_current_df, file_snapshot_path)
+    df = await run_in_threadpool(load_current_df, file_snapshot_path, reload_context)
 
     # Return column metadata so UI can initialize immediately without fetching all data
     numeric_cols = _get_numeric_columns(df)

@@ -16,6 +16,8 @@ every route reaches via `get_current_df()`. After this extraction, every
 caller imports `get_current_df` from this module — there is no copy and
 no DataFrame-as-parameter passing.
 """
+from __future__ import annotations
+
 import contextvars
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
@@ -29,12 +31,13 @@ from typing import Dict, Optional
 
 import objsize
 import pandas as pd
+import requests
 from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
-from mcp_server.auth import set_auth_header
-from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
+from mcp_server.auth import get_passthrough_token, set_auth_header
+from mcp_server.config import BACKEND_SERVER_URL, SESSION_MAX_AGE, SESSION_MAX_COUNT, DATAFRAME_MAX_AGE
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 from mcp_server.services.httpclient import get_current_user
 
@@ -45,6 +48,7 @@ _current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_
 @dataclass
 class LoadedDataEntry:
     file_snapshot_path: str
+    dataframe_exists: bool = True
     last_accessed: float = 0
     # Verbatim file/variable metadata captured at load time. Stored here
     # because Domino-sourced files are downloaded to a temp path that gets
@@ -52,6 +56,8 @@ class LoadedDataEntry:
     metadata: Optional[dict] = None
     dataframe_size_bytes: int = 0
     source_file_size_bytes: int = 0
+    dataframe_last_accessed: Optional[float] = None
+    reload_context: Optional[DatasetReloadContextEntry] = None
 
 
 @dataclass
@@ -60,6 +66,10 @@ class DataFrameLoadResult:
     metadata: dict
     source_file_size_bytes: int
 
+@dataclass
+class DatasetReloadContextEntry:
+    load_body: dict
+    last_accessed: float = 0
 
 @dataclass(frozen=True)
 class SessionEvictionResult:
@@ -106,18 +116,24 @@ class SessionMiddleware(BaseHTTPMiddleware):
         return response
 
 
-def _drop_unreferenced_cache_entries(file_snapshot_paths: list[str]) -> int:
+def _drop_unreferenced_cache_entries(unreferenced_paths: list[(str, str)]) -> int:
     """Remove cached DataFrames that no active session references."""
-    if not file_snapshot_paths:
+    if not unreferenced_paths:
         return 0
 
-    sessions = _get_sessions()
-    referenced_paths = {session.file_snapshot_path for session in sessions.values()}
     cache = get_cache()
     evicted_count = 0
-    for file_snapshot_path in set(file_snapshot_paths) - referenced_paths:
+    sessions = _get_sessions()
+    for (sid, file_snapshot_path) in unreferenced_paths:
+        if any(
+            active_sid != sid and active_session.file_snapshot_path == file_snapshot_path
+            for active_sid, active_session in sessions.items()
+        ):
+            continue
         if cache.pop(file_snapshot_path, None) is not None:
             evicted_count += 1
+            if sid in sessions:
+                sessions[sid].dataframe_exists = False
     return evicted_count
 
 
@@ -128,19 +144,31 @@ def _evict_stale_sessions():
     stale = [sid for sid, s in sessions.items()
              if now - s.last_accessed > SESSION_MAX_AGE]
     evicted_paths = []
+    evicted_sessions = []
     for sid in stale:
         logger.info(f"Evicting stale session: {sid}")
-        evicted_paths.append(sessions[sid].file_snapshot_path)
+        evicted_paths.append((sid, sessions[sid].file_snapshot_path))
+        evicted_sessions.append(sessions[sid].file_snapshot_path)
         del sessions[sid]
+
+    for sid, s in sessions.items():
+        if s.dataframe_last_accessed and now - s.dataframe_last_accessed > DATAFRAME_MAX_AGE:
+            logger.info(f"Evicting stale dataframe: {sid}")
+
+            # delete only the dataframe, but want to keep the session, so don't delete the session entry, but do update
+            # evicted paths
+            evicted_paths.append((sid, sessions[sid].file_snapshot_path))
+
     # If still over limit, evict oldest
     if len(sessions) > SESSION_MAX_COUNT:
         by_age = sorted(sessions.items(), key=lambda x: x[1].last_accessed)
         for sid, _ in by_age[:len(sessions) - SESSION_MAX_COUNT]:
             logger.info(f"Evicting session (over limit): {sid}")
-            evicted_paths.append(sessions[sid].file_snapshot_path)
+            evicted_paths.append((sid, sessions[sid].file_snapshot_path))
+            evicted_sessions.append(sessions[sid].file_snapshot_path)
             del sessions[sid]
     return SessionEvictionResult(
-        evicted_sessions=len(evicted_paths),
+        evicted_sessions=len(evicted_sessions),
         evicted_dataframes=_drop_unreferenced_cache_entries(evicted_paths),
     )
 
@@ -156,6 +184,7 @@ def _get_source_file_size_bytes(file_snapshot_path: str) -> int:
 def _set_current_df(
     df: pd.DataFrame,
     file_snapshot_path: str,
+    reload_context: Optional[dict] = None,
     metadata: Optional[dict] = None,
     source_file_size_bytes: Optional[int] = None,
 ):
@@ -172,6 +201,7 @@ def _set_current_df(
 
     sessions[session_id] = LoadedDataEntry(
         file_snapshot_path=file_snapshot_path,
+        dataframe_exists=True,
         last_accessed=time.time(),
         metadata=metadata,
         dataframe_size_bytes=objsize.get_deep_size(df),
@@ -180,9 +210,14 @@ def _set_current_df(
             if source_file_size_bytes is not None
             else _get_source_file_size_bytes(file_snapshot_path)
         ),
+        reload_context=(
+            DatasetReloadContextEntry(load_body=reload_context, last_accessed=time.time())
+            if reload_context
+            else None
+        ),
     )
     if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
-        _drop_unreferenced_cache_entries([previous_file_snapshot_path])
+        _drop_unreferenced_cache_entries([(session_id, previous_file_snapshot_path)])
     _evict_stale_sessions()
 
 
@@ -220,7 +255,7 @@ def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadR
         return executor.submit(_create_dataframe_entry, file_snapshot_path).result()
 
 
-def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
+def load_current_df(file_snapshot_path: str, reload_context: Optional[dict] = None) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
     if has_current_df(file_snapshot_path):
         return get_cache()[file_snapshot_path]
@@ -229,7 +264,8 @@ def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     _set_current_df(
         result.dataframe,
         file_snapshot_path,
-        result.metadata,
+        reload_context=reload_context,
+        metadata=result.metadata,
         source_file_size_bytes=result.source_file_size_bytes,
     )
     return result.dataframe
@@ -255,6 +291,35 @@ def get_current_source_file_size_bytes() -> int:
     return session.source_file_size_bytes
 
 
+def download_dataset_file(load_body: dict) -> str:
+    """Ask the backend to redownload the current dataset file and return its cached path."""
+    token = get_passthrough_token()
+    headers = {'Authorization': f'Bearer {token}'} if token else {}
+    download_body = dict(load_body)
+    download_body["createDataframe"] = False
+    try:
+        response = requests.post(
+            f"{BACKEND_SERVER_URL}/dataset/load",
+            json=download_body,
+            headers=headers,
+            timeout=120,
+        )
+    except requests.exceptions.ConnectionError as exc:
+        raise HTTPException(status_code=503, detail="Could not connect to backend server") from exc
+
+    if response.status_code != 200:
+        try:
+            detail = response.json().get('error') or response.json().get('detail')
+        except ValueError:
+            detail = response.text
+        raise HTTPException(status_code=response.status_code, detail=detail or "Failed to download dataset file")
+
+    file_snapshot_path = response.json().get("file_snapshot_path")
+    if not file_snapshot_path:
+        raise HTTPException(status_code=500, detail="Backend did not return file_snapshot_path")
+    return file_snapshot_path
+
+
 def evict_current_session_dataframe() -> SessionEvictionResult:
     """Remove the current session and its unreferenced cached DataFrame."""
     session_id = _current_user_id.get()
@@ -266,7 +331,7 @@ def evict_current_session_dataframe() -> SessionEvictionResult:
 
     return SessionEvictionResult(
         evicted_sessions=1,
-        evicted_dataframes=_drop_unreferenced_cache_entries([session.file_snapshot_path]),
+        evicted_dataframes=_drop_unreferenced_cache_entries([(session_id, session.file_snapshot_path)]),
     )
 
 
@@ -283,7 +348,7 @@ def get_current_metadata() -> dict:
     return extract_dataset_metadata(Path(session.file_snapshot_path))
 
 
-def get_current_df() -> pd.DataFrame:
+def get_current_df(reload_context: Optional[dict] = None) -> pd.DataFrame:
     """Get the current dataframe for this session, reloading on cache miss."""
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
@@ -293,6 +358,18 @@ def get_current_df() -> pd.DataFrame:
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
     if df is None:
-        logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
-        return load_current_df(session.file_snapshot_path)
+
+        if os.path.exists(session.file_snapshot_path):
+            logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
+            return load_current_df(session.file_snapshot_path, None)
+        else:
+            load_body = reload_context or (session.reload_context.load_body if session.reload_context else None)
+
+            if not load_body:
+                raise HTTPException(status_code=500, detail="Could not reload dataframe, because no reload context exists")
+
+            logger.debug("Cache miss for user %s dataset %s; reloading from reload context", session_id, session.file_snapshot_path)
+            file_snapshot_path = download_dataset_file(load_body)
+            return load_current_df(file_snapshot_path, load_body)
+
     return df
