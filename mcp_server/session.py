@@ -5,11 +5,10 @@ Extracted from `mcp_server/app.py` as step 2.3 of REFACTOR_PLAN.md §2
 FastAPI/Starlette middleware world).
 
 Each user session gets its own DataFrame so concurrent users don't clobber
-each other. The session ID comes from the `X-Session-Id` request header
-(set by the Flask proxy). A `"default"` session ID is used when no header
-is present (normal single-user mode). The active session ID is stored in
-a `contextvars.ContextVar` so it's correctly isolated per request even
-under concurrent async load.
+each other. The session ID is the current Domino user ID resolved from the
+request Authorization header. The active session ID is stored in a
+`contextvars.ContextVar` so it's correctly isolated per request even under
+concurrent async load.
 
 Per the plan watch-out for §2: the session store is module-level state that
 every route reaches via `get_current_df()`. After this extraction, every
@@ -93,19 +92,23 @@ def _get_session_id():
     user_id = _current_user_id.get()
 
     if not user_id:
-        user_id = get_current_user()['id']
-        _current_user_id.set(user_id)
+        user_id = refresh_current_user_id()
 
     return user_id
 
+
+def refresh_current_user_id():
+    """Resolve and cache the current Domino user ID for this request."""
+    user_id = get_current_user()['id']
+    _current_user_id.set(user_id)
+    return user_id
+
 class SessionMiddleware(BaseHTTPMiddleware):
-    """Extract X-Session-Id header and set it in contextvars for the request."""
+    """Resolve the current user ID and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
         set_auth_header(request.headers)
 
-        session_id = _get_session_id()
-
-        _current_user_id.set(session_id)
+        session_id = refresh_current_user_id()
 
         request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive

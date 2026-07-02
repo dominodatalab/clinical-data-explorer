@@ -56,10 +56,12 @@ def parquet_path(tmp_path):
 
 
 @pytest.fixture
-def parquet_client(_mcp_app, parquet_path):
+def parquet_client(_mcp_app, parquet_path, monkeypatch):
     """TestClient with the parquet fixture pre-loaded under a unique session."""
     session_id = f"pqtest-{uuid.uuid4().hex}"
-    client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
+    import mcp_server.session as session_module
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": session_id})
+    client = TestClient(_mcp_app, headers={"Authorization": "Bearer test-token"})
 
     resp = client.post("/dataset/load", params={"file_snapshot_path": str(parquet_path)})
     assert resp.status_code == 200, f"parquet load failed: {resp.status_code} {resp.text}"
@@ -150,9 +152,11 @@ def missing_values_parquet_path(tmp_path):
 
 
 @pytest.fixture
-def missing_values_client(_mcp_app, missing_values_parquet_path):
+def missing_values_client(_mcp_app, missing_values_parquet_path, monkeypatch):
     session_id = f"pqmiss-{uuid.uuid4().hex}"
-    client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
+    import mcp_server.session as session_module
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": session_id})
+    client = TestClient(_mcp_app, headers={"Authorization": "Bearer test-token"})
     resp = client.post("/dataset/load", params={"file_snapshot_path": str(missing_values_parquet_path)})
     assert resp.status_code == 200, f"parquet load failed: {resp.status_code} {resp.text}"
     yield client

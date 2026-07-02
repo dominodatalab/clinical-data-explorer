@@ -37,15 +37,15 @@ def stub_queue_mcp_dataframe_hooks(monkeypatch):
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
         "_get_current_session_dataframe_size_bytes",
-        lambda self, session_id: 0,
+        lambda self, authorization_header: 0,
     )
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
         "_evict_current_session_dataframe",
-        lambda self, session_id: None,
+        lambda self, authorization_header: None,
     )
-    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 0)
-    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: None)
+    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda authorization_header: 0)
+    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda authorization_header: None)
 
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
@@ -203,8 +203,12 @@ def test_load_dataset_queues_download_without_dataframe_creation(monkeypatch):
         "mcp_post",
         lambda path, **kwargs: (_ for _ in ()).throw(AssertionError("should not call MCP")),
     )
-    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda session_id: 789)
-    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda session_id: evict_calls.append(session_id))
+    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda authorization_header: 789)
+    monkeypatch.setattr(
+        queue,
+        "_evict_current_session_dataframe",
+        lambda authorization_header: evict_calls.append(authorization_header),
+    )
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 123)
     monkeypatch.setattr(data_routes.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 456)
     monkeypatch.setattr(
