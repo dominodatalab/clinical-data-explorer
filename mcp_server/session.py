@@ -112,6 +112,7 @@ class SessionMiddleware(BaseHTTPMiddleware):
         sessions = _get_sessions()
         if session_id in sessions:
             sessions[session_id].last_accessed = time.time()
+            sessions[session_id].dataframe_last_accessed = time.time()
         response = await call_next(request)
         return response
 
@@ -132,8 +133,14 @@ def _drop_unreferenced_cache_entries(unreferenced_paths: list[(str, str)]) -> in
             continue
         if cache.pop(file_snapshot_path, None) is not None:
             evicted_count += 1
-            if sid in sessions:
-                sessions[sid].dataframe_exists = False
+
+        if sid not in sessions or sessions[sid].file_snapshot_path != file_snapshot_path:
+            continue
+
+        if sid in sessions:
+            sessions[sid].dataframe_exists = False
+            sessions[sid].dataframe_size_bytes = 0
+            sessions[sid].dataframe_last_accessed = None
     return evicted_count
 
 
@@ -199,10 +206,11 @@ def _set_current_df(
     except dataframe_cache.DataFrameCacheValueTooLarge as exc:
         raise HTTPException(status_code=413, detail=str(exc)) from exc
 
+    now = time.time()
     sessions[session_id] = LoadedDataEntry(
         file_snapshot_path=file_snapshot_path,
         dataframe_exists=True,
-        last_accessed=time.time(),
+        last_accessed=now,
         metadata=metadata,
         dataframe_size_bytes=objsize.get_deep_size(df),
         source_file_size_bytes=(
@@ -210,8 +218,9 @@ def _set_current_df(
             if source_file_size_bytes is not None
             else _get_source_file_size_bytes(file_snapshot_path)
         ),
+        dataframe_last_accessed=now,
         reload_context=(
-            DatasetReloadContextEntry(load_body=reload_context, last_accessed=time.time())
+            DatasetReloadContextEntry(load_body=reload_context, last_accessed=now)
             if reload_context
             else None
         ),
@@ -321,18 +330,25 @@ def download_dataset_file(load_body: dict) -> str:
 
 
 def evict_current_session_dataframe() -> SessionEvictionResult:
-    """Remove the current session and its unreferenced cached DataFrame."""
+    """Remove the current session's unreferenced cached DataFrame."""
     session_id = _current_user_id.get()
     sessions = _get_sessions()
-    session = sessions.pop(session_id, None)
+    session = sessions.get(session_id)
     if session is None:
         logger.warning("No loaded DataFrame found for user %s when evicting current session", session_id)
         return SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
 
+    if session.dataframe_exists:
+        return SessionEvictionResult(
+            evicted_sessions=0,
+            evicted_dataframes=_drop_unreferenced_cache_entries([(session_id, session.file_snapshot_path)]),
+        )
+
     return SessionEvictionResult(
-        evicted_sessions=1,
-        evicted_dataframes=_drop_unreferenced_cache_entries([(session_id, session.file_snapshot_path)]),
+        evicted_sessions=0,
+        evicted_dataframes=0
     )
+
 
 
 def get_current_metadata() -> dict:
@@ -372,4 +388,8 @@ def get_current_df(reload_context: Optional[dict] = None) -> pd.DataFrame:
             file_snapshot_path = download_dataset_file(load_body)
             return load_current_df(file_snapshot_path, load_body)
 
+    now = time.time()
+    session.last_accessed = now
+    session.dataframe_exists = True
+    session.dataframe_last_accessed = now
     return df
