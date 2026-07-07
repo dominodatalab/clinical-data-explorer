@@ -16,7 +16,7 @@
         "autoCompatibleWithDomino": false,
         "visibility": "global",
         "buildArgs": {
-          "EXTENSION_VERSION": "v1.0.0-provisional2"
+          "EXTENSION_VERSION": "v1.0.0-provisional4"
         }
       }
     },
@@ -33,12 +33,12 @@
     "externalVolumeMounts": [],
     "hardwareTierIdSuggestion": "medium-k8s",
     "autoscalingSpec": {
-        "enabled": true,
-        "useSessionAffinity": true,
-        "minReplicas": 1,
-        "maxReplicas": 5,
-        "targetMemoryAvgUtilizationPct": 50,
-        "scaleUpStabilizationWindowSeconds": 0
+      "enabled": true,
+      "useSessionAffinity": true,
+      "minReplicas": 1,
+      "maxReplicas": 5,
+      "targetMemoryAvgUtilizationPct": 50,
+      "scaleUpStabilizationWindowSeconds": 0
     }
   },
   "extension": {
@@ -55,36 +55,36 @@
         }
       },
       "dataset": {
-          "enabled": true,
-          "urlConfig": {
-              "route": null,
-              "contextualQueryParams": ["datasetId","datasetSnapshotId","projectId"]
-          }
+        "enabled": true,
+        "urlConfig": {
+          "route": null,
+          "contextualQueryParams": ["datasetId", "datasetSnapshotId", "projectId"]
+        }
       },
       "datasetFileContext": {
-              "enabled": true,
-              "allProjects": true,
-              "fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"],
-              "urlConfig": {
-                      "route": null,
-                      "contextualQueryParams": ["datasetId","datasetSnapshotId","netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
-              }
-      },
-      "netAppVolume":{
         "enabled": true,
-        "urlConfig": {
-	    "route": null,
-	    "contextualQueryParams": ["netAppVolumeId","netAppVolumeSnapshotId","projectId"]
-	}
-      },
-      "netAppVolumeFileContext":{
-        "enabled": true,
-        "urlConfig": {
-	  "route": null,
-	  "contextualQueryParams": ["netAppVolumeId","netAppVolumeSnapshotId","projectId","filePath"]
-	},
         "allProjects": true,
-	"fileTypes":[".csv",".xpt",".sas7bdat",".parquet",".json",".dsjc",".ndjson"]
+        "fileTypes": [".csv", ".xpt", ".sas7bdat", ".parquet", ".json", ".dsjc", ".ndjson"],
+        "urlConfig": {
+          "route": null,
+          "contextualQueryParams": ["datasetId", "datasetSnapshotId", "projectId", "filePath"]
+        }
+      },
+      "netAppVolume": {
+        "enabled": true,
+        "urlConfig": {
+          "route": null,
+          "contextualQueryParams": ["netAppVolumeId", "netAppVolumeSnapshotId", "projectId"]
+        }
+      },
+      "netAppVolumeFileContext": {
+        "enabled": true,
+        "allProjects": true,
+        "fileTypes": [".csv", ".xpt", ".sas7bdat", ".parquet", ".json", ".dsjc", ".ndjson"],
+        "urlConfig": {
+          "route": null,
+          "contextualQueryParams": ["netAppVolumeId", "netAppVolumeSnapshotId", "projectId", "filePath"]
+        }
       }
     }
   }
