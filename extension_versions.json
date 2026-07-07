@@ -4,12 +4,10 @@
   "versions": [
     {
       "manifestSchemaVersion": 1,
-      "version": "v1.0.0-provisional3",
-      "releaseTag": "v1.0.0-provisional3",
+      "version": "1.0.0-provisional4",
+      "releaseTag": "v1.0.0-provisional4",
       "isProvisional": true,
-      "minDominoVersion": "6.3.0",
-      "maxDominoVersion": "6.3.0",
-      "testedWithDominoVersions": ["6.3.0"]
+      "minDominoVersion": "6.3.0"
     }
   ]
 }
