@@ -67,6 +67,7 @@ Guidelines:
 - Choose the most appropriate chart type for the data
 - Keep chart titles clear and descriptive
 - Always provide a text explanation before the chart
+- If the user asks about the loaded file's size, use the `source_file_size_bytes` value from dataset info. Do not use the DataFrame memory size as the file size.
 - For correlation matrices, use heatmap type
 - For comparing two numeric features, use scatter plot
 - For categorical data distributions, use bar or pie charts

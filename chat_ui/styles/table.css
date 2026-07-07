@@ -1085,6 +1085,7 @@ body.resizing .summary-stats-panel.summary-sidebar {
 
 .row-detail-table {
     width: 100%;
+    table-layout: fixed;
     border-collapse: collapse;
 }
 
@@ -1139,6 +1140,9 @@ body.resizing .summary-stats-panel.summary-sidebar {
 
 .row-detail-table td.numeric {
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    word-break: normal;
+    overflow-wrap: normal;
 }
 
 /* ===== Metadata panel ===== */

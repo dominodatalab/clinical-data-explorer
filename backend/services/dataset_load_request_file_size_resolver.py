@@ -51,7 +51,8 @@ def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -
             token=token,
         )
 
-    return os.path.getsize(load_request.dataset)
+    return os.path.getsize(f"./datasets/{load_request.dataset}")
+
 
 
 def _split_dataset_file_path(dataset_display_name: str) -> str:
@@ -100,14 +101,34 @@ def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, toke
 
     ds_name = dataset_display_name.split('/', 1)[0]
     response = httpclient.get(
-        f'{api_host}/api/datasetrw/v2/datasets?projectId={project_id}&limit=100',
+        f'{api_host}/api/datasetrw/v2/datasets',
+        params={
+            'projectIdsToInclude': project_id,
+            'limit': 100,
+        },
         headers={'Authorization': f'Bearer {token}'},
     )
 
     for dataset_entry in response.get('datasets', []):
-        dataset = dataset_entry.get('dataset', dataset_entry)
+        dataset = dataset_entry['dataset']
         if dataset.get('name') == ds_name and dataset.get('projectId') == project_id:
             return dataset['id']
+
+    shared_datasets_response = httpclient.get(
+        f'{api_host}/api/projects/v1/projects/{project_id}/shared-datasets',
+        headers={'Authorization': f'Bearer {token}'},
+    )
+
+    shared_dataset_ids = (shared_datasets_response.get('dataset') or {}).get('sharedDatasetIds') or []
+    for dataset_id in shared_dataset_ids:
+        dataset_response = httpclient.get(
+            f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
+            headers={'Authorization': f'Bearer {token}'},
+        )
+        dataset = dataset_response['dataset']
+        if dataset.get('name') == ds_name:
+            return dataset['id']
+
     raise NotFound(f'Dataset "{ds_name}" not found in project')
 
 

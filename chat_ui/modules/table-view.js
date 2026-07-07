@@ -224,14 +224,20 @@ export function buildPermalinkUrl() {
         url.searchParams.delete('exprSyntax');
     }
 
-    // Preserve extension params so permalinks work within extension context
+    const lastLoadContext = state.lastLoadContext || {};
+    const loadedFilePath = lastLoadContext.filePath || state.extensionFilePath;
+
+    // Preserve extension params so permalinks work within extension context.
+    // Prefer the most recently loaded picker selection over the original
+    // launch URL; a user can browse from a dataset/file deeplink into another
+    // snapshot or source during the same app session.
     if (state.extensionDatasetId) {
-        url.searchParams.set('datasetId', state.extensionDatasetId);
-        if (state.extensionSnapshotId) {
-            url.searchParams.set('datasetSnapshotId', state.extensionSnapshotId);
+        url.searchParams.set('datasetId', lastLoadContext.datasetId || state.extensionDatasetId);
+        if (lastLoadContext.snapshotId || state.extensionSnapshotId) {
+            url.searchParams.set('datasetSnapshotId', lastLoadContext.snapshotId || state.extensionSnapshotId);
         }
-        if (state.extensionFilePath) {
-            url.searchParams.set('filePath', state.extensionFilePath);
+        if (loadedFilePath) {
+            url.searchParams.set('filePath', loadedFilePath);
         }
         const mountPointType = new URLSearchParams(window.location.search).get('mountPointType');
         if (mountPointType) {
@@ -241,13 +247,26 @@ export function buildPermalinkUrl() {
         url.searchParams.set('projectId', state.extensionProjectId);
     }
 
-    if (state.extensionNetAppVolumeId) {
+    if (loadedFilePath) {
+        url.searchParams.set('filePath', loadedFilePath);
+    } else {
+        url.searchParams.delete('filePath');
+    }
+
+    if (state.extensionNetAppVolumeId || lastLoadContext.sourceType === 'netapp' || lastLoadContext.volumeKey) {
         if (state.extensionMountPointType) {
             url.searchParams.set('mountPointType', state.extensionMountPointType);
         }
-        url.searchParams.set('netAppVolumeId', state.extensionNetAppVolumeId);
-        if (state.extensionNetAppVolumeSnapshotId) {
-            url.searchParams.set('netAppVolumeSnapshotId', state.extensionNetAppVolumeSnapshotId);
+        const netAppVolumeId = lastLoadContext.volumeId || state.extensionNetAppVolumeId;
+        if (netAppVolumeId) {
+            url.searchParams.set('netAppVolumeId', netAppVolumeId);
+        }
+        const netAppSnapshotId = lastLoadContext.snapshotId || state.extensionNetAppVolumeSnapshotId;
+        if (netAppSnapshotId) {
+            url.searchParams.set('netAppVolumeSnapshotId', netAppSnapshotId);
+        }
+        if (loadedFilePath) {
+            url.searchParams.set('filePath', loadedFilePath);
         }
     }
 
@@ -268,6 +287,11 @@ export function buildPermalinkUrl() {
 
     url.searchParams.delete('row');
     return url;
+}
+
+export function replaceBrowserUrlWithCurrentView() {
+    const url = buildPermalinkUrl();
+    window.history.replaceState(window.history.state, '', url.toString());
 }
 
 // Build a permalink to the current view. Used by script.js's

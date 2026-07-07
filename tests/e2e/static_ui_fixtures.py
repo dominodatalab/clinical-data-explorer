@@ -54,7 +54,7 @@ def dataset_list_response():
 def extension_dataset_list_response():
     return {
         "datasets": [],
-        "dataset_info": [{"id": "ds-1", "name": "Clinical Dataset"}],
+        "dataset_info": [{"id": "ds-1", "name": "Clinical Dataset", "owner_name": "Dataset Owner"}],
         "netapp_files": [],
         "netapp_volumes": [],
     }

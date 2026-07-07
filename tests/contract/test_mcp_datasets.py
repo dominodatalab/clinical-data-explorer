@@ -20,6 +20,7 @@ def test_loads_csv_dataset(mcp_client):
     }
     assert "age" in body["numeric_columns"]
     assert "treatment" in body["categorical_columns"]
+    assert body["source_file_size_bytes"] > 0
 
 
 def test_dataset_info_reloads_dataframe_after_cache_eviction(mcp_client):

@@ -8,10 +8,53 @@ from backend.services.dataset_load_request_queue import DatasetLoadRequest
 def test_resolve_project_dataset_id_raises_not_found(monkeypatch):
     monkeypatch.setattr(resolver, "get_domino_api_host", lambda: "https://domino.example")
     monkeypatch.setattr(resolver, "get_passthrough_token", lambda: "test-token")
-    monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: {"datasets": []})
+
+    def fake_get(url, **kwargs):
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return {"dataset": {"projectId": "proj-1", "sharedDatasetIds": []}}
+        return {"datasets": []}
+
+    monkeypatch.setattr(resolver.httpclient, "get", fake_get)
 
     with pytest.raises(NotFound, match='Dataset "AE" not found in project'):
         resolver._resolve_project_dataset_id("AE/adsl.csv", "proj-1")
+
+
+def test_resolve_project_dataset_id_finds_shared_mount(monkeypatch):
+    monkeypatch.setattr(resolver, "get_domino_api_host", lambda: "https://domino.example")
+    monkeypatch.setattr(resolver, "get_passthrough_token", lambda: "test-token")
+    calls = []
+
+    def fake_get(url, **kwargs):
+        calls.append((url, kwargs))
+        if url.endswith("/api/datasetrw/v2/datasets"):
+            return {"datasets": []}
+        if url.endswith("/api/projects/v1/projects/proj-1/shared-datasets"):
+            return {"dataset": {"projectId": "proj-1", "sharedDatasetIds": ["ds-shared"]}}
+        if url.endswith("/api/datasetrw/v1/datasets/ds-shared"):
+            return {"dataset": {"id": "ds-shared", "name": "quick-start"}}
+        return {}
+
+    monkeypatch.setattr(resolver.httpclient, "get", fake_get)
+
+    assert resolver._resolve_project_dataset_id("quick-start/adsl.csv", "proj-1") == "ds-shared"
+    assert calls == [
+        (
+            "https://domino.example/api/datasetrw/v2/datasets",
+            {
+                "params": {"projectIdsToInclude": "proj-1", "limit": 100},
+                "headers": {"Authorization": "Bearer test-token"},
+            },
+        ),
+        (
+            "https://domino.example/api/projects/v1/projects/proj-1/shared-datasets",
+            {"headers": {"Authorization": "Bearer test-token"}},
+        ),
+        (
+            "https://domino.example/api/datasetrw/v1/datasets/ds-shared",
+            {"headers": {"Authorization": "Bearer test-token"}},
+        ),
+    ]
 
 
 def test_get_default_dataset_snapshot_id_raises_not_found(monkeypatch):

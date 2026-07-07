@@ -38,6 +38,8 @@ from mcp_server.session import (
     get_current_dataframe_size_bytes,
     get_current_df,
     get_current_metadata,
+    get_current_source_file_size_bytes,
+    has_current_df,
     load_current_df,
     SessionEvictionResult,
 )
@@ -126,6 +128,13 @@ def get_current_dataframe_size():
     return {"dataframe_size_bytes": get_current_dataframe_size_bytes()}
 
 
+@router.get("/dataframe/current-session", operation_id="get_current_session_dataframe")
+def get_current_session_dataframe():
+    """Return the current session's loaded dataset identifier, if any."""
+    dataset = _get_session_dataset_name()
+    return {"dataset": dataset if dataset and has_current_df(dataset) else None}
+
+
 @router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe")
 def evict_current_session_dataframe_endpoint():
     """Evict the current session's DataFrame cache entry."""
@@ -150,7 +159,8 @@ def get_dataset_info():
         "num_features": len(df.columns),
         "column_types": column_types,
         "numeric_columns": numeric_cols,
-        "categorical_columns": categorical_cols
+        "categorical_columns": categorical_cols,
+        "source_file_size_bytes": get_current_source_file_size_bytes(),
     }
 
 

@@ -16,6 +16,7 @@ pre-refactor pattern). They're slow to import and only needed when the app
 is actually running inside a Domino environment.
 """
 from contextlib import contextmanager
+from dataclasses import dataclass
 import io
 import logging
 import os
@@ -54,6 +55,28 @@ logger = logging.getLogger(__name__)
 # Note: this duplicates the constant in mcp_server/services/data_loading.py.
 # Keep the two in sync (pre-existing tech debt — not deduplicated here).
 SUPPORTED_EXTENSIONS = {'.csv', '.parquet', '.pq', '.sas7bdat', '.xpt', '.json', '.ndjson', '.dsjc'}
+
+
+@dataclass(frozen=True)
+class DatasetLoadTarget:
+    file_snapshot_path: str
+    dataset_id: str | None = None
+    snapshot_id: str | None = None
+    source_type: SourceType | None = None
+    volume_key: str | None = None
+    volume_id: str | None = None
+    snapshot_version: int | str | None = None
+    file_path: str | None = None
+
+
+class ProjectDatasetEntriesError(Exception):
+    def __init__(self, payload, status_code):
+        super().__init__(payload.get('error', 'Failed to list datasets'))
+        self.payload = payload
+        self.status_code = status_code
+
+    def to_response(self):
+        return jsonify(self.payload), self.status_code
 
 
 def find_data_files_fallback():
@@ -168,6 +191,26 @@ def _netapp_volume_metadata(vol):
     }
 
 
+def _first_non_empty(*values):
+    for value in values:
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return None
+
+
+def _dataset_owner_name(ds):
+    project_info = ds.get('projectInfo') or {}
+    return _first_non_empty(ds.get('owner_name'), project_info.get('projectOwnerUsername'))
+
+
+def _dataset_info_entry(ds):
+    info = {'id': ds['id'], 'name': ds['name']}
+    owner_name = _dataset_owner_name(ds)
+    if owner_name:
+        info['owner_name'] = owner_name
+    return info
+
+
 def _volume_matches_identifier(vol, volume_id):
     meta = _netapp_volume_metadata(vol)
     return bool(meta and meta['id'] == volume_id)
@@ -260,6 +303,154 @@ def discover_netapp_files_for_volume(volume_id, token, snapshot_id=None):
     return _discover_netapp_files_from_volumes([volume], token, snapshot_id)
 
 
+def _dataset_entry(entry):
+    dataset = dict(entry['dataset'])
+    project_info = entry.get('projectInfo') or {}
+    if project_info:
+        dataset['projectInfo'] = project_info
+        owner_name = project_info.get('projectOwnerUsername')
+        if owner_name:
+            dataset['owner_name'] = owner_name
+    return dataset
+
+
+def _dataset_client_key(ds):
+    return f"dataset-{ds['name']}-{ds['id']}"
+
+
+def _fetch_dataset_details(api_host, dataset_id, headers):
+    response = requests.get(
+        f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Dataset details API returned %s for %s: %s",
+            response.status_code,
+            dataset_id,
+            response.text[:200],
+        )
+        return None
+
+    return response.json().get('dataset')
+
+
+def _fetch_project_owner_username(api_host, project_id, headers, project_owner_cache):
+    if not project_id:
+        return None
+    if project_id in project_owner_cache:
+        return project_owner_cache[project_id]
+
+    response = requests.get(
+        f'{api_host}/api/projects/v1/projects/{project_id}',
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Project details API returned %s for %s: %s",
+            response.status_code,
+            project_id,
+            response.text[:200],
+        )
+        project_owner_cache[project_id] = None
+        return None
+
+    owner_name = (response.json().get('project') or {}).get('ownerUsername')
+    project_owner_cache[project_id] = owner_name
+    return owner_name
+
+
+def _fetch_project_shared_datasets(api_host, project_id, headers):
+    response = requests.get(
+        f'{api_host}/api/projects/v1/projects/{project_id}/shared-datasets',
+        headers=headers,
+        timeout=30,
+    )
+
+    if response.status_code != 200:
+        logger.warning(
+            "Shared datasets API returned %s: %s",
+            response.status_code,
+            response.text[:200],
+        )
+        return []
+
+    shared_dataset_ids = (response.json().get('dataset') or {}).get('sharedDatasetIds') or []
+    shared_datasets = []
+    project_owner_cache = {}
+    for shared_dataset_id in shared_dataset_ids:
+        dataset = _fetch_dataset_details(api_host, shared_dataset_id, headers)
+        if not dataset:
+            continue
+        dataset['shared'] = True
+        owner_name = _fetch_project_owner_username(
+            api_host,
+            dataset.get('projectId'),
+            headers,
+            project_owner_cache,
+        )
+        if owner_name:
+            dataset['owner_name'] = owner_name
+        shared_datasets.append(dataset)
+
+    return shared_datasets
+
+
+def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
+    response = requests.get(
+        f'{api_host}/api/datasetrw/v2/datasets',
+        params={
+            'projectIdsToInclude': project_id,
+            'includeProjectInfo': True,
+            'limit': 100,
+        },
+        headers=headers,
+        timeout=30
+    )
+
+    if response.status_code == 401 or response.status_code == 403:
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError(
+                {'error': 'Access denied. Your session may have expired. Please refresh the page.'},
+                response.status_code,
+            )
+        raise ProjectDatasetEntriesError(
+            {
+                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
+                'auth_error': True,
+                'datasets': [],
+            },
+            response.status_code,
+        )
+
+    if response.status_code != 200:
+        logger.error(f"Datasets API error: {response.status_code} - {response.text}")
+        if purpose == 'load':
+            raise ProjectDatasetEntriesError({'error': 'Failed to resolve dataset'}, 500)
+        raise ProjectDatasetEntriesError(
+            {'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []},
+            500,
+        )
+
+    all_datasets = response.json().get('datasets', [])
+    project_datasets = [
+        _dataset_entry(d) for d in all_datasets
+        if _dataset_entry(d).get('projectId') == project_id
+    ]
+
+    seen_ids = {ds.get('id') for ds in project_datasets}
+    for shared_ds in _fetch_project_shared_datasets(api_host, project_id, headers):
+        if shared_ds.get('id') not in seen_ids:
+            project_datasets.append(shared_ds)
+            seen_ids.add(shared_ds.get('id'))
+
+    return project_datasets
+
+
 def list_datasets_via_api(project_id):
     """List datasets and their files for a target project using Domino API with passthrough auth."""
     token = get_passthrough_token()
@@ -277,30 +468,7 @@ def list_datasets_via_api(project_id):
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        # Get datasets (the API returns all accessible datasets; we filter by projectId)
-        response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?projectIdsToInclude={project_id}&limit=100',
-            headers=headers,
-            timeout=30
-        )
-
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({
-                'error': 'Access denied. You may not have permission to access this project\'s datasets.',
-                'auth_error': True,
-                'datasets': []
-            }), response.status_code
-
-        if response.status_code != 200:
-            logger.error(f"Datasets API error: {response.status_code} - {response.text}")
-            return jsonify({'error': f'Failed to list datasets (HTTP {response.status_code})', 'datasets': []}), 500
-
-        all_datasets = response.json().get('datasets', [])
-        # Filter to only datasets belonging to the target project
-        project_datasets = [
-            d.get('dataset', d) for d in all_datasets
-            if d.get('dataset', d).get('projectId') == project_id
-        ]
+        project_datasets = _project_dataset_entries(api_host, project_id, headers)
 
         # List files from datasets
         file_list = []
@@ -311,7 +479,7 @@ def list_datasets_via_api(project_id):
             for ds in project_datasets:
                 ds_id = ds['id']
                 ds_name = ds['name']
-                dataset_key = f'dataset-{ds_name}-{ds_id}'
+                dataset_key = _dataset_client_key(ds)
 
                 try:
                     dataset = client.get_dataset(dataset_key)
@@ -324,8 +492,10 @@ def list_datasets_via_api(project_id):
                     logger.warning(f'Failed to list files for dataset {ds_id}: {e}')
 
         # Build dataset_info for the frontend (needed for snapshot browsing)
-        dataset_info = [{'id': ds['id'], 'name': ds['name']} for ds in project_datasets]
+        dataset_info = [_dataset_info_entry(ds) for ds in project_datasets]
 
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
@@ -528,6 +698,117 @@ def load_local_dataset_file(dataset_display_name, session_id=None):
         return jsonify({'error': 'Could not connect to MCP server'}), 500
 
 
+def _split_display_name_path(dataset_display_name: str) -> tuple[str, str]:
+    parts = dataset_display_name.split('/', 1)
+    if len(parts) != 2:
+        raise ValueError(f'Invalid dataset reference: {dataset_display_name}')
+    return parts[0], parts[1]
+
+
+def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: str | int | None, file_path: str) -> str:
+    snapshot_key = "unset_snapshot_id" if snapshot_id in (None, '') else str(snapshot_id)
+    return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
+
+
+def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, snapshot_version, token=None):
+    if snapshot_version not in (None, ''):
+        return snapshot_version
+    if not snapshot_id or snapshot_id == 'latest':
+        return None
+
+    from domino_data.netapp_volumes import NetAppVolumeClient
+    vol_client = NetAppVolumeClient(token=token)
+    snapshots = vol_client.list_snapshots(volume_unique_name=volume_key) or []
+    for snap in snapshots:
+        if getattr(snap, 'id', None) == snapshot_id:
+            return getattr(snap, 'version', None)
+    return None
+
+
+def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
+    """Resolve a logical load request to the concrete MCP file path it would load."""
+    token = token or get_passthrough_token_from_authorization_header(load_request.authorization_header)
+
+    if load_request.source_type == 'netapp' and load_request.volume_key:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        snapshot_version = _resolve_netapp_snapshot_version(
+            load_request.volume_key,
+            load_request.snapshot_id,
+            load_request.snapshot_version,
+            token=token,
+        )
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('netapp', load_request.volume_key, snapshot_version, file_path),
+            source_type='netapp',
+            volume_key=load_request.volume_key,
+            volume_id=load_request.volume_id,
+            snapshot_id=load_request.snapshot_id,
+            snapshot_version=snapshot_version,
+            file_path=file_path,
+        )
+
+    if load_request.dataset_id:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        snapshot_id = load_request.snapshot_id
+        if not snapshot_id:
+            from backend.services.dataset_load_request_file_size_resolver import _get_default_dataset_snapshot_id
+            snapshot_id = _get_default_dataset_snapshot_id(load_request.dataset_id, token=token)
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('dataset', load_request.dataset_id, snapshot_id, file_path),
+            dataset_id=load_request.dataset_id,
+            snapshot_id=snapshot_id,
+            source_type='dataset',
+            file_path=file_path,
+        )
+
+    if load_request.project_id:
+        _, file_path = _split_display_name_path(load_request.dataset)
+        from backend.services.dataset_load_request_file_size_resolver import (
+            _get_default_dataset_snapshot_id,
+            _resolve_project_dataset_id,
+        )
+        dataset_id = _resolve_project_dataset_id(load_request.dataset, load_request.project_id, token=token)
+        snapshot_id = _get_default_dataset_snapshot_id(dataset_id, token=token)
+        return DatasetLoadTarget(
+            file_snapshot_path=_download_cache_path('dataset', dataset_id, snapshot_id, file_path),
+            dataset_id=dataset_id,
+            snapshot_id=snapshot_id,
+            source_type='dataset',
+            file_path=file_path,
+        )
+
+    return DatasetLoadTarget(file_snapshot_path=load_request.dataset)
+
+
+def load_existing_session_dataframe(load_request: DatasetLoadRequest, target: DatasetLoadTarget):
+    """Return load metadata for a matching already-loaded MCP dataframe."""
+    mcp_response = mcp_post(
+        "/dataset/load",
+        params={'file_snapshot_path': target.file_snapshot_path},
+        session_id=load_request.session_id,
+    )
+
+    if mcp_response.status_code != 200:
+        error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
+        return jsonify({'error': error_detail}), mcp_response.status_code
+
+    result = mcp_response.json()
+    result['dataset'] = load_request.dataset
+    if target.source_type:
+        result['sourceType'] = target.source_type
+    if target.dataset_id:
+        result['datasetId'] = target.dataset_id
+    if target.snapshot_id and target.snapshot_id != 'latest':
+        result['snapshotId'] = target.snapshot_id
+    if target.volume_id:
+        result['volumeId'] = target.volume_id
+    if target.snapshot_version not in (None, ''):
+        result['snapshotVersion'] = target.snapshot_version
+    if target.file_path:
+        result['governanceFilename'] = target.file_path.split('/')[-1]
+    return jsonify(result)
+
+
 def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None):
     """Download a file from a Domino dataset via API and load it into the MCP server."""
     token = token or get_passthrough_token()
@@ -549,24 +830,11 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        # Resolve dataset ID by querying the API
-        response = requests.get(
-            f'{api_host}/api/datasetrw/v2/datasets?projectId={project_id}&limit=100',
-            headers=headers,
-            timeout=30
-        )
+        project_datasets = _project_dataset_entries(api_host, project_id, headers, purpose='load')
 
-        if response.status_code == 401 or response.status_code == 403:
-            return jsonify({'error': 'Access denied. Your session may have expired. Please refresh the page.'}), response.status_code
-
-        if response.status_code != 200:
-            return jsonify({'error': 'Failed to resolve dataset'}), 500
-
-        all_datasets = response.json().get('datasets', [])
         target_ds = None
-        for d in all_datasets:
-            ds = d.get('dataset', d)
-            if ds.get('name') == ds_name and ds.get('projectId') == project_id:
+        for ds in project_datasets:
+            if ds.get('name') == ds_name:
                 target_ds = ds
                 break
 
@@ -575,6 +843,8 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
 
         ds_id = target_ds['id']
         return load_dataset_file_by_id(dataset_display_name, ds_id, token, session_id)
+    except ProjectDatasetEntriesError as e:
+        return e.to_response()
     except requests.exceptions.ConnectionError as e:
         logger.error(f"Connection error loading dataset via API: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503

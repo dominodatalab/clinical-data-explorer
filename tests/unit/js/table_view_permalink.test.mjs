@@ -26,7 +26,16 @@ async function loadTableViewModule({
         console: { error() {}, log() {}, warn() {} },
         URL,
         URLSearchParams,
-        window: { location: new URL(href) },
+        window: {
+            location: new URL(href),
+            history: {
+                state: { previous: true },
+                replaceState(stateArg, title, nextUrl) {
+                    this.state = stateArg;
+                    context.window.location = new URL(nextUrl);
+                },
+            },
+        },
         __state: state,
     });
 
@@ -75,7 +84,7 @@ async function loadTableViewModule({
         return stub;
     });
     await module.evaluate();
-    return { namespace: module.namespace, state };
+    return { namespace: module.namespace, state, context };
 }
 
 test('buildPermalinkUrl preserves Domino project dataset identity for copied links', async () => {
@@ -101,10 +110,37 @@ test('buildPermalinkUrl preserves Domino project dataset identity for copied lin
     assert.equal(url.searchParams.get('projectId'), 'proj-1');
     assert.equal(url.searchParams.get('loadDatasetId'), 'dataset-1');
     assert.equal(url.searchParams.get('snapshotId'), 'snapshot-1');
+    assert.equal(url.searchParams.has('filePath'), false);
     assert.equal(url.searchParams.get('expr'), 'AGE > 18');
     assert.equal(url.searchParams.get('exprSyntax'), 'sas');
     assert.equal(url.searchParams.has('row'), false);
     assert.deepEqual(JSON.parse(url.searchParams.get('filters')), namespace.tableState.filters);
+});
+
+test('buildPermalinkUrl preserves selected dataset file path in project context', async () => {
+    const { namespace } = await loadTableViewModule({
+        href: 'https://example.test/apps/cde/?projectId=proj-1',
+        stateOverrides: {
+            currentDataset: 'AE SAS 7 BDAT/nested/ae.sas7bdat',
+            extensionProjectId: 'proj-1',
+            lastLoadContext: {
+                sourceType: 'dataset',
+                datasetName: 'AE SAS 7 BDAT/nested/ae.sas7bdat',
+                filePath: 'nested/ae.sas7bdat',
+                datasetId: 'dataset-1',
+                snapshotId: 'snapshot-1',
+            },
+        },
+    });
+
+    const url = namespace.buildPermalinkUrl();
+
+    assert.equal(url.searchParams.get('dataset'), 'AE SAS 7 BDAT/nested/ae.sas7bdat');
+    assert.equal(url.searchParams.get('projectId'), 'proj-1');
+    assert.equal(url.searchParams.get('loadDatasetId'), 'dataset-1');
+    assert.equal(url.searchParams.get('snapshotId'), 'snapshot-1');
+    assert.equal(url.searchParams.get('filePath'), 'nested/ae.sas7bdat');
+    assert.equal(url.searchParams.has('datasetId'), false);
 });
 
 test('buildPermalinkUrl preserves dataset identity even when source type is absent', async () => {
@@ -157,6 +193,7 @@ test('buildPermalinkUrl preserves NetApp volume metadata for copied links', asyn
             extensionProjectId: 'proj-1',
             lastLoadContext: {
                 datasetName: 'Safety Volume/reports/adlb.csv',
+                filePath: 'reports/adlb.csv',
                 volumeKey: 'netapp-volume-Safety-123',
                 volumeId: 'volume-123',
                 snapshotId: 'snapshot-123',
@@ -171,8 +208,11 @@ test('buildPermalinkUrl preserves NetApp volume metadata for copied links', asyn
     assert.equal(url.searchParams.get('projectId'), 'proj-1');
     assert.equal(url.searchParams.get('volumeKey'), 'netapp-volume-Safety-123');
     assert.equal(url.searchParams.get('volumeId'), 'volume-123');
+    assert.equal(url.searchParams.get('netAppVolumeId'), 'volume-123');
     assert.equal(url.searchParams.get('snapshotId'), 'snapshot-123');
+    assert.equal(url.searchParams.get('netAppVolumeSnapshotId'), 'snapshot-123');
     assert.equal(url.searchParams.get('snapshotVersion'), '7');
+    assert.equal(url.searchParams.get('filePath'), 'reports/adlb.csv');
     assert.equal(url.searchParams.has('loadDatasetId'), false);
 });
 
@@ -199,4 +239,31 @@ test('buildPermalinkUrl preserves no-project NetApp dashboard extension context'
     assert.equal(url.searchParams.get('netAppVolumeId'), 'volume-global');
     assert.equal(url.searchParams.get('volumeKey'), 'netapp-volume-global_netapp_volume-123');
     assert.equal(url.searchParams.get('volumeId'), 'volume-global');
+});
+
+test('replaceBrowserUrlWithCurrentView persists current selection in address bar', async () => {
+    const { namespace, state, context } = await loadTableViewModule({
+        href: 'https://example.test/apps/cde/?projectId=proj-1&row=stale-row',
+        stateOverrides: {
+            currentDataset: 'Clinical_Data/clinical.csv',
+            extensionProjectId: 'proj-1',
+            lastLoadContext: {
+                sourceType: 'dataset',
+                datasetName: 'Clinical_Data/clinical.csv',
+                filePath: 'clinical.csv',
+                datasetId: 'dataset-clinical',
+                snapshotId: 'snapshot-clinical',
+            },
+        },
+    });
+
+    namespace.replaceBrowserUrlWithCurrentView();
+
+    const url = context.window.location;
+    assert.equal(url.searchParams.get('dataset'), state.currentDataset);
+    assert.equal(url.searchParams.get('projectId'), 'proj-1');
+    assert.equal(url.searchParams.get('loadDatasetId'), 'dataset-clinical');
+    assert.equal(url.searchParams.get('snapshotId'), 'snapshot-clinical');
+    assert.equal(url.searchParams.get('filePath'), 'clinical.csv');
+    assert.equal(url.searchParams.has('row'), false);
 });

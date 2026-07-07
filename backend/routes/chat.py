@@ -1,7 +1,7 @@
 """Chat blueprint — proxies the Pydantic-AI chat agent.
 
 Extracted from `backend/app.py` (REFACTOR_PLAN.md §1, step 1.5a). Owns the
-three `/chat*` endpoints. Behavior is preserved verbatim: same paths,
+four `/chat*` endpoints. Behavior is preserved verbatim: same paths,
 same request/response shapes, same status codes, same logging messages,
 same error-classification heuristics.
 """
@@ -14,6 +14,7 @@ from flask import Blueprint, jsonify, request
 from chat_agent import (
     clear_history,
     get_agent_response,
+    get_history,
     get_chat_status,
     is_chat_configured,
 )
@@ -37,6 +38,12 @@ def chat_clear():
     """Clear the chat conversation history."""
     clear_history(session_id=get_session_id())
     return jsonify({'status': 'ok'})
+
+
+@bp.route('/chat/history', methods=['GET'])
+def chat_history():
+    """Return the current session's chat transcript."""
+    return jsonify({'messages': get_history(session_id=get_session_id())})
 
 
 @bp.route('/chat', methods=['POST'])

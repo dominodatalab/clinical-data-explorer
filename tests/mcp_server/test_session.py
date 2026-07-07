@@ -14,17 +14,17 @@ import mcp_server.session as session_module
 @pytest.fixture(autouse=True)
 def clear_session_state():
     session_module._sessions.clear()
-    session_module._current_session_id.set("default")
+    session_module._current_user_id.set("default")
     session_module.get_cache().clear()
     yield
     session_module._sessions.clear()
-    session_module._current_session_id.set("default")
+    session_module._current_user_id.set("default")
     session_module.get_cache().clear()
 
 
 def test_set_current_df_stores_dataframe_and_session_metadata():
     df = pd.DataFrame({"subject_id": [1, 2], "arm": ["A", "B"]})
-    session_module._current_session_id.set("session-1")
+    session_module._current_user_id.set("session-1")
 
     session_module._set_current_df(df, "adsl.csv")
 
@@ -36,7 +36,7 @@ def test_set_current_df_stores_dataframe_and_session_metadata():
 
 def test_set_current_df_stores_loaded_dataframe_deep_size(monkeypatch):
     df = pd.DataFrame({"subject_id": [1]})
-    session_module._current_session_id.set("session-size")
+    session_module._current_user_id.set("session-size")
 
     monkeypatch.setattr(session_module.objsize, "get_deep_size", lambda dataframe: 1234)
 
@@ -45,8 +45,19 @@ def test_set_current_df_stores_loaded_dataframe_deep_size(monkeypatch):
     assert session_module._sessions["session-size"].dataframe_size_bytes == 1234
 
 
+def test_set_current_df_stores_source_file_size(tmp_path):
+    data_file = tmp_path / "adsl.csv"
+    data_file.write_text("subject_id\n1\n", encoding="utf-8")
+    df = pd.DataFrame({"subject_id": [1]})
+    session_module._current_user_id.set("session-file-size")
+
+    session_module._set_current_df(df, str(data_file))
+
+    assert session_module._sessions["session-file-size"].source_file_size_bytes == data_file.stat().st_size
+
+
 def test_get_current_df_raises_when_no_dataset_is_loaded():
-    session_module._current_session_id.set("missing-session")
+    session_module._current_user_id.set("missing-session")
 
     with pytest.raises(HTTPException) as excinfo:
         session_module.get_current_df()
@@ -58,7 +69,7 @@ def test_get_current_df_raises_when_no_dataset_is_loaded():
 
 def test_get_current_df_reloads_when_session_metadata_exists_but_cache_entry_is_missing(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [99], "arm": ["Reloaded"]})
-    session_module._current_session_id.set("session-2")
+    session_module._current_user_id.set("session-2")
     session_module._sessions["session-2"] = session_module.LoadedDataEntry(
         file_snapshot_path="adae.csv",
         last_accessed=50.0,
@@ -152,7 +163,7 @@ def test_evict_stale_sessions_keeps_cache_entries_used_by_active_sessions(monkey
 def test_set_current_df_evicts_previous_dataset_for_same_session():
     first_df = pd.DataFrame({"subject_id": [1]})
     second_df = pd.DataFrame({"subject_id": [2]})
-    session_module._current_session_id.set("session-5")
+    session_module._current_user_id.set("session-5")
 
     session_module._set_current_df(first_df, "first.csv")
     session_module._set_current_df(second_df, "second.csv")
@@ -224,22 +235,58 @@ def test_dataframe_size_endpoint_returns_current_session_size(_mcp_app):
         dataframe_size_bytes=5678,
     )
 
+    session_module._current_user_id.set("session-size")
     client = TestClient(_mcp_app)
 
-    response = client.get("/dataframe/size", headers={"X-Session-Id": "session-size"})
+    response = client.get("/dataframe/size")
 
     assert response.status_code == 200
     assert response.json() == {"dataframe_size_bytes": 1234}
 
 
+def test_dataset_info_endpoint_returns_source_file_size(_mcp_app):
+    current_df = pd.DataFrame({"subject_id": [1]})
+    session_module.get_cache()["current.csv"] = current_df
+    session_module._sessions["session-size"] = session_module.LoadedDataEntry(
+        file_snapshot_path="current.csv",
+        last_accessed=time.time(),
+        dataframe_size_bytes=1234,
+        source_file_size_bytes=42,
+    )
+
+    session_module._current_user_id.set("session-size")
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataset/info")
+
+    assert response.status_code == 200
+    assert response.json()["source_file_size_bytes"] == 42
+
+
+def test_get_current_source_file_size_uses_stored_session_value(monkeypatch):
+    session_module._current_user_id.set("session-size")
+    session_module._sessions["session-size"] = session_module.LoadedDataEntry(
+        file_snapshot_path="/missing/temp/file.csv",
+        last_accessed=time.time(),
+        source_file_size_bytes=42,
+    )
+    monkeypatch.setattr(
+        session_module,
+        "_get_source_file_size_bytes",
+        lambda path: (_ for _ in ()).throw(AssertionError("should not stat after load")),
+    )
+
+    assert session_module.get_current_source_file_size_bytes() == 42
+
+
 def test_get_current_dataframe_size_logs_warning_when_session_is_missing(caplog):
-    session_module._current_session_id.set("missing-session")
+    session_module._current_user_id.set("missing-session")
 
     with caplog.at_level("WARNING", logger=session_module.__name__):
         size = session_module.get_current_dataframe_size_bytes()
 
     assert size == 0
-    assert "No loaded DataFrame found for session missing-session" in caplog.text
+    assert "No loaded DataFrame found for user missing-session" in caplog.text
 
 
 def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_mcp_app):
@@ -258,12 +305,10 @@ def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_
         dataframe_size_bytes=5678,
     )
 
+    session_module._current_user_id.set("session-current")
     client = TestClient(_mcp_app)
 
-    response = client.post(
-        "/dataframe/evict-current-session",
-        headers={"X-Session-Id": "session-current"},
-    )
+    response = client.post("/dataframe/evict-current-session")
 
     assert response.status_code == 200
     assert response.json() == {"evicted_sessions": 1, "evicted_dataframes": 1}
@@ -274,17 +319,19 @@ def test_evict_current_session_dataframe_endpoint_removes_only_current_session(_
 
 
 def test_evict_current_session_dataframe_logs_warning_when_session_is_missing(caplog):
-    session_module._current_session_id.set("missing-session")
+    session_module._current_user_id.set("missing-session")
 
     with caplog.at_level("WARNING", logger=session_module.__name__):
         result = session_module.evict_current_session_dataframe()
 
     assert result == session_module.SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
-    assert "No loaded DataFrame found for session missing-session" in caplog.text
+    assert "No loaded DataFrame found for user missing-session" in caplog.text
 
 
 def test_session_middleware_sets_session_id_and_touches_existing_session(monkeypatch):
     monkeypatch.setattr(session_module.time, "time", lambda: 123.0)
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-3"})
+    session_module._current_user_id.set(None)
     session_module._sessions["session-3"] = session_module.LoadedDataEntry(
         file_snapshot_path="adlb.csv",
         last_accessed=1.0,
@@ -295,11 +342,11 @@ def test_session_middleware_sets_session_id_and_touches_existing_session(monkeyp
 
     @app.get("/session")
     async def read_session():
-        return {"session_id": session_module._current_session_id.get()}
+        return {"session_id": session_module._current_user_id.get()}
 
     client = TestClient(app)
 
-    response = client.get("/session", headers={"X-Session-Id": "session-3"})
+    response = client.get("/session")
 
     assert response.status_code == 200
     assert response.json() == {"session_id": "session-3"}
@@ -312,7 +359,7 @@ def test_session_middleware_defaults_session_id_when_header_is_missing():
 
     @app.get("/session")
     async def read_session():
-        return {"session_id": session_module._current_session_id.get()}
+        return {"session_id": session_module._current_user_id.get()}
 
     client = TestClient(app)
 
@@ -341,9 +388,47 @@ def test_dataset_load_reports_when_dataframe_is_too_large_for_cache(_mcp_app, mo
     }
 
 
+def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app, monkeypatch):
+    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
+    session_module._current_user_id.set(None)
+    session_module._sessions["session-current-dataset"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adsl.csv",
+        last_accessed=time.time(),
+    )
+    dataframe_cache.get_cache()["adsl.csv"] = cached_df
+
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataframe/current-session")
+
+    assert response.status_code == 200
+    assert response.json() == {"dataset": "adsl.csv"}
+
+
+def test_load_current_df_reuses_matching_cached_dataframe(monkeypatch):
+    cached_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
+    session_module._current_user_id.set("session-reuse")
+    session_module._sessions["session-reuse"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adsl.csv",
+        last_accessed=1.0,
+    )
+    dataframe_cache.get_cache()["adsl.csv"] = cached_df
+
+    monkeypatch.setattr(
+        session_module,
+        "_create_dataframe_entry_in_thread",
+        lambda file_snapshot_path: (_ for _ in ()).throw(AssertionError("should not reload")),
+    )
+
+    df = session_module.load_current_df("adsl.csv")
+
+    pd.testing.assert_frame_equal(df, cached_df)
+
+
 def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
     reloaded_df = pd.DataFrame({"subject_id": [1], "arm": ["A"]})
-    session_module._current_session_id.set("session-4")
+    session_module._current_user_id.set("session-4")
     caller_thread_name = threading.current_thread().name
     loader_thread_names = []
 

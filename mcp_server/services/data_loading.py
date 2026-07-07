@@ -40,6 +40,7 @@ import numpy as np
 import pandas as pd
 from fastapi import HTTPException
 
+from mcp_server import config
 from mcp_server.services.columns import (
     _get_categorical_columns,
     _get_numeric_columns,
@@ -498,8 +499,15 @@ def find_data_files() -> List[Dict[str, str]]:
     """
     Find all supported data files from the repo datasets/ folder.
 
+    Domino deployments should not expose repo-committed sample files through
+    dataset discovery; project datasets are discovered through Domino APIs in
+    the Flask backend instead.
+
     Returns a list of dicts with 'name' (display name) and 'path' (full path)
     """
+    if config.get_domino_run_id():
+        return []
+
     data_files = []
 
     if datasets_folder.exists():
@@ -586,4 +594,8 @@ def load_dataset(file_snapshot_path: str) -> pd.DataFrame:
         raise
     except Exception as e:
         logger.error(f"Error loading dataset: {str(e)}")
+
+        if 'utf-8' in str(e):
+            raise HTTPException(status_code=400, detail=f"Dataset was not parseable. Ensure that it was encoded with utf-8. {str(e)}")
+
         raise HTTPException(status_code=500, detail=f"Error loading dataset: {str(e)}")

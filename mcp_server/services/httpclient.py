@@ -2,9 +2,10 @@
 with some overrides"""
 
 from fastapi import HTTPException
+import os
 import requests
 
-from backend.auth import get_domino_api_host, get_passthrough_token
+from mcp_server.auth import get_domino_api_host, get_passthrough_token
 
 class HTTPClientError(RuntimeError):
     """Raised when an HTTP helper call returns a non-success response."""

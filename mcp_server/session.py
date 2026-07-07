@@ -21,6 +21,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass
 from functools import lru_cache
 import logging
+import os
 from pathlib import Path
 import threading
 import time
@@ -32,18 +33,14 @@ from fastapi import HTTPException, Request
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
+from mcp_server.auth import set_auth_header
 from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
+from mcp_server.services.httpclient import get_current_user
 
 logger = logging.getLogger(__name__)
 
-
-# ===== SESSION-BASED DATASET STORAGE =====
-# Each user session gets its own DataFrame so concurrent users don't clobber each other.
-# Session ID comes from the X-Session-Id header (set by the Flask proxy).
-# A "default" session is used when no header is present (normal single-user mode).
-
-_current_session_id: contextvars.ContextVar[str] = contextvars.ContextVar('session_id', default='default')
+_current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
 
 @dataclass
 class LoadedDataEntry:
@@ -54,12 +51,14 @@ class LoadedDataEntry:
     # deleted right after load, so it can't be re-read on demand later.
     metadata: Optional[dict] = None
     dataframe_size_bytes: int = 0
+    source_file_size_bytes: int = 0
 
 
 @dataclass
 class DataFrameLoadResult:
     dataframe: pd.DataFrame
     metadata: dict
+    source_file_size_bytes: int
 
 
 @dataclass(frozen=True)
@@ -79,11 +78,25 @@ def _get_sessions():
 def get_cache():
     return dataframe_cache.get_cache()
 
+def _get_session_id():
+    """Return the current user's ID"""
+    user_id = _current_user_id.get()
+
+    if not user_id:
+        user_id = get_current_user()['id']
+        _current_user_id.set(user_id)
+
+    return user_id
+
 class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
-        session_id = request.headers.get("x-session-id", "default")
-        _current_session_id.set(session_id)
+        set_auth_header(request.headers)
+
+        session_id = _get_session_id()
+
+        _current_user_id.set(session_id)
+
         request.state.session_eviction_result = _evict_stale_sessions()
         # Touch the session so it stays alive
         sessions = _get_sessions()
@@ -132,9 +145,22 @@ def _evict_stale_sessions():
     )
 
 
-def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optional[dict] = None):
+def _get_source_file_size_bytes(file_snapshot_path: str) -> int:
+    try:
+        return os.path.getsize(file_snapshot_path)
+    except OSError:
+        logger.warning("Could not determine source file size for %s", file_snapshot_path)
+        return 0
+
+
+def _set_current_df(
+    df: pd.DataFrame,
+    file_snapshot_path: str,
+    metadata: Optional[dict] = None,
+    source_file_size_bytes: Optional[int] = None,
+):
     """Store a DataFrame for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     sessions = _get_sessions()
     previous_session = sessions.get(session_id)
     previous_file_snapshot_path = previous_session.file_snapshot_path if previous_session else None
@@ -149,6 +175,11 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
         last_accessed=time.time(),
         metadata=metadata,
         dataframe_size_bytes=objsize.get_deep_size(df),
+        source_file_size_bytes=(
+            source_file_size_bytes
+            if source_file_size_bytes is not None
+            else _get_source_file_size_bytes(file_snapshot_path)
+        ),
     )
     if previous_file_snapshot_path and previous_file_snapshot_path != file_snapshot_path:
         _drop_unreferenced_cache_entries([previous_file_snapshot_path])
@@ -157,17 +188,31 @@ def _set_current_df(df: pd.DataFrame, file_snapshot_path: str, metadata: Optiona
 
 def _get_session_dataset_name() -> Optional[str]:
     """Get the dataset name for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session:
         return session.file_snapshot_path
     return None
 
 
+def has_current_df(file_snapshot_path: str) -> bool:
+    """Return true when the current session has this dataset cached."""
+    session_id = _current_user_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None or session.file_snapshot_path != file_snapshot_path:
+        return False
+    return get_cache().get(file_snapshot_path) is not None
+
+
 def _create_dataframe_entry(file_snapshot_path: str) -> DataFrameLoadResult:
+    source_file_size_bytes = _get_source_file_size_bytes(file_snapshot_path)
     df = load_dataset(file_snapshot_path)
     metadata = extract_dataset_metadata(Path(file_snapshot_path))
-    return DataFrameLoadResult(dataframe=df, metadata=metadata)
+    return DataFrameLoadResult(
+        dataframe=df,
+        metadata=metadata,
+        source_file_size_bytes=source_file_size_bytes,
+    )
 
 
 def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadResult:
@@ -177,28 +222,46 @@ def _create_dataframe_entry_in_thread(file_snapshot_path: str) -> DataFrameLoadR
 
 def load_current_df(file_snapshot_path: str) -> pd.DataFrame:
     """Load a dataset file for the current session and cache it."""
+    if has_current_df(file_snapshot_path):
+        return get_cache()[file_snapshot_path]
+
     result = _create_dataframe_entry_in_thread(file_snapshot_path)
-    _set_current_df(result.dataframe, file_snapshot_path, result.metadata)
+    _set_current_df(
+        result.dataframe,
+        file_snapshot_path,
+        result.metadata,
+        source_file_size_bytes=result.source_file_size_bytes,
+    )
     return result.dataframe
 
 
 def get_current_dataframe_size_bytes() -> int:
     """Return the cached DataFrame size for the current session, or 0 when empty."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        logger.warning("No loaded DataFrame found for session %s when reading DataFrame size", session_id)
+        logger.warning("No loaded DataFrame found for user %s when reading DataFrame size", session_id)
         return 0
     return session.dataframe_size_bytes
 
 
+def get_current_source_file_size_bytes() -> int:
+    """Return the loaded source file size for the current session, or 0 when empty."""
+    session_id = _current_user_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None:
+        logger.warning("No loaded DataFrame found for user %s when reading source file size", session_id)
+        return 0
+    return session.source_file_size_bytes
+
+
 def evict_current_session_dataframe() -> SessionEvictionResult:
     """Remove the current session and its unreferenced cached DataFrame."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     sessions = _get_sessions()
     session = sessions.pop(session_id, None)
     if session is None:
-        logger.warning("No loaded DataFrame found for session %s when evicting current session", session_id)
+        logger.warning("No loaded DataFrame found for user %s when evicting current session", session_id)
         return SessionEvictionResult(evicted_sessions=0, evicted_dataframes=0)
 
     return SessionEvictionResult(
@@ -209,7 +272,7 @@ def evict_current_session_dataframe() -> SessionEvictionResult:
 
 def get_current_metadata() -> dict:
     """Return the verbatim file metadata captured for the current session."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
@@ -222,7 +285,7 @@ def get_current_metadata() -> dict:
 
 def get_current_df() -> pd.DataFrame:
     """Get the current dataframe for this session, reloading on cache miss."""
-    session_id = _current_session_id.get()
+    session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
         raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
@@ -230,6 +293,6 @@ def get_current_df() -> pd.DataFrame:
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
     if df is None:
-        logger.debug("Cache miss for session %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
+        logger.debug("Cache miss for user %s dataset %s; reloading from disk", session_id, session.file_snapshot_path)
         return load_current_df(session.file_snapshot_path)
     return df

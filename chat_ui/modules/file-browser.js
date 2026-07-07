@@ -106,7 +106,7 @@ export function openFileBrowserModal() {
             document.getElementById('fb-selected-file').style.display = 'flex';
             const displayPath = previousSource.type === 'local'
                 ? state.fileBrowserState.selectedFile.path
-                : previousSource.name + '/' + state.fileBrowserState.selectedFile.path;
+                : getSourceDisplayName(previousSource) + '/' + state.fileBrowserState.selectedFile.path;
             document.getElementById('fb-selected-name').textContent = displayPath;
         } else {
             document.getElementById('file-browser-load-btn').disabled = true;
@@ -172,7 +172,7 @@ function populateSourceDropdown() {
             datasets.forEach(ds => {
                 const opt = document.createElement('option');
                 opt.value = ds.id;
-                opt.textContent = ds.name;
+                opt.textContent = getSourceDisplayName(ds);
                 opt.dataset.sourceType = 'dataset';
                 group.appendChild(opt);
             });
@@ -185,7 +185,7 @@ function populateSourceDropdown() {
             netapps.forEach(vol => {
                 const opt = document.createElement('option');
                 opt.value = vol.id;
-                opt.textContent = vol.name;
+                opt.textContent = getSourceDisplayName(vol);
                 opt.dataset.sourceType = 'netapp';
                 group.appendChild(opt);
             });
@@ -199,6 +199,10 @@ function populateSourceDropdown() {
             onSourceSelected();
         }
     }
+}
+
+function getSourceDisplayName(source) {
+    return source.displayName || source.name;
 }
 
 async function onSourceSelected() {
@@ -690,7 +694,7 @@ function selectFile(entry) {
 
     // Build display path
     const source = state.fileBrowserState.selectedSource;
-    const displayPath = source ? source.name + '/' + entry.path : entry.path;
+    const displayPath = source ? getSourceDisplayName(source) + '/' + entry.path : entry.path;
     document.getElementById('fb-selected-name').textContent = displayPath;
 
     // Re-render to update selection highlight
@@ -711,6 +715,7 @@ function loadFileFromBrowser() {
     if (source.type === 'local') {
         displayName = file.path;
         loadBody.dataset = displayName;
+        loadBody.filePath = file.path;
     } else if (source.type === 'netapp') {
         displayName = source.name + '/' + file.fileName;
         // For nested paths, use the full path after the volume name
@@ -718,6 +723,7 @@ function loadFileFromBrowser() {
         const fileNameInVol = pathParts.length > 0 ? file.path : file.fileName;
         displayName = source.name + '/' + fileNameInVol;
         loadBody.dataset = displayName;
+        loadBody.filePath = fileNameInVol;
         loadBody.sourceType = 'netapp';
         loadBody.volumeKey = source.volumeKey || source.id;
         if (source.volumeId) loadBody.volumeId = source.volumeId;
@@ -736,6 +742,7 @@ function loadFileFromBrowser() {
         // Dataset source
         displayName = source.name + '/' + file.path;
         loadBody.dataset = displayName;
+        loadBody.filePath = file.path;
         loadBody.datasetId = source.id;
 
         const snap = state.fileBrowserState.selectedSnapshot;

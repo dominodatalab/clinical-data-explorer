@@ -115,6 +115,8 @@ Configure the following environment variables in your Domino project settings:
 | `MCP_HOST` | `0.0.0.0` | Host interface for the MCP FastAPI/Uvicorn server. |
 | `MCP_WORKERS` | `1` | Uvicorn worker count. Keep this at `1` because MCP sessions and loaded DataFrames are process-local. |
 | `MCP_SERVER_URL` | `http://127.0.0.1:3333` | URL used by the Flask backend when proxying requests to the MCP server. |
+| `FLASK_APP_KEEPALIVE_TIMEOUT` | `10` | Keepalive timeout for the backend server |
+| `MCP_APP_KEEPALIVE_TIMEOUT` | `10` | Keepalive timeout for the mcp server |
 
 #### Optional: Cache and Session Tuning
 

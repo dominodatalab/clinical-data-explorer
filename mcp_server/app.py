@@ -40,7 +40,6 @@ from fastapi_mcp import FastApiMCP
 from mcp_server import config
 from mcp_server.session import (
     SessionMiddleware,
-    _current_session_id,
     _evict_stale_sessions,
     _get_session_dataset_name,
     _sessions,

@@ -10,7 +10,7 @@
 //     and remove handlers per chip / "Clear all".
 //
 // Two exports:
-//   - `initFilters({ tableState, loadTableData, loadSummaryData })` —
+//   - `initFilters({ tableState, loadTableData, loadSummaryData, persistUrl })` —
 //     call once from script.js's DOMContentLoaded callback. Caches the
 //     injected dependencies and wires every filter / expression event
 //     listener. Same shape as `initFileBrowser` from `modules/file-browser.js`
@@ -65,6 +65,7 @@ import { getDisplayName } from './column-labels.js';
 let tableStateRef = null;
 let loadTableDataFn = null;
 let loadSummaryDataFn = null;
+let persistUrlFn = null;
 
 // Module-private mutable state
 let autocompleteTimeout = null;
@@ -75,10 +76,11 @@ let filterModal, filterColumnSelect, filterOperatorSelect, filterValueInput,
     filterValue2Input, filterValue2Group, filterValueGroup, autocompleteDropdown;
 let expressionModal, expressionInput, expressionError, expressionErrorMessage;
 
-export function initFilters({ tableState, loadTableData, loadSummaryData }) {
+export function initFilters({ tableState, loadTableData, loadSummaryData, persistUrl }) {
     tableStateRef = tableState;
     loadTableDataFn = loadTableData;
     loadSummaryDataFn = loadSummaryData;
+    persistUrlFn = typeof persistUrl === 'function' ? persistUrl : null;
 
     // Filter Modal Elements
     filterModal = document.getElementById('filter-modal-overlay');
@@ -159,6 +161,12 @@ export function initFilters({ tableState, loadTableData, loadSummaryData }) {
     });
 }
 
+function persistFilterStateInUrl() {
+    if (persistUrlFn) {
+        persistUrlFn();
+    }
+}
+
 function openExpressionModal() {
     openModal(expressionModal);
     hideExpressionError();
@@ -216,6 +224,7 @@ async function applyExpressionFilter() {
         closeExpressionModal();
         tableStateRef.currentPage = 1;
         renderActiveFilters();
+        persistFilterStateInUrl();
         loadTableDataFn();
         loadSummaryDataFn();
         return;
@@ -248,6 +257,7 @@ async function applyExpressionFilter() {
         closeExpressionModal();
         tableStateRef.currentPage = 1;
         renderActiveFilters();
+        persistFilterStateInUrl();
         loadTableDataFn();
         loadSummaryDataFn();
 
@@ -262,6 +272,7 @@ function removeExpressionFilter() {
     tableStateRef.expressionFilter = null;
     tableStateRef.currentPage = 1;
     renderActiveFilters();
+    persistFilterStateInUrl();
     loadTableDataFn();
     loadSummaryDataFn();
 }
@@ -398,6 +409,7 @@ function applyFilter() {
 
     closeFilterModal();
     renderActiveFilters();
+    persistFilterStateInUrl();
     loadTableDataFn();
     loadSummaryDataFn();
 }
@@ -406,6 +418,7 @@ function removeFilter(index) {
     tableStateRef.filters.splice(index, 1);
     tableStateRef.currentPage = 1;
     renderActiveFilters();
+    persistFilterStateInUrl();
     loadTableDataFn();
     loadSummaryDataFn();
 }
@@ -415,6 +428,7 @@ function clearAllFilters() {
     tableStateRef.expressionFilter = null;  // Also clear expression filter
     tableStateRef.currentPage = 1;
     renderActiveFilters();
+    persistFilterStateInUrl();
     loadTableDataFn();
     loadSummaryDataFn();
 }
@@ -456,21 +470,28 @@ export function renderActiveFilters() {
         chip.className = 'filter-chip';
 
         const displayCol = getDisplayName(filter.column);
+        const displayValue = formatFilterValue(filter.value);
+        const displayValue2 = formatFilterValue(filter.value2);
         let text;
         if (filter.operator === 'is_missing' || filter.operator === 'is_not_missing') {
             text = `${displayCol} ${formatOperator(filter.operator)}`;
         } else if (filter.operator === 'between') {
-            text = `${displayCol} between "${filter.value}" and "${filter.value2}"`;
+            text = `${displayCol} between ${displayValue} and ${displayValue2}`;
         } else {
-            text = `${displayCol} ${formatOperator(filter.operator)} "${filter.value}"`;
+            text = `${displayCol} ${formatOperator(filter.operator)} ${displayValue}`;
         }
 
-        chip.innerHTML = `
-            <span>${text}</span>
-            <button class="filter-chip-remove" data-index="${index}">&times;</button>
-        `;
+        const label = document.createElement('span');
+        label.textContent = text;
+        chip.appendChild(label);
 
-        chip.querySelector('.filter-chip-remove').addEventListener('click', () => removeFilter(index));
+        const removeButton = document.createElement('button');
+        removeButton.className = 'filter-chip-remove';
+        removeButton.dataset.index = String(index);
+        removeButton.innerHTML = '&times;';
+        chip.appendChild(removeButton);
+
+        removeButton.addEventListener('click', () => removeFilter(index));
         container.appendChild(chip);
     });
 }
@@ -496,4 +517,11 @@ function formatOperator(op) {
         'is_not_missing': 'is not missing'
     };
     return opNames[op] || op;
+}
+
+function formatFilterValue(value) {
+    if (value === null || value === undefined) {
+        return '';
+    }
+    return String(value);
 }

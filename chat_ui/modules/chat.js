@@ -136,6 +136,28 @@ function clearChat() {
         });
 }
 
+async function loadChatHistory() {
+    try {
+        const data = await fetchJson(apiUrl('chat/history'));
+        const messages = Array.isArray(data.messages) ? data.messages : [];
+        chatBox.innerHTML = '';
+
+        if (messages.length === 0) {
+            displayMessage('Welcome to Data Explorer! Please select and load a dataset to get started.', 'system');
+            return;
+        }
+
+        messages.forEach(message => {
+            if (!message || !message.text || !message.sender) return;
+            displayMessage(message.text, message.sender, message.charts || null);
+        });
+    } catch (error) {
+        console.error('Error loading chat history:', error);
+        chatBox.innerHTML = '';
+        displayMessage('Welcome to Data Explorer! Please select and load a dataset to get started.', 'system');
+    }
+}
+
 function sendMessage() {
     const messageText = userInput.value.trim();
     if (messageText === '') {
@@ -347,5 +369,5 @@ export function initChat() {
     });
     clearChatButton.addEventListener('click', clearChat);
 
-    displayMessage('Welcome to Data Explorer! Please select and load a dataset to get started.', 'system');
+    loadChatHistory();
 }

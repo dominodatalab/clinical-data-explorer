@@ -6,8 +6,7 @@ handlers that serve the SPA. Every business route now lives in a
 `backend/routes/<area>.py` blueprint and is registered below.
 
 Helper functions referenced by the static handlers are kept at module
-scope. The before_request session hook (`ensure_session_id`) is also
-wired here because it is process-wide, not blueprint-scoped.
+scope.
 """
 from flask import Flask, send_from_directory, jsonify
 from werkzeug.middleware.proxy_fix import ProxyFix
@@ -24,7 +23,6 @@ from backend.routes.data import bp as data_bp
 from backend.routes.datasets import bp as datasets_bp
 from backend.routes.governance import bp as governance_bp
 from backend.routes.launch_context import bp as launch_context_bp
-from backend.session import ensure_session_id
 
 logger = logging.getLogger(__name__)
 
@@ -39,8 +37,7 @@ logger = logging.getLogger(__name__)
 #   /dataset/load, /dataset/data, /table/*,
 #     /column_labels                              -> backend/routes/data.py
 #
-# Session helpers (ensure_session_id, get_session_id, mcp_get, mcp_post)
-# live in backend/session.py. Auth helpers live in backend/auth.py.
+# Auth helpers live in backend/auth.py.
 # Service-layer helpers (dataset discovery, governance URL builder,
 # column-label loader) live under backend/services/.
 
@@ -137,8 +134,6 @@ def _register_static_routes(app):
     factory-level concerns — the before_request hook is process-wide and
     the two `send_from_directory` handlers serve the SPA shell.
     """
-    app.before_request(ensure_session_id)
-
     @app.route('/')
     def serve_index():
         return send_from_directory('chat_ui', 'index.html')
