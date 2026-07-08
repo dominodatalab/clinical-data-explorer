@@ -30,6 +30,7 @@ from typing import Dict, Optional
 import objsize
 import pandas as pd
 from fastapi import HTTPException, Request
+from fastapi.responses import JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
@@ -92,9 +93,10 @@ class SessionMiddleware(BaseHTTPMiddleware):
     """Extract X-Session-Id header and set it in contextvars for the request."""
     async def dispatch(self, request: Request, call_next):
         set_auth_header(request.headers)
-
-        session_id = _get_session_id()
-
+        try:
+            session_id = _get_session_id()
+        except HTTPException as exc:
+            return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
         _current_user_id.set(session_id)
 
         request.state.session_eviction_result = _evict_stale_sessions()
