@@ -36,12 +36,12 @@ def stub_mcp_dataframe_hooks(monkeypatch):
     monkeypatch.setattr(
         DatasetLoadRequestQueue,
         "_get_current_session_dataframe_size_bytes",
-        lambda self, session_id: 0,
+        lambda self, authorization_header: 0,
     )
     monkeypatch.setattr(
         DatasetLoadRequestQueue,
         "_evict_current_session_dataframe",
-        lambda self, session_id: None,
+        lambda self, authorization_header: None,
     )
 
 
@@ -55,14 +55,14 @@ def test_get_current_session_dataframe_size_requires_successful_mcp_response(mon
 
     monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", fake_get)
 
-    size = _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "sid-1")
+    size = _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")
 
     assert size == 1234
     assert response.raise_for_status_called
     assert calls == [
         (
             f"{dataset_load_request_queue_module.config.MCP_SERVER_URL}/dataframe/size",
-            {"X-Session-Id": "sid-1"},
+            {"Authorization": "Bearer tok-1"},
             dataset_load_request_queue_module.config.MCP_REQUEST_TIMEOUT_SECONDS,
         )
     ]
@@ -73,7 +73,7 @@ def test_get_current_session_dataframe_size_propagates_mcp_status_errors(monkeyp
     monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", lambda *args, **kwargs: response)
 
     with pytest.raises(RuntimeError, match="boom"):
-        _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "sid-1")
+        _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")
 
     assert response.raise_for_status_called
 
@@ -334,23 +334,23 @@ def test_dataset_load_request_queue_subtracts_current_session_dataframe_before_a
     monkeypatch.setattr(
         DatasetLoadRequestQueue,
         "_get_current_session_dataframe_size_bytes",
-        lambda self, session_id: events.append(("size", session_id)) or 300,
+        lambda self, authorization_header: events.append(("size", authorization_header)) or 300,
     )
     monkeypatch.setattr(
         DatasetLoadRequestQueue,
         "_evict_current_session_dataframe",
-        lambda self, session_id: events.append(("evict", session_id)),
+        lambda self, authorization_header: events.append(("evict", authorization_header)),
     )
 
     result = queue.submit_and_wait(
-        DatasetLoadRequest(dataset="replacement.csv", session_id="sid-1"),
+        DatasetLoadRequest(dataset="replacement.csv", session_id="sid-1", authorization_header="Bearer tok-1"),
         lambda entry: events.append(("process", entry.session_id)) or "loaded",
     )
 
     assert result == "loaded"
     assert events == [
-        ("size", "sid-1"),
-        ("evict", "sid-1"),
+        ("size", "Bearer tok-1"),
+        ("evict", "Bearer tok-1"),
         ("process", "sid-1"),
     ]
     assert queue.qsize() == 0
