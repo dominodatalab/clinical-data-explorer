@@ -4,8 +4,8 @@
   "versions": [
     {
       "manifestSchemaVersion": 1,
-      "version": "1.0.0-provisional4",
-      "releaseTag": "v1.0.0-provisional4",
+      "version": "1.0.0-provisional5",
+      "releaseTag": "v1.0.0-provisional5",
       "isProvisional": true,
       "minDominoVersion": "6.3.0"
     }
