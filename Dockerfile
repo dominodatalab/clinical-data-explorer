@@ -6,7 +6,7 @@ LABEL maintainer="Domino Data Lab"
 LABEL description="Clinical Data Explorer"
 LABEL version="1.0.0"
 
-ARG EXTENSION_VERSION=main
+ARG EXTENSION_VERSION=${EXTENSION_VERSION:-main}
 ARG GITHUB_ORG=dominodatalab
 ARG DUSER=ubuntu
 ARG DGROUP=ubuntu
