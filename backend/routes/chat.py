@@ -19,6 +19,7 @@ from chat_agent import (
     is_chat_configured,
 )
 
+from backend.auth import get_passthrough_token
 from backend.session import get_session_id
 
 logger = logging.getLogger(__name__)
@@ -67,7 +68,12 @@ def chat():
 
     # Get response from the chat agent using the async function
     try:
-        agent_response = asyncio.run(get_agent_response(user_message, session_id=get_session_id()))
+        token = get_passthrough_token()
+        agent_response = asyncio.run(get_agent_response(
+            user_message,
+            session_id=get_session_id(),
+            authorization_header=f'Bearer {token}' if token else None,
+        ))
         # agent_response is now a dict with 'text' and 'charts' keys
         logger.info("Successfully got agent response")
         return jsonify({
