@@ -16,7 +16,7 @@
         "autoCompatibleWithDomino": false,
         "visibility": "global",
         "buildArgs": {
-          "EXTENSION_VERSION": "v1.0.0-provisional5"
+          "EXTENSION_VERSION": "v1.0.0"
         }
       }
     },
