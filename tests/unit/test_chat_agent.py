@@ -286,7 +286,7 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show me age", session_id="session-1")
@@ -346,7 +346,7 @@ def test_get_agent_response_keeps_chart_payloads_in_message_history(monkeypatch)
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("show a chart", session_id="session-chart")
@@ -369,7 +369,7 @@ def test_get_agent_response_caps_message_history(monkeypatch):
     agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("hello", session_id="session-1")
@@ -396,7 +396,7 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
     fallback_agent = FakeAgent(result)
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
-    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id: mcp_agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: mcp_agent)
     monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda: fallback_agent)
 
     response = asyncio.run(
@@ -413,3 +413,67 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
         }
     ]
     assert chat_agent.get_message_histories()["session-1"] == ["new-message"]
+
+
+def test_create_agent_for_session_uses_authorization_header_for_mcp_connection(monkeypatch):
+    """When a real JWT authorization_header is provided it must be forwarded to the MCP
+    server verbatim so the server can call /api/users/v1/self and derive the user ID.
+    Passing the user ID as a fake Bearer token (the pre-fix behaviour) would cause a 401."""
+    captured = {}
+
+    class CapturingMCPServerSSE:
+        def __init__(self, url, headers):
+            captured["headers"] = headers
+
+    monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
+    monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
+    monkeypatch.setattr(chat_agent, "Agent", lambda model, toolsets, system_prompt, retries: None)
+
+    chat_agent._create_agent_for_session("user-id-123", authorization_header="Bearer jwt-token-xyz")
+
+    assert captured["headers"] == {"Authorization": "Bearer jwt-token-xyz"}
+
+
+def test_create_agent_for_session_falls_back_to_session_id_when_no_authorization_header(monkeypatch):
+    """When no authorization_header is provided (local / dev mode) the session ID is used
+    as the Bearer token, preserving backward-compatible local development behaviour."""
+    captured = {}
+
+    class CapturingMCPServerSSE:
+        def __init__(self, url, headers):
+            captured["headers"] = headers
+
+    monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
+    monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
+    monkeypatch.setattr(chat_agent, "Agent", lambda model, toolsets, system_prompt, retries: None)
+
+    chat_agent._create_agent_for_session("user-id-123")
+
+    assert captured["headers"] == {"Authorization": "Bearer user-id-123"}
+
+
+def test_get_agent_response_passes_authorization_header_to_agent_creation(monkeypatch):
+    """authorization_header received by get_agent_response must be forwarded to
+    _create_agent_for_session so the MCP connection carries the real JWT rather
+    than the Domino user ID."""
+    captured = {}
+    result = FakeResult("response", [])
+
+    def capturing_create(session_id, authorization_header=None):
+        captured["session_id"] = session_id
+        captured["authorization_header"] = authorization_header
+        return FakeAgent(result)
+
+    monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_agent, "_create_agent_for_session", capturing_create)
+
+    asyncio.run(
+        chat_agent.get_agent_response(
+            "hello",
+            session_id="user-id-123",
+            authorization_header="Bearer jwt-token-xyz",
+        )
+    )
+
+    assert captured["session_id"] == "user-id-123"
+    assert captured["authorization_header"] == "Bearer jwt-token-xyz"

@@ -125,17 +125,24 @@ def _get_llm_model():
     return _llm_model
 
 
-def _create_agent_for_session(session_id: str) -> Agent | None:
-    """Create an agent with an MCP server connection bound to a specific session."""
+def _create_agent_for_session(session_id: str, authorization_header: str = None) -> Agent | None:
+    """Create an agent with an MCP server connection bound to a specific session.
+
+    session_id is the Domino user ID, used only for keying chat history.
+    authorization_header is the raw Authorization header value (e.g. "Bearer <JWT>")
+    forwarded from the original browser request so the MCP server can authenticate
+    and route tool calls to the correct DataFrame.
+    """
     llm_model = _get_llm_model()
     if llm_model is None:
         return None
 
-    # Each session's MCP connection carries the session ID header so the
-    # MCP server routes tool calls to the correct DataFrame.
+    # The MCP server derives the session key by calling /api/users/v1/self with the
+    # Authorization header, so we must forward the original JWT — not the user ID.
+    mcp_auth_header = authorization_header or f'Bearer {session_id}'
     server = MCPServerSSE(
         url=MCP_SERVER_URL,
-        headers={'Authorization': f'Bearer {session_id}'},
+        headers={'Authorization': mcp_auth_header},
     )
     return Agent(llm_model, toolsets=[server], system_prompt=SYSTEM_PROMPT, retries=5)
 
@@ -212,15 +219,21 @@ def get_history(session_id: str = 'default') -> list[dict]:
     return transcript
 
 
-async def get_agent_response(message: str, session_id: str = 'default') -> dict:
+async def get_agent_response(message: str, session_id: str = 'default', authorization_header: str = None) -> dict:
     """Gets a response from the agent, running with MCP servers.
     Returns a dict with 'text' and optional 'charts' list.
-    Raises RuntimeError if chat is not configured."""
+    Raises RuntimeError if chat is not configured.
+
+    session_id: Domino user ID, used for keying per-user chat history.
+    authorization_header: raw Authorization header from the browser request (e.g. "Bearer <JWT>"),
+        forwarded to the MCP server so it can authenticate the caller. When omitted the
+        session_id is used as a fallback (local / dev mode only).
+    """
 
     if not is_chat_configured():
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
-    current_agent = _create_agent_for_session(session_id)
+    current_agent = _create_agent_for_session(session_id, authorization_header)
     if current_agent is None:
         raise RuntimeError("Chat is not configured. Please set the required environment variables.")
 
