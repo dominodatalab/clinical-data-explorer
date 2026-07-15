@@ -27,22 +27,6 @@ def _create_test_app(testing=False):
     return app
 
 
-@pytest.fixture(autouse=True)
-def stub_queue_mcp_dataframe_hooks(monkeypatch):
-    queue = get_dataset_load_request_queue()
-    monkeypatch.setattr(
-        dataset_load_request_queue_module.DatasetLoadRequestQueue,
-        "_get_current_session_dataframe_size_bytes",
-        lambda self, authorization_header: 0,
-    )
-    monkeypatch.setattr(
-        dataset_load_request_queue_module.DatasetLoadRequestQueue,
-        "_evict_current_session_dataframe",
-        lambda self, authorization_header: None,
-    )
-    monkeypatch.setattr(queue, "_get_current_session_dataframe_size_bytes", lambda authorization_header: 0)
-    monkeypatch.setattr(queue, "_evict_current_session_dataframe", lambda authorization_header: None)
-
 
 def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     queue = get_dataset_load_request_queue()

@@ -13,70 +13,6 @@ from backend.services.dataset_load_request_queue import (
     get_dataset_load_request_queue,
 )
 
-_GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES = DatasetLoadRequestQueue._get_current_session_dataframe_size_bytes
-
-
-class _FakeMcpResponse:
-    def __init__(self, payload, status_error=None):
-        self._payload = payload
-        self._status_error = status_error
-        self.raise_for_status_called = False
-
-    def raise_for_status(self):
-        self.raise_for_status_called = True
-        if self._status_error:
-            raise self._status_error
-
-    def json(self):
-        return self._payload
-
-
-@pytest.fixture(autouse=True)
-def stub_mcp_dataframe_hooks(monkeypatch):
-    monkeypatch.setattr(
-        DatasetLoadRequestQueue,
-        "_get_current_session_dataframe_size_bytes",
-        lambda self, authorization_header: 0,
-    )
-    monkeypatch.setattr(
-        DatasetLoadRequestQueue,
-        "_evict_current_session_dataframe",
-        lambda self, authorization_header: None,
-    )
-
-
-def test_get_current_session_dataframe_size_requires_successful_mcp_response(monkeypatch):
-    response = _FakeMcpResponse({"dataframe_size_bytes": 1234})
-    calls = []
-
-    def fake_get(url, headers, timeout):
-        calls.append((url, headers, timeout))
-        return response
-
-    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", fake_get)
-
-    size = _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")
-
-    assert size == 1234
-    assert response.raise_for_status_called
-    assert calls == [
-        (
-            f"{dataset_load_request_queue_module.config.MCP_SERVER_URL}/dataframe/size",
-            {"Authorization": "Bearer tok-1"},
-            dataset_load_request_queue_module.config.MCP_REQUEST_TIMEOUT_SECONDS,
-        )
-    ]
-
-
-def test_get_current_session_dataframe_size_propagates_mcp_status_errors(monkeypatch):
-    response = _FakeMcpResponse({"dataframe_size_bytes": 1234}, status_error=RuntimeError("boom"))
-    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", lambda *args, **kwargs: response)
-
-    with pytest.raises(RuntimeError, match="boom"):
-        _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")
-
-    assert response.raise_for_status_called
-
 
 def test_get_dataset_load_request_queue_returns_singleton():
     queue_one = get_dataset_load_request_queue()
@@ -324,35 +260,80 @@ def test_dataset_load_request_queue_admits_concurrent_request_with_projected_act
     assert queue.qsize() == 0
 
 
-def test_dataset_load_request_queue_subtracts_current_session_dataframe_before_admission(monkeypatch):
+def test_dataset_load_request_queue_uses_full_baseline_for_admission(monkeypatch):
+    """The admission check must use the unmodified memory baseline.
+
+    Because the old DataFrame stays in memory until _set_current_df atomically
+    replaces it, the true peak during a load is baseline + new DataFrame. The
+    check must NOT subtract the old DataFrame's size from the baseline —
+    doing so would underestimate the peak and risk OOM for large file swaps.
+    """
     queue = DatasetLoadRequestQueue(max_length=10)
-    events = []
+    admission_baseline = []
 
     monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 100)
     monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_usage_snapshot_bytes", lambda: 700)
-    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "get_memory_limit_bytes", lambda: 1000)
-    monkeypatch.setattr(
-        DatasetLoadRequestQueue,
-        "_get_current_session_dataframe_size_bytes",
-        lambda self, authorization_header: events.append(("size", authorization_header)) or 300,
-    )
-    monkeypatch.setattr(
-        DatasetLoadRequestQueue,
-        "_evict_current_session_dataframe",
-        lambda self, authorization_header: events.append(("evict", authorization_header)),
-    )
+
+    def capturing_enforce(file_name, file_size, additional_projected_dataframe_size_b, used_memory_bytes):
+        admission_baseline.append(used_memory_bytes)
+
+    monkeypatch.setattr(dataset_load_request_queue_module.file_size_limits, "enforce", capturing_enforce)
 
     result = queue.submit_and_wait(
         DatasetLoadRequest(dataset="replacement.csv", session_id="sid-1", authorization_header="Bearer tok-1"),
-        lambda entry: events.append(("process", entry.session_id)) or "loaded",
+        lambda entry: "loaded",
     )
 
     assert result == "loaded"
-    assert events == [
-        ("size", "Bearer tok-1"),
-        ("evict", "Bearer tok-1"),
-        ("process", "sid-1"),
-    ]
+    assert admission_baseline == [700], "enforce must receive the full baseline, not an adjusted value"
+    assert queue.qsize() == 0
+
+
+def test_dataset_load_request_queue_does_not_evict_session_between_concurrent_loads(monkeypatch):
+    """Regression: a second concurrent load for the same session must not
+    destroy the DataFrame that the first load already returned 200 for.
+
+    Before the fix, submit_and_wait called _evict_current_session_dataframe
+    inside the lock while the first load's processor had already completed and
+    its 200 was in flight to the browser. The browser's follow-up /table/data
+    and /table/summary requests then hit a session with no DataFrame loaded.
+    """
+    queue = DatasetLoadRequestQueue(max_length=10)
+    first_processor_started = threading.Event()
+    allow_first_to_finish = threading.Event()
+    evict_calls = []
+
+    monkeypatch.setattr(dataset_load_request_queue_module, "resolve_dataset_load_request_file_size", lambda entry: 1)
+
+    def first_processor(entry):
+        first_processor_started.set()
+        allow_first_to_finish.wait(timeout=1)
+        return "loaded:first"
+
+    def second_processor(entry):
+        return "loaded:second"
+
+    first_thread = threading.Thread(
+        target=lambda: queue.submit_and_wait(
+            DatasetLoadRequest(dataset="first.csv", session_id="sid-1", authorization_header="Bearer tok"),
+            first_processor,
+        )
+    )
+
+    first_thread.start()
+    assert first_processor_started.wait(timeout=1)
+
+    # Second request arrives while the first processor is still running.
+    # It must not evict the first session's DataFrame.
+    queue.submit_and_wait(
+        DatasetLoadRequest(dataset="second.csv", session_id="sid-1", authorization_header="Bearer tok"),
+        second_processor,
+    )
+
+    assert evict_calls == [], "submit_and_wait must never call evict-current-session"
+
+    allow_first_to_finish.set()
+    first_thread.join(timeout=1)
     assert queue.qsize() == 0
 
 
