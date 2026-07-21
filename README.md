@@ -29,6 +29,23 @@ See the [INSTALL.md](./INSTALL.md) for an indepth overview of how to configure t
 
 `start_servers_prod.sh` runs the MCP FastAPI app with Uvicorn and the Flask web app with Gunicorn. To start the dev servers locally, use `start_servers.sh`
 
+### Local Development with the Domino API Mock Server
+
+When iterating locally on code paths that call Domino APIs, run the mock server in a separate terminal:
+
+```
+uv run uvicorn mock_server.app:app --host 0.0.0.0 --port 8080
+```
+
+The mock server serves some Domino API endpoints for local development.
+
+In the terminal where you start the app, point Domino API calls at the mock server:
+
+```
+export DOMINO_API_HOST=http://localhost:8080
+./start_servers.sh
+```
+
 ### Quick Start
 
 See the [QUICKSTART.md](./QUICKSTART.md) for developer information on working on the App.
