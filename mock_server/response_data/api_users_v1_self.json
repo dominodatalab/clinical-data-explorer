@@ -1,0 +1,23 @@
+{
+  "metadata": {
+    "notices": [
+      "string"
+    ],
+    "requestId": "string"
+  },
+  "user": {
+    "avatarUrl": "string",
+    "companyName": "string",
+    "email": "string",
+    "firstName": "string",
+    "fullName": "string",
+    "id": "string",
+    "idpId": "string",
+    "lastName": "string",
+    "phoneNumber": "string",
+    "roles": [
+      "string"
+    ],
+    "userName": "string"
+  }
+}

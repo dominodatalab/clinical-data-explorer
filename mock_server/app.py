@@ -1,31 +1,17 @@
 """Mock Domino API server for local development and tests."""
 
+import json
+from pathlib import Path
+
 from fastapi import FastAPI
 
 
-SELF_USER_RESPONSE = {
-    "metadata": {
-        "notices": [
-            "string",
-        ],
-        "requestId": "string",
-    },
-    "user": {
-        "avatarUrl": "string",
-        "companyName": "string",
-        "email": "string",
-        "firstName": "string",
-        "fullName": "string",
-        "id": "string",
-        "idpId": "string",
-        "lastName": "string",
-        "phoneNumber": "string",
-        "roles": [
-            "string",
-        ],
-        "userName": "string",
-    },
-}
+RESPONSE_DATA_DIR = Path(__file__).resolve().parent / "response_data"
+
+
+def load_response_data(file_name: str):
+    with open(RESPONSE_DATA_DIR / file_name) as response_file:
+        return json.load(response_file)
 
 
 def create_app() -> FastAPI:
@@ -37,7 +23,7 @@ def create_app() -> FastAPI:
 
     @app.get("/api/users/v1/self")
     async def get_self_user():
-        return SELF_USER_RESPONSE
+        return load_response_data("api_users_v1_self.json")
 
     return app
 
