@@ -27,7 +27,6 @@ and `data` tracks the plan's target layout, not the URL pluralization.
 """
 import logging
 
-import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
 import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
@@ -40,6 +39,7 @@ from werkzeug.exceptions import (
 )
 
 from backend.services.column_labels import load_column_labels
+import backend.services.httpclient as httpclient
 from backend.services.datasets import (
     load_existing_session_dataframe,
     process_dataset_load_request,
@@ -57,19 +57,19 @@ def _evict_stale_dataframes_before_load():
         response = mcp_post("/dataframes/evict-stale")
         if response.status_code != 200:
             logger.warning("MCP stale DataFrame eviction returned HTTP %s", response.status_code)
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Could not connect to MCP server to evict stale DataFrames before dataset load")
-    except requests.exceptions.RequestException as exc:
+    except httpclient.RequestException as exc:
         logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
 
 
 def _get_current_session_dataset(session_id):
     try:
         response = mcp_get("/dataframe/current-session", session_id=session_id)
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Could not connect to MCP server to check current session DataFrame")
         return None
-    except requests.exceptions.RequestException as exc:
+    except httpclient.RequestException as exc:
         logger.warning("Could not check current session DataFrame: %s", exc)
         return None
 
@@ -141,7 +141,7 @@ def get_dataset_metadata():
     """
     try:
         response = mcp_get("/dataset/metadata")
-    except requests.exceptions.ConnectionError as exc:
+    except httpclient.ConnectionError as exc:
         logger.error("Could not connect to MCP server for dataset metadata")
         raise ServiceUnavailable(description="Could not connect to MCP server") from exc
 
@@ -165,7 +165,7 @@ def get_dataset_data():
         else:
             error_detail = response.json().get('detail', 'Failed to get dataset data')
             return jsonify({'error': error_detail}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server")
         return jsonify({'error': 'Could not connect to MCP server. Make sure it is running on port 8888.'}), 503
     except Exception as e:
@@ -184,7 +184,7 @@ def get_table_data():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get table data')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for table data")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -214,7 +214,7 @@ def get_column_values(column):
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get column values')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for column values")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -231,7 +231,7 @@ def get_table_summary():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get summary')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for summary")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -257,7 +257,7 @@ def get_column_stats(column):
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get column stats')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for column stats")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -291,7 +291,7 @@ def expression_filter():
         else:
             error_detail = response.json().get('detail', 'Failed to apply expression filter')
             return jsonify({'error': error_detail}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for expression filter")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -308,7 +308,7 @@ def get_expression_samples():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get expression samples')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for expression samples")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:

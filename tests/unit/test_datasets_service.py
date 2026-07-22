@@ -98,7 +98,7 @@ def test_list_datasets_via_api_lists_project_datasets_and_netapp_files(monkeypat
             },
         )
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     netapp_calls = []
     monkeypatch.setattr(
@@ -223,7 +223,7 @@ def test_list_datasets_via_api_includes_shared_project_mounts(monkeypatch):
             )
         return _FakeResponse(404, {"error": "not found"})
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
     monkeypatch.setattr(services, "discover_netapp_files_for_project", lambda project_id, token: ([], []))
 
     captured = install_fake_dataset_client(
@@ -302,7 +302,7 @@ def test_list_datasets_via_api_lets_netapp_http_exceptions_propagate(monkeypatch
     def fake_discover(project_id, token):
         raise HTTPException("RemoteFS returned HTTP 500 while accessing NetApp volumes")
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
     monkeypatch.setattr(services, "discover_netapp_files_for_project", fake_discover)
 
     with app.app_context(), pytest.raises(HTTPException, match="RemoteFS returned HTTP 500"):
@@ -331,7 +331,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
             },
         )
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     captured = install_fake_netapp_client(
         monkeypatch,
@@ -407,7 +407,7 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
             return _FakeResponse(200, {"id": "snap-2", "version": 9})
         return _FakeResponse(404, {"error": "not found"})
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     captured = install_fake_netapp_client(
         monkeypatch,
@@ -470,7 +470,7 @@ def test_fetch_remotefs_volumes_raises_http_exception_on_api_error(monkeypatch):
         lambda: "remotefs.example",
     )
     monkeypatch.setattr(
-        services.requests,
+        services.httpclient.requests,
         "get",
         lambda *args, **kwargs: _FakeResponse(500, {"error": "boom"}),
     )
@@ -489,7 +489,7 @@ def test_discover_netapp_files_for_volume_raises_when_volume_is_missing(monkeypa
         lambda: "remotefs.example",
     )
     monkeypatch.setattr(
-        services.requests,
+        services.httpclient.requests,
         "get",
         lambda *args, **kwargs: _FakeResponse(404, {"error": "not found"}),
     )
@@ -593,7 +593,7 @@ def test_list_dataset_files_by_id_uses_v1_single_dataset_endpoint(monkeypatch):
         api_calls.append((url, headers, timeout))
         return _FakeResponse(200, {"dataset": {"id": "ds-123", "name": "Clinical Study"}})
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     captured = install_fake_dataset_client(
         monkeypatch,
@@ -790,7 +790,7 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
             },
         )
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     delegated_calls = []
 
@@ -879,7 +879,7 @@ def test_load_dataset_file_from_snapshot_uses_data_file_path_without_runtime_err
         request_calls.append((url, params, headers, timeout, stream))
         return _FakeStreamingResponse(200, [b"col1,", b"col2\n1,2\n"])
 
-    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+    monkeypatch.setattr(services.httpclient.requests, "get", fake_requests_get)
 
     expected_path = tmp_path / "domino_api_datasets" / "dataset" / "ds-9" / "snap-9" / "reports" / "adsl.csv"
     mcp_paths = []

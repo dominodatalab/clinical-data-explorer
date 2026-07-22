@@ -21,10 +21,10 @@ import logging
 import os
 import traceback
 
-import requests
 from flask import Blueprint, jsonify, request
 
 from backend.auth import get_domino_api_host, get_passthrough_token
+import backend.services.httpclient as httpclient
 from backend.services.datasets import (
     SUPPORTED_EXTENSIONS,
     _list_dataset_snapshots,
@@ -116,7 +116,14 @@ def browse_snapshot_files(snapshot_id):
         headers = {'Authorization': f'Bearer {token}'}
 
         url = f'{api_host}/v4/datasetrw/files/{snapshot_id}'
-        response = requests.get(url, params={'path': subpath}, headers=headers, timeout=30)
+        response = httpclient.get(
+            url,
+            params={'path': subpath},
+            headers=headers,
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
+        )
 
         if response.status_code in (401, 403):
             return jsonify({'error': 'Access denied', 'entries': []}), response.status_code
@@ -133,7 +140,7 @@ def browse_snapshot_files(snapshot_id):
             'currentPath': subpath,
         })
 
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to Domino API for snapshot file browsing")
         return jsonify({'error': 'Could not connect to Domino API', 'entries': []}), 503
     except Exception as e:

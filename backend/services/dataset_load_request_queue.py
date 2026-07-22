@@ -12,11 +12,10 @@ import threading
 import time
 from typing import Callable, Deque, Optional
 
-import requests
-
 from backend import config
 from backend.services.dataset_load_request_file_size_resolver import resolve_dataset_load_request_file_size
 import backend.services.file_size_limits as file_size_limits
+import backend.services.httpclient as httpclient
 
 # Hard cap for queued load requests. When the queue reaches this size, new
 # requests are rejected so the server does not accumulate unbounded work.
@@ -99,19 +98,23 @@ class DatasetLoadRequestQueue:
         self._projected_dataframe_size_bytes: Optional[int] = None
 
     def _get_current_session_dataframe_size_bytes(self, authorization_header: Optional[str]) -> int:
-        response = requests.get(
+        response = httpclient.get(
             f"{config.MCP_SERVER_URL}/dataframe/size",
             headers={"Authorization": authorization_header} if authorization_header else {},
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
+            is_json=False,
+            raise_for_status=False,
         )
         response.raise_for_status()
         return int(response.json()["dataframe_size_bytes"])
 
     def _evict_current_session_dataframe(self, authorization_header: Optional[str]) -> None:
-        response = requests.post(
+        response = httpclient.post(
             f"{config.MCP_SERVER_URL}/dataframe/evict-current-session",
             headers={"Authorization": authorization_header} if authorization_header else {},
             timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
+            is_json=False,
+            raise_for_status=False,
         )
         response.raise_for_status()
 

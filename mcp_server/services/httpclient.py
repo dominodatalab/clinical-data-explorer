@@ -2,10 +2,13 @@
 with some overrides"""
 
 from fastapi import HTTPException
-import os
 import requests
 
 from mcp_server.auth import get_domino_api_host, get_passthrough_token
+
+ConnectionError = requests.exceptions.ConnectionError
+RequestException = requests.exceptions.RequestException
+
 
 class HTTPClientError(RuntimeError):
     """Raised when an HTTP helper call returns a non-success response."""
@@ -16,15 +19,40 @@ class HTTPClientError(RuntimeError):
         self.text = text
 
 
-def get(*args, is_json: bool = True, **kwargs):
-    """Issue a GET request with backend defaults and uniform error handling."""
-    response = requests.get(
-        *args,
-        **kwargs,
-        timeout=120,
-        stream=True
-    )
+def request(method: str, *args, is_json: bool = True, raise_for_status: bool = True, **kwargs):
+    """Issue an HTTP request with MCP server defaults and optional JSON parsing."""
+    kwargs.setdefault('timeout', 120)
+    response = requests.request(method, *args, **kwargs)
+    return _handle_response(response, is_json=is_json, raise_for_status=raise_for_status)
 
+
+def get(*args, is_json: bool = True, raise_for_status: bool = True, **kwargs):
+    """Issue a GET request with MCP server defaults and optional JSON parsing."""
+    if 'timeout' not in kwargs:
+        kwargs['timeout'] = 120
+        kwargs.setdefault('stream', True)
+    response = requests.get(*args, **kwargs)
+    return _handle_response(response, is_json=is_json, raise_for_status=raise_for_status)
+
+
+def post(*args, is_json: bool = True, raise_for_status: bool = True, **kwargs):
+    """Issue a POST request with MCP server defaults and optional JSON parsing."""
+    kwargs.setdefault('timeout', 120)
+    response = requests.post(*args, **kwargs)
+    return _handle_response(response, is_json=is_json, raise_for_status=raise_for_status)
+
+
+def _handle_response(response, is_json: bool, raise_for_status: bool):
+    if raise_for_status:
+        _raise_for_error_response(response)
+
+    if is_json:
+        return response.json()
+
+    return response
+
+
+def _raise_for_error_response(response):
     if response.status_code == 401:
         raise HTTPClientError(response.status_code, 'Authentication failed. Your session may have expired.')
 
@@ -33,11 +61,6 @@ def get(*args, is_json: bool = True, **kwargs):
 
     if response.status_code > 399:
         raise HTTPClientError(response.status_code, response.text)
-
-    if is_json:
-        return response.json()
-
-    return response
 
 def _pre_configured_get(path: str):
     domino_api_host = _get_domino_api_host()

@@ -13,10 +13,10 @@ import uuid
 
 import contextvars
 from flask import session
-import requests
 
 from backend.auth import get_passthrough_token
 from backend import config
+import backend.services.httpclient as httpclient
 from backend.services.httpclient import get_current_user
 
 _current_user_id: contextvars.ContextVar[str] = contextvars.ContextVar('current_user_id', default=None)
@@ -37,7 +37,13 @@ def mcp_get(path, session_id=None, **kwargs):
     headers = dict(kwargs.pop('headers', None) or {})
     headers['Authorization'] = f'Bearer {get_passthrough_token()}'
     kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
-    return requests.get(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    return httpclient.get(
+        f"{config.MCP_SERVER_URL}{path}",
+        headers=headers,
+        is_json=False,
+        raise_for_status=False,
+        **kwargs,
+    )
 
 
 def mcp_post(path, session_id=None, **kwargs):
@@ -45,4 +51,10 @@ def mcp_post(path, session_id=None, **kwargs):
     headers = dict(kwargs.pop('headers', None) or {})
     headers['Authorization'] = f'Bearer {get_passthrough_token()}'
     kwargs.setdefault('timeout', config.MCP_REQUEST_TIMEOUT_SECONDS)
-    return requests.post(f"{config.MCP_SERVER_URL}{path}", headers=headers, **kwargs)
+    return httpclient.post(
+        f"{config.MCP_SERVER_URL}{path}",
+        headers=headers,
+        is_json=False,
+        raise_for_status=False,
+        **kwargs,
+    )
