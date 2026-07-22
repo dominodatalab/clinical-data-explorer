@@ -663,12 +663,12 @@ body.resizing .summary-stats-panel.summary-sidebar {
 }
 
 .data-table td {
+    max-width: 300px;
     padding: 8px 12px;
     border-bottom: 1px solid var(--color-border-borderlight);
     color: var(--color-text-textprimary);
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    text-wrap: auto;
     min-width: 120px;
 }
 
