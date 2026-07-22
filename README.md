@@ -88,12 +88,6 @@ You can modify this file to add labels for your own datasets. The mappings apply
 
 Configure the following environment variables in your Domino project settings:
 
-#### Required for Governance Features
-
-| Variable | Description |
-|----------|-------------|
-| `DOMINO_API_HOST_OVERD` | Your Domino deployment URL (e.g., `https://your-domino-deployment.com`). This overrides the auto-detected `DOMINO_API_HOST` when set. |
-
 #### Optional: Backend Request and Load Limits
 
 | Variable | Default | Description |
@@ -272,47 +266,6 @@ Ask the chatbot about the columns in your dataset or request specific analyses:
 - "What are the value counts for ARM?"
 - "Show me a correlation matrix for numeric columns"
 
-## Use Domino Governance
-
-Clinical Data Explorer integrates with Domino Governance to help you create findings for governed datasets. When a dataset is attached to a governance bundle, you can submit findings directly from the app.
-
-### Governed Datasets
-
-When you load a dataset that's part of a Domino governance bundle, a green **Governed** badge appears in the header. This indicates the file is being tracked for compliance and audit purposes.
-
-![Governed dataset indicator](docs_assets/09-governance-indicator.png)
-
-The **Create Finding** button appears when a governed dataset is loaded. For non-governed files, a gray "Not Governed" badge appears instead and the Create Finding button is hidden.
-
-### Create a Finding
-
-To submit a finding for a governed dataset:
-
-1. Load a governed dataset (the **Governed** badge should appear)
-2. Optionally apply filters to focus on specific data issues
-3. Click **Create Finding**
-4. Fill in the required fields:
-   - **Finding Name**: A descriptive name for the issue
-   - **Severity**: Critical, High, Medium, Low, or Informational
-   - **Approver**: Select from designated approvers for the bundle
-   - **Assignee**: Who should address the finding
-5. Optionally add:
-   - **Evidence/Approval**: Link to a specific approval workflow
-   - **Stage**: The governance stage (e.g., Self QC, Double Programming)
-   - **Description**: Details about the finding
-   - **Due Date**: When the finding should be resolved
-
-![Create Finding modal](docs_assets/10-create-finding-modal.png)
-
-When you submit a finding, the current data view URL (including any active filters) is automatically appended to the description. This creates a permalink that allows reviewers to see exactly what data you were viewing when you identified the issue.
-
-### Requirements
-
-Governance features require:
-- `DOMINO_API_HOST_OVERD` environment variable set to your Domino deployment URL
-- The dataset file must be attached to an active governance bundle in Domino
-- Appropriate permissions to create findings in the bundle
-
 ## Troubleshooting
 
 ### "No datasets found"
@@ -326,11 +279,6 @@ Governance features require:
 - For cloud providers, verify your `LLM_API_KEY` is valid
 - For local Ollama, confirm the service is running and `LLM_BASE_URL` is correct
 
-### Governance features unavailable
-
-- Set `DOMINO_API_HOST_OVERD` to your Domino deployment URL
-- Verify your API credentials have appropriate permissions
-
 ### Filters not persisting
 
 - Ensure "Deep linking and query parameters" is enabled in your Domino App settings
@@ -343,7 +291,7 @@ Run `make test` before committing. Run `make test-all` before opening a PR.
 - `make test-mocked-integration` — Playwright browser tests with mocked backend responses; no Flask/MCP servers needed
 - `make test-e2e` — Playwright smoke test that walks the whole app with local Flask/MCP servers (~60–90s)
 - `make test-all` — contract, real e2e, unit/MCP, and mocked integration layers
-- `make test-external` — tests that hit real external services (governance, chat). Run these before shipping a change that touches governance or chat.
+- `make test-external` — tests that hit real external services (chat). Run these before shipping a change that touches chat.
 
 First-time setup:
 
@@ -357,4 +305,4 @@ uv run --locked playwright install chromium     # only needed for make test-e2e
 - Add one step to `tests/e2e/test_smoke.py` that exercises the UI path. This is the primary safety net.
 - Only add an MCP contract test if the feature introduces a new *category* of backend behavior (not a new endpoint within an existing category).
 - Do NOT add unit tests for internal helpers; prefer integration-level tests.
-- If the feature depends on governance, chat, or another external service, mark the test `@pytest.mark.external`.
+- If the feature depends on chat or another external service, mark the test `@pytest.mark.external`.
