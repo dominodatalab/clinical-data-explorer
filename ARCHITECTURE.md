@@ -61,9 +61,7 @@ The Flask backend uses Domino APIs when it needs to:
 - list project datasets and dataset files
 - browse or load dataset snapshots
 - discover and read NetApp volume files
-- check whether a loaded file is attached to a governance bundle
-- create governance findings
-- resolve current-user and collaborator information for governance workflows
+- resolve current-user information
 
 ### Authorization and Identity
 
@@ -167,19 +165,19 @@ Flask backend
   returns dataset metadata to the UI
 
 Browser
-  initializes table, charts, filters, and governance status
+  initializes table, charts, and filters
 ```
 
 The load path supports Domino datasets, dataset snapshots, dataset
 file deeplinks, NetApp volumes, and NetApp volume files. Snapshot identity is preserved where
-possible so the app can reload or govern the exact file revision the user chose.
+possible so the app can reload the exact file revision the user chose.
 
 Chat history is cleared only for the browser session that loaded the dataset,
 and only after the MCP server has successfully loaded the new file. A failed
 dataset load should leave the existing chat context alone. The reset matters
 because chat history is tied to the previously loaded dataset: if a user switches
 from one dataset to another, old questions, answers, and tool results can refer
-to columns, values, filters, or findings that no longer apply. Clearing the
+to columns, values, or filters that no longer apply. Clearing the
 session's chat history makes the next chat start from the newly loaded dataset
 instead of carrying assumptions from the old one.
 
@@ -202,12 +200,6 @@ MCP server
 Browser
   renders the page, chart, summary, or chat response
 ```
-
-## Governance Flow
-
-The browser uses file information from the Flask backend to check for matching
-governance bundles. If the file is governed, the UI can create a finding. The
-Flask backend submits the finding to Domino Governance.
 
 ## Permalinks And Deep Links
 
