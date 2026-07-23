@@ -1,0 +1,6 @@
+id,long_text,"this_is_a_very_long_column_name_for_testing_table_header_wrapping_truncation_and_horizontal_scrolling"
+1,"This is a deliberately long text value for testing how Clinical Data Explorer displays, filters, summarizes, and chats about wide text cells. It contains multiple sentences in a single CSV field so the table view has to render a large amount of text in one row without breaking the surrounding layout. The value mentions clinical review notes, operational context, exploratory analysis, data quality observations, and general narrative content, but it is synthetic sample data only. The purpose of this row is to make it easy to test horizontal scrolling, row height behavior, copy link behavior, CSV parsing, and any downstream handling of large string values inside a dataset. This paragraph keeps going long enough to be visually obvious in the UI and to exercise text wrapping or truncation behavior across desktop and smaller browser widths.","long header row"
+2,"Short note.","alpha"
+3,"Brief update.","beta"
+4,"OK.","gamma"
+5,"Small text value.","delta"
