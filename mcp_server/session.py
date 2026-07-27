@@ -68,6 +68,13 @@ class SessionEvictionResult:
     evicted_dataframes: int
 
 
+@dataclass(frozen=True)
+class CurrentSessionDataFrameStatus:
+    dataset: Optional[str]
+    loaded: bool
+    cache_hit: bool
+
+
 _sessions: Dict[str, LoadedDataEntry] = {}
 
 
@@ -195,6 +202,19 @@ def _get_session_dataset_name() -> Optional[str]:
     if session:
         return session.file_snapshot_path
     return None
+
+
+def get_current_session_dataframe_status() -> CurrentSessionDataFrameStatus:
+    """Return current session DataFrame metadata and cache presence."""
+    session_id = _current_user_id.get()
+    session = _get_sessions().get(session_id)
+    if session is None:
+        return CurrentSessionDataFrameStatus(dataset=None, loaded=False, cache_hit=False)
+    return CurrentSessionDataFrameStatus(
+        dataset=session.file_snapshot_path,
+        loaded=True,
+        cache_hit=get_cache().get(session.file_snapshot_path) is not None,
+    )
 
 
 def has_current_df(file_snapshot_path: str) -> bool:
