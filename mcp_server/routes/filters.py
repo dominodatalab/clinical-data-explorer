@@ -41,14 +41,14 @@ router = APIRouter()
 async def expression_filter(request: ExpressionFilterRequest):
     """
     Filter table data using SAS WHERE, R dplyr, or Python pandas expression syntax.
-    
+
     Supports:
     - SAS WHERE: AGE > 65 AND TRTA = 'Placebo'
-    - R dplyr: AGE > 65 & TRTA == "Placebo"  
+    - R dplyr: AGE > 65 & TRTA == "Placebo"
     - Python pandas: AGE > 65 & TRTA == "Placebo"
     """
     df = get_current_df()
-    
+
     # Validate expression columns exist (pass syntax to know which keywords to exclude)
     unknown_cols = validate_expression_columns(request.expression, df, request.syntax)
     if unknown_cols:
@@ -58,17 +58,17 @@ async def expression_filter(request: ExpressionFilterRequest):
             similar = [c for c in df.columns if unknown.lower() in c.lower() or c.lower() in unknown.lower()]
             if similar:
                 suggestions[unknown] = similar[:3]
-        
+
         error_msg = f"Unknown column(s): {', '.join(unknown_cols)}"
         if suggestions:
             suggestion_strs = [f"'{k}' - did you mean: {', '.join(v)}?" for k, v in suggestions.items()]
             error_msg += ". " + " ".join(suggestion_strs)
-        
+
         raise HTTPException(status_code=400, detail=error_msg)
-    
+
     # Apply UI filters first (if any)
     filtered_df = apply_filters(df, request.filters)
-    
+
     # Apply expression filter
     try:
         filtered_df = apply_expression_filter(filtered_df, request.expression, request.syntax)
@@ -77,23 +77,23 @@ async def expression_filter(request: ExpressionFilterRequest):
     except Exception as e:
         logger.error(f"Expression filter error: {e}")
         raise HTTPException(status_code=400, detail=f"Error applying expression: {str(e)}")
-    
+
     # Apply sorting
     if request.sort_column and request.sort_column in filtered_df.columns:
         ascending = request.sort_direction == "asc"
         filtered_df = filtered_df.sort_values(by=request.sort_column, ascending=ascending, na_position='last')
-    
+
     # Calculate pagination
     total_rows = len(filtered_df)
     total_pages = max(1, (total_rows + request.page_size - 1) // request.page_size)
     page = max(1, min(request.page, total_pages))
-    
+
     start_idx = (page - 1) * request.page_size
     end_idx = start_idx + request.page_size
-    
+
     # Get page of data
     page_df = filtered_df.iloc[start_idx:end_idx]
-    
+
     # Convert to JSON-serializable format
     try:
         data = json.loads(page_df.to_json(orient='records', date_format='iso', default_handler=str))
@@ -113,7 +113,7 @@ async def expression_filter(request: ExpressionFilterRequest):
                 else:
                     record[col] = val
             data.append(record)
-    
+
     return {
         "data": data,
         "page": page,
@@ -134,10 +134,10 @@ async def get_expression_samples():
     This helps users write expressions with actual column names from their data.
     """
     df = get_current_df()
-    
+
     numeric_cols = _get_numeric_columns(df)
     categorical_cols = _get_categorical_columns(df, numeric_cols)
-    
+
     # Get sample numeric columns with their ranges
     numeric_samples = []
     for col in numeric_cols[:3]:  # Limit to 3 numeric columns
@@ -153,7 +153,7 @@ async def get_expression_samples():
                 "max": round(max_val, 2),
                 "sample": round(sample_val, 2)
             })
-    
+
     # Get sample categorical columns with their top values
     categorical_samples = []
     for col in categorical_cols[:3]:  # Limit to 3 categorical columns
@@ -164,7 +164,7 @@ async def get_expression_samples():
                 "column": col,
                 "values": values
             })
-    
+
     # Identify flag columns (ending in FL with Y/N values)
     flag_columns = []
     for col in df.columns:
@@ -172,7 +172,7 @@ async def get_expression_samples():
             unique_vals = df[col].dropna().unique()
             if len(unique_vals) <= 3:  # Likely a flag
                 flag_columns.append(col)
-    
+
     # Identify date columns
     date_columns = []
     for col in df.columns:
@@ -182,7 +182,7 @@ async def get_expression_samples():
         elif col.upper().endswith('DT') or col.upper().endswith('DTM'):
             # Common clinical date column naming conventions
             date_columns.append(col)
-    
+
     return {
         "numeric_samples": numeric_samples,
         "categorical_samples": categorical_samples,

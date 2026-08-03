@@ -33,8 +33,9 @@ https://huggingface.co/blog/lynn-mikami/fastapi-mcp-server
 import logging
 import sys
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from fastapi_mcp import FastApiMCP
 
 from mcp_server import config
@@ -66,6 +67,32 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class UnhandledExceptionMiddleware:
+    """Return FastAPI-style JSON for exceptions that escape route handlers."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            await self.app(scope, receive, send)
+            return
+
+        try:
+            await self.app(scope, receive, send)
+        except HTTPException as exc:
+            response = JSONResponse(
+                {"detail": exc.detail},
+                status_code=exc.status_code,
+                headers=exc.headers,
+            )
+            await response(scope, receive, send)
+        except Exception as exc:
+            logger.exception("Unhandled MCP server error")
+            response = JSONResponse({"detail": str(exc)}, status_code=500)
+            await response(scope, receive, send)
+
+
 def create_app() -> FastAPI:
     """Construct and fully wire a fresh MCP server FastAPI instance.
 
@@ -94,6 +121,7 @@ def create_app() -> FastAPI:
         allow_methods=["*"],
         allow_headers=["*"],
     )
+    app.add_middleware(UnhandledExceptionMiddleware)
 
     @app.get("/")
     async def read_root():
