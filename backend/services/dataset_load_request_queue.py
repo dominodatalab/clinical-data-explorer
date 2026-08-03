@@ -12,8 +12,6 @@ import threading
 import time
 from typing import Callable, Deque, Optional
 
-import requests
-
 from backend import config
 from backend.services.dataset_load_request_file_size_resolver import resolve_dataset_load_request_file_size
 import backend.services.file_size_limits as file_size_limits
@@ -79,6 +77,18 @@ class DatasetLoadRequestQueue:
     resolves the request size, initializes projected memory from real memory
     when the queue is empty, admits the request, runs the provided processor,
     and removes the request when processing finishes.
+
+    The old DataFrame for a session is NOT evicted before the new load begins.
+    Instead, the MCP server's ``_set_current_df`` atomically replaces the
+    session entry and drops the old cached DataFrame once the new one is
+    stored. Evicting before the load would create a window where a concurrent
+    request could destroy a dataset that another session just received a 200
+    response for, producing spurious "No dataset loaded" 400 errors.
+
+    Because the old DataFrame stays in memory throughout the new load, the
+    admission check uses the unmodified baseline (not adjusted by the old
+    DataFrame's size). This accurately models the true peak: both the old
+    and new DataFrames coexist in memory until ``_set_current_df`` completes.
     """
 
     def __init__(self, max_length: int = MAX_QUEUE_LENGTH):
@@ -97,23 +107,6 @@ class DatasetLoadRequestQueue:
         # None means no requests are active. During a busy period, this tracks
         # the cumulative projected DataFrame memory for every admitted request.
         self._projected_dataframe_size_bytes: Optional[int] = None
-
-    def _get_current_session_dataframe_size_bytes(self, authorization_header: Optional[str]) -> int:
-        response = requests.get(
-            f"{config.MCP_SERVER_URL}/dataframe/size",
-            headers={"Authorization": authorization_header} if authorization_header else {},
-            timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
-        return int(response.json()["dataframe_size_bytes"])
-
-    def _evict_current_session_dataframe(self, authorization_header: Optional[str]) -> None:
-        response = requests.post(
-            f"{config.MCP_SERVER_URL}/dataframe/evict-current-session",
-            headers={"Authorization": authorization_header} if authorization_header else {},
-            timeout=config.MCP_REQUEST_TIMEOUT_SECONDS,
-        )
-        response.raise_for_status()
 
     def put(self, entry: DatasetLoadRequest):
         """Append a request without processing it.
@@ -155,6 +148,12 @@ class DatasetLoadRequestQueue:
         Multiple threads may be inside ``processor(...)`` at a time when their
         projected combined DataFrame size fits within the memory limit.
 
+        The current session's DataFrame is NOT evicted before the new load
+        begins — the MCP server swaps it out atomically when ``_set_current_df``
+        stores the new DataFrame. The admission check therefore uses the full
+        memory baseline, accurately reflecting that both DataFrames coexist
+        in memory until the swap completes. See class docstring for rationale.
+
         Raises:
             DatasetLoadRequestQueueFullError: if the queue has reached
                 ``max_length`` before the request can be added.
@@ -193,25 +192,18 @@ class DatasetLoadRequestQueue:
                 self._memory_usage_baseline_bytes = file_size_limits.get_memory_usage_snapshot_bytes()
                 self._projected_dataframe_size_bytes = 0
 
-            current_session_dataframe_size_bytes = self._get_current_session_dataframe_size_bytes(entry.authorization_header)
-            adjusted_memory_usage_baseline_bytes = self._memory_usage_baseline_bytes
-            if adjusted_memory_usage_baseline_bytes is not None:
-                adjusted_memory_usage_baseline_bytes = max(
-                    0,
-                    adjusted_memory_usage_baseline_bytes - current_session_dataframe_size_bytes,
-                )
-
-            # The admission check intentionally ignores later real-RAM changes.
-            # It uses baseline + already admitted DataFrame projections, then
-            # adds this request's projection only after the request is admitted.
+            # The admission check uses the unmodified baseline: the old
+            # DataFrame stays resident until _set_current_df atomically
+            # replaces it, so the true peak is baseline + new DataFrame.
+            # Subtracting the old DataFrame size here would underestimate
+            # that peak and risk OOM for large file replacements.
             try:
                 file_size_limits.enforce(
                     entry.dataset,
                     file_size,
                     additional_projected_dataframe_size_b=self._projected_dataframe_size_bytes or 0,
-                    used_memory_bytes=adjusted_memory_usage_baseline_bytes,
+                    used_memory_bytes=self._memory_usage_baseline_bytes,
                 )
-                self._evict_current_session_dataframe(entry.authorization_header)
             except Exception:
                 if started_busy_period:
                     self._reset_projected_memory_usage()
