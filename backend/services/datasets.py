@@ -679,7 +679,7 @@ def _download_dataset_file(dataset, file_name, token):
         return response.content
 
 
-def load_local_dataset_file(dataset_display_name, session_id=None):
+def load_local_dataset_file(dataset_display_name, session_id=None, clear_chat_history=True):
     """Load a filesystem-backed dataset into the MCP server."""
     session_id = session_id or get_session_id()
 
@@ -690,7 +690,8 @@ def load_local_dataset_file(dataset_display_name, session_id=None):
             session_id=session_id,
         )
         if response.status_code == 200:
-            clear_history(session_id=session_id)
+            if clear_chat_history:
+                clear_history(session_id=session_id)
             return jsonify(response.json())
         return jsonify({'error': response.json().get('detail', 'Failed to load dataset')}), response.status_code
     except Exception as e:
@@ -780,7 +781,11 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
     return DatasetLoadTarget(file_snapshot_path=load_request.dataset)
 
 
-def load_existing_session_dataframe(load_request: DatasetLoadRequest, target: DatasetLoadTarget):
+def load_existing_session_dataframe(
+    load_request: DatasetLoadRequest,
+    target: DatasetLoadTarget,
+    clear_chat_history=True,
+):
     """Return load metadata for a matching already-loaded MCP dataframe."""
     mcp_response = mcp_post(
         "/dataset/load",
@@ -809,7 +814,7 @@ def load_existing_session_dataframe(load_request: DatasetLoadRequest, target: Da
     return jsonify(result)
 
 
-def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None):
+def load_dataset_via_api(dataset_display_name, project_id, token=None, session_id=None, clear_chat_history=True):
     """Download a file from a Domino dataset via API and load it into the MCP server."""
     token = token or get_passthrough_token()
     session_id = session_id or get_session_id()
@@ -842,7 +847,13 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
             return jsonify({'error': f'Dataset "{ds_name}" not found in project'}), 404
 
         ds_id = target_ds['id']
-        return load_dataset_file_by_id(dataset_display_name, ds_id, token, session_id)
+        return load_dataset_file_by_id(
+            dataset_display_name,
+            ds_id,
+            token,
+            session_id,
+            clear_chat_history=clear_chat_history,
+        )
     except ProjectDatasetEntriesError as e:
         return e.to_response()
     except requests.exceptions.ConnectionError as e:
@@ -854,7 +865,7 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
         return jsonify({'error': f'Error loading dataset: {str(e)}'}), 500
 
 
-def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None):
+def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None, clear_chat_history=True):
     """Download a file from a Domino dataset by dataset ID and load it into the MCP server.
     Used when the app is opened via 'Open with...' (datasetFileContext mode).
     Skips the project-based dataset lookup since we already have the dataset ID.
@@ -893,6 +904,7 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, sessio
             default_snapshot_id,
             token,
             session_id,
+            clear_chat_history=clear_chat_history,
         )
     except httpclient.HTTPClientError as exc:
         logger.error(f"Error listing snapshots for dataset {dataset_id}: {exc.text}")
@@ -903,7 +915,14 @@ def load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, sessio
         return jsonify({'error': f'Error loading dataset: {str(e)}'}), 500
 
 
-def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id, token=None, session_id=None):
+def load_dataset_file_from_snapshot(
+    dataset_display_name,
+    dataset_id,
+    snapshot_id,
+    token=None,
+    session_id=None,
+    clear_chat_history=True,
+):
     """Download a file from a specific dataset snapshot using Domino API.
     Unlike DatasetClient which always uses the active snapshot,
     this uses /v4/datasetrw/snapshot/{snapshotId}/file/raw to download from any snapshot.
@@ -966,7 +985,8 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
                 result['datasetId'] = dataset_id
                 result['snapshotId'] = snapshot_id
                 result['governanceFilename'] = file_path.split('/')[-1]
-                clear_history(session_id=session_id)
+                if clear_chat_history:
+                    clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -981,7 +1001,15 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
         return jsonify({'error': f'Error loading file from snapshot: {str(e)}'}), 500
 
 
-def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=None, snapshot_id=None, token=None, session_id=None):
+def load_netapp_volume_file(
+    dataset_display_name,
+    volume_key,
+    snapshot_version=None,
+    snapshot_id=None,
+    token=None,
+    session_id=None,
+    clear_chat_history=True,
+):
     """Download a file from a NetApp volume and load it into the MCP server.
     Args:
         dataset_display_name: "VolumeName/file_name" format
@@ -1078,7 +1106,8 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
                 if snapshot_id:
                     result['snapshotId'] = snapshot_id
                 result['governanceFilename'] = file_name.split('/')[-1]
-                clear_history(session_id=session_id)
+                if clear_chat_history:
+                    clear_history(session_id=session_id)
                 return jsonify(result)
             else:
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
@@ -1094,7 +1123,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         return jsonify({'error': f'Error loading file from volume: {str(e)}'}), 500
 
 
-def process_dataset_load_request(load_request: DatasetLoadRequest):
+def process_dataset_load_request(load_request: DatasetLoadRequest, clear_chat_history=True):
     """Process a queued dataset-load request through the appropriate load path."""
     token = get_passthrough_token_from_authorization_header(load_request.authorization_header)
 
@@ -1106,6 +1135,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
             load_request.snapshot_id,
             token=token,
             session_id=load_request.session_id,
+            clear_chat_history=clear_chat_history,
         )
 
     if load_request.dataset_id and load_request.snapshot_id:
@@ -1115,6 +1145,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
             load_request.snapshot_id,
             token=token,
             session_id=load_request.session_id,
+            clear_chat_history=clear_chat_history,
         )
 
     if load_request.dataset_id:
@@ -1123,6 +1154,7 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
             load_request.dataset_id,
             token=token,
             session_id=load_request.session_id,
+            clear_chat_history=clear_chat_history,
         )
 
     if load_request.project_id:
@@ -1131,9 +1163,14 @@ def process_dataset_load_request(load_request: DatasetLoadRequest):
             load_request.project_id,
             token=token,
             session_id=load_request.session_id,
+            clear_chat_history=clear_chat_history,
         )
 
-    return load_local_dataset_file(load_request.dataset, session_id=load_request.session_id)
+    return load_local_dataset_file(
+        load_request.dataset,
+        session_id=load_request.session_id,
+        clear_chat_history=clear_chat_history,
+    )
 
 
 def _list_dataset_snapshots(dataset_id, token):

@@ -20,11 +20,20 @@ from chat_agent import (
 )
 
 from backend.auth import get_passthrough_token
+from backend.services.current_dataframe import (
+    ensure_current_dataframe_loaded_for_request,
+    requires_current_dataframe,
+)
 from backend.session import get_session_id
 
 logger = logging.getLogger(__name__)
 
 bp = Blueprint('chat', __name__)
+
+
+@bp.before_request
+def ensure_dataframe_for_tagged_route():
+    return ensure_current_dataframe_loaded_for_request()
 
 
 @bp.route('/chat/status', methods=['GET'])
@@ -48,6 +57,7 @@ def chat_history():
 
 
 @bp.route('/chat', methods=['POST'])
+@requires_current_dataframe
 def chat():
     # Check if chat is configured first
     if not is_chat_configured():

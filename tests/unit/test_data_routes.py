@@ -4,7 +4,10 @@ import threading
 import time
 
 import backend.routes.data as data_routes
+import backend.services.current_dataframe as current_dataframe
+import backend.services.current_dataset_context as current_dataset_context
 import backend.services.dataset_load_request_queue as dataset_load_request_queue_module
+import backend.services.dataset_load_service as dataset_load_service
 import backend.services.datasets as datasets_service
 
 from backend.services.dataset_load_request_queue import get_dataset_load_request_queue
@@ -30,6 +33,12 @@ def _create_test_app(testing=False):
 @pytest.fixture(autouse=True)
 def stub_queue_mcp_dataframe_hooks(monkeypatch):
     queue = get_dataset_load_request_queue()
+    current_dataset_context.clear_current_dataset_context_cache()
+    monkeypatch.setattr(
+        dataset_load_service,
+        "get_current_session_dataframe_status",
+        lambda session_id: {"dataset": None, "loaded": False, "cache_hit": False},
+    )
     monkeypatch.setattr(
         dataset_load_request_queue_module.DatasetLoadRequestQueue,
         "_get_current_session_dataframe_size_bytes",
@@ -54,9 +63,9 @@ def test_load_dataset_enqueues_filesystem_request(monkeypatch):
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-1")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        data_routes,
+        dataset_load_service,
         "process_dataset_load_request",
-        lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+        lambda load_request, clear_chat_history=True: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
 
     with app.test_client() as client:
@@ -90,10 +99,10 @@ def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeyp
 
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-reuse")
     monkeypatch.setattr(
-        data_routes,
-        "mcp_get",
-        lambda path, session_id=None, **kwargs: calls.append(("get", path, session_id))
-        or _FakeMcpResponse(200, {"dataset": "datasets/adsl.csv"}),
+        dataset_load_service,
+        "get_current_session_dataframe_status",
+        lambda session_id: calls.append(("get", "/dataframe/current-session", session_id))
+        or {"dataset": "datasets/adsl.csv", "loaded": True, "cache_hit": True},
     )
     monkeypatch.setattr(
         datasets_service,
@@ -107,7 +116,7 @@ def test_load_dataset_reuses_matching_session_dataframe_without_queueing(monkeyp
         lambda load_request: (_ for _ in ()).throw(AssertionError("should not resolve file size")),
     )
     monkeypatch.setattr(
-        data_routes,
+        dataset_load_service,
         "process_dataset_load_request",
         lambda load_request: (_ for _ in ()).throw(AssertionError("should not process load request")),
     )
@@ -138,9 +147,9 @@ def test_load_dataset_enqueues_netapp_request(monkeypatch):
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-2")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        data_routes,
+        dataset_load_service,
         "process_dataset_load_request",
-        lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
+        lambda load_request, clear_chat_history=True: captured_requests.append(load_request) or jsonify({"loaded": True, "dataset": load_request.dataset}),
     )
 
     with app.test_client() as client:
@@ -201,13 +210,13 @@ def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeyp
         order.append(("resolve", load_request.dataset))
         return 1
 
-    def fake_process(load_request):
+    def fake_process(load_request, clear_chat_history=True):
         order.append(("process", load_request.dataset))
         return jsonify({"loaded": True, "dataset": load_request.dataset})
 
-    monkeypatch.setattr(data_routes, "mcp_post", fake_mcp_post)
+    monkeypatch.setattr(dataset_load_service, "mcp_post", fake_mcp_post)
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", fake_resolve)
-    monkeypatch.setattr(data_routes, "process_dataset_load_request", fake_process)
+    monkeypatch.setattr(dataset_load_service, "process_dataset_load_request", fake_process)
 
     with app.test_client() as client:
         response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
@@ -225,6 +234,7 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     full_queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=0)
     app = _create_test_app(testing=True)
 
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-full-queue")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
@@ -241,10 +251,10 @@ def test_load_dataset_returns_413_when_processor_rejects_large_file(monkeypatch)
     monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-too-large")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
     monkeypatch.setattr(
-        data_routes,
+        dataset_load_service,
         "process_dataset_load_request",
-        lambda load_request: (_ for _ in ()).throw(
-            data_routes.file_size_limits.DataFileTooLarge("too-big.csv must be less than or equal to 10 bytes to be processable")
+        lambda load_request, clear_chat_history=True: (_ for _ in ()).throw(
+            dataset_load_service.file_size_limits.DataFileTooLarge("too-big.csv must be less than or equal to 10 bytes to be processable")
         ),
     )
 
@@ -304,7 +314,7 @@ def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypat
     monkeypatch.setattr(data_routes, "get_session_id", lambda: data_routes.request.headers["X-Test-Session-Id"])
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
-    def fake_process_dataset_load_request(load_request):
+    def fake_process_dataset_load_request(load_request, clear_chat_history=True):
         with state_lock:
             active_processors["count"] += 1
             active_processors["max"] = max(active_processors["max"], active_processors["count"])
@@ -322,7 +332,7 @@ def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypat
             with state_lock:
                 active_processors["count"] -= 1
 
-    monkeypatch.setattr(data_routes, "process_dataset_load_request", fake_process_dataset_load_request)
+    monkeypatch.setattr(dataset_load_service, "process_dataset_load_request", fake_process_dataset_load_request)
 
     def post_dataset(name, session_id):
         with app.test_client() as client:
@@ -361,3 +371,104 @@ def test_load_dataset_processes_concurrent_requests_when_memory_allows(monkeypat
     }
     assert active_processors["max"] == 2
     assert queue.qsize() == 0
+
+
+def test_dataframe_refresh_middleware_refreshes_tagged_route_before_proxy(monkeypatch):
+    app = _create_test_app()
+    refresh_calls = []
+    proxy_calls = []
+
+    monkeypatch.setattr(current_dataframe, "get_session_id", lambda: "user-refresh")
+    monkeypatch.setattr(
+        current_dataframe,
+        "get_current_session_dataframe_status",
+        lambda user_id: {"dataset": "/tmp/adsl.csv", "loaded": True, "cache_hit": False},
+    )
+    monkeypatch.setattr(
+        current_dataframe,
+        "get_current_dataset_context",
+        lambda user_id: current_dataset_context.CurrentDatasetContext(
+            dataset="Study/adsl.csv",
+            dataset_id="ds-1",
+            snapshot_id="snap-1",
+            source_type="dataset",
+            resolved_file_snapshot_path="/tmp/adsl.csv",
+        ),
+    )
+
+    def fake_refresh(load_request, *, clear_chat_history):
+        refresh_calls.append((load_request, clear_chat_history))
+        return dataset_load_service.DatasetLoadServiceResult({"loaded": True}, 200)
+
+    monkeypatch.setattr(current_dataframe, "load_dataset_from_request_context", fake_refresh)
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_post",
+        lambda path, json=None, **kwargs: proxy_calls.append((path, json))
+        or _FakeMcpResponse(200, {"rows": [], "total": 0}),
+    )
+
+    with app.test_client() as client:
+        response = client.post(
+            "/table/data",
+            json={"page": 1},
+            headers={"Authorization": "Bearer current-token"},
+        )
+
+    assert response.status_code == 200
+    assert response.get_json() == {"rows": [], "total": 0}
+    assert proxy_calls == [("/table/data", {"page": 1})]
+    assert len(refresh_calls) == 1
+    refresh_request, clear_chat_history = refresh_calls[0]
+    assert refresh_request.dataset == "Study/adsl.csv"
+    assert refresh_request.authorization_header == "Bearer current-token"
+    assert clear_chat_history is False
+
+
+def test_dataframe_refresh_middleware_skips_dataset_load_route(monkeypatch):
+    app = _create_test_app()
+
+    monkeypatch.setattr(
+        current_dataframe,
+        "get_current_session_dataframe_status",
+        lambda user_id: (_ for _ in ()).throw(AssertionError("should not check dataframe status")),
+    )
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={})
+
+    assert response.status_code == 400
+    assert response.get_json() == {"error": "No dataset name provided"}
+
+
+def test_dataframe_refresh_middleware_leaves_local_filesystem_dataset_to_mcp(monkeypatch):
+    app = _create_test_app()
+    refresh_calls = []
+
+    monkeypatch.setattr(current_dataframe, "get_session_id", lambda: "user-local")
+    monkeypatch.setattr(
+        current_dataframe,
+        "get_current_session_dataframe_status",
+        lambda user_id: {"dataset": "datasets/adsl.csv", "loaded": True, "cache_hit": False},
+    )
+    monkeypatch.setattr(
+        current_dataframe,
+        "get_current_dataset_context",
+        lambda user_id: current_dataset_context.CurrentDatasetContext(dataset="datasets/adsl.csv"),
+    )
+    monkeypatch.setattr(
+        current_dataframe,
+        "load_dataset_from_request_context",
+        lambda *args, **kwargs: refresh_calls.append((args, kwargs)),
+    )
+    monkeypatch.setattr(
+        data_routes,
+        "mcp_post",
+        lambda path, json=None, **kwargs: _FakeMcpResponse(200, {"rows": []}),
+    )
+
+    with app.test_client() as client:
+        response = client.post("/table/data", json={})
+
+    assert response.status_code == 200
+    assert refresh_calls == []

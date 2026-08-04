@@ -708,19 +708,19 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
             DatasetLoadRequest(dataset="datasets/adsl.csv", session_id="sid-local", authorization_header="Bearer token-123"),
             "load_local_dataset_file",
             ("datasets/adsl.csv",),
-            {"session_id": "sid-local"},
+            {"session_id": "sid-local", "clear_chat_history": True},
         ),
         (
             DatasetLoadRequest(dataset="AE/adsl.csv", session_id="sid-proj", authorization_header="Bearer token-123", project_id="proj-1"),
             "load_dataset_via_api",
             ("AE/adsl.csv", "proj-1"),
-            {"token": "token-123", "session_id": "sid-proj"},
+            {"token": "token-123", "session_id": "sid-proj", "clear_chat_history": True},
         ),
         (
             DatasetLoadRequest(dataset="Study/adsl.csv", session_id="sid-ds", authorization_header="Bearer token-123", dataset_id="ds-1"),
             "load_dataset_file_by_id",
             ("Study/adsl.csv", "ds-1"),
-            {"token": "token-123", "session_id": "sid-ds"},
+            {"token": "token-123", "session_id": "sid-ds", "clear_chat_history": True},
         ),
         (
             DatasetLoadRequest(
@@ -732,7 +732,7 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
             ),
             "load_dataset_file_from_snapshot",
             ("Study/reports/adsl.csv", "ds-1", "snap-1"),
-            {"token": "token-123", "session_id": "sid-snap"},
+            {"token": "token-123", "session_id": "sid-snap", "clear_chat_history": True},
         ),
         (
             DatasetLoadRequest(
@@ -746,7 +746,7 @@ def test_data_file_path_finally_runs_when_with_body_raises(monkeypatch, tmp_path
             ),
             "load_netapp_volume_file",
             ("Safety Volume/reports/adlb.csv", "vol-1", 7, "snap-7"),
-            {"token": "token-123", "session_id": "sid-netapp"},
+            {"token": "token-123", "session_id": "sid-netapp", "clear_chat_history": True},
         ),
     ],
 )
@@ -794,8 +794,8 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
 
     delegated_calls = []
 
-    def fake_load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None):
-        delegated_calls.append((dataset_display_name, dataset_id, token, session_id))
+    def fake_load_dataset_file_by_id(dataset_display_name, dataset_id, token=None, session_id=None, clear_chat_history=True):
+        delegated_calls.append((dataset_display_name, dataset_id, token, session_id, clear_chat_history))
         return jsonify({"loaded": True, "dataset": dataset_display_name})
 
     monkeypatch.setattr(services, "load_dataset_file_by_id", fake_load_dataset_file_by_id)
@@ -818,7 +818,7 @@ def test_load_dataset_via_api_delegates_to_load_dataset_file_by_id(monkeypatch):
             30,
         )
     ]
-    assert delegated_calls == [("AE/reports/visit.csv", "ds-1", "test-token", "sid-123")]
+    assert delegated_calls == [("AE/reports/visit.csv", "ds-1", "test-token", "sid-123", True)]
 
 
 def test_load_dataset_file_by_id_uses_snapshot_api_and_delegates_to_snapshot_loader(monkeypatch):
@@ -839,8 +839,15 @@ def test_load_dataset_file_by_id_uses_snapshot_api_and_delegates_to_snapshot_loa
 
     delegated_calls = []
 
-    def fake_load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_id, token=None, session_id=None):
-        delegated_calls.append((dataset_display_name, dataset_id, snapshot_id, token, session_id))
+    def fake_load_dataset_file_from_snapshot(
+        dataset_display_name,
+        dataset_id,
+        snapshot_id,
+        token=None,
+        session_id=None,
+        clear_chat_history=True,
+    ):
+        delegated_calls.append((dataset_display_name, dataset_id, snapshot_id, token, session_id, clear_chat_history))
         return jsonify({"loaded": True, "dataset": dataset_display_name})
 
     monkeypatch.setattr(services, "load_dataset_file_from_snapshot", fake_load_dataset_file_from_snapshot)
@@ -857,7 +864,7 @@ def test_load_dataset_file_by_id_uses_snapshot_api_and_delegates_to_snapshot_loa
         )
     ]
     assert delegated_calls == [
-        ("Clinical Study/adsl.csv", "ds-123", "snap-rw", "test-token", "sid-456")
+        ("Clinical Study/adsl.csv", "ds-123", "snap-rw", "test-token", "sid-456", True)
     ]
 
 

@@ -15,6 +15,10 @@ import logging
 import requests
 from flask import Blueprint, jsonify, request
 
+from backend.services.current_dataframe import (
+    ensure_current_dataframe_loaded_for_request,
+    requires_current_dataframe,
+)
 from backend.session import mcp_post
 
 logger = logging.getLogger(__name__)
@@ -22,7 +26,13 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('charts', __name__)
 
 
+@bp.before_request
+def ensure_dataframe_for_tagged_route():
+    return ensure_current_dataframe_loaded_for_request()
+
+
 @bp.route('/chart/bar_aggregation', methods=['POST'])
+@requires_current_dataframe
 def get_bar_chart_data():
     """Get aggregated data for bar charts"""
     try:
@@ -40,6 +50,7 @@ def get_bar_chart_data():
 
 
 @bp.route('/chart/xy_data', methods=['POST'])
+@requires_current_dataframe
 def get_xy_chart_data():
     """Get data for scatter/area charts with optional aggregation"""
     try:
@@ -57,6 +68,7 @@ def get_xy_chart_data():
 
 
 @bp.route('/chart/time_series', methods=['POST'])
+@requires_current_dataframe
 def get_time_series_data():
     """Get aggregated time series data"""
     try:
@@ -74,6 +86,7 @@ def get_time_series_data():
 
 
 @bp.route('/chart/histogram', methods=['POST'])
+@requires_current_dataframe
 def get_histogram_data():
     """Get histogram data for a single column"""
     try:

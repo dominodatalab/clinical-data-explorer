@@ -27,9 +27,7 @@ and `data` tracks the plan's target layout, not the URL pluralization.
 """
 import logging
 
-import requests
 import backend.services.dataset_load_request_queue as dataset_load_request_queue
-import backend.services.file_size_limits as file_size_limits
 from flask import Blueprint, jsonify, request
 from werkzeug.exceptions import (
     BadRequest,
@@ -40,10 +38,14 @@ from werkzeug.exceptions import (
 )
 
 from backend.services.column_labels import load_column_labels
-from backend.services.datasets import (
-    load_existing_session_dataframe,
-    process_dataset_load_request,
-    resolve_dataset_load_target,
+from backend.services.current_dataframe import (
+    ensure_current_dataframe_loaded_for_request,
+    requires_current_dataframe,
+)
+from backend.services.dataset_load_service import (
+    DatasetLoadQueueFull,
+    DatasetLoadTooLarge,
+    load_dataset_from_request_context,
 )
 from backend.session import get_session_id, mcp_get, mcp_post
 
@@ -52,31 +54,9 @@ logger = logging.getLogger(__name__)
 bp = Blueprint('data', __name__)
 
 
-def _evict_stale_dataframes_before_load():
-    try:
-        response = mcp_post("/dataframes/evict-stale")
-        if response.status_code != 200:
-            logger.warning("MCP stale DataFrame eviction returned HTTP %s", response.status_code)
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to MCP server to evict stale DataFrames before dataset load")
-    except requests.exceptions.RequestException as exc:
-        logger.warning("Could not evict stale DataFrames before dataset load: %s", exc)
-
-
-def _get_current_session_dataset(session_id):
-    try:
-        response = mcp_get("/dataframe/current-session", session_id=session_id)
-    except requests.exceptions.ConnectionError:
-        logger.warning("Could not connect to MCP server to check current session DataFrame")
-        return None
-    except requests.exceptions.RequestException as exc:
-        logger.warning("Could not check current session DataFrame: %s", exc)
-        return None
-
-    if response.status_code != 200:
-        logger.warning("MCP current session DataFrame check returned HTTP %s", response.status_code)
-        return None
-    return response.json().get("dataset")
+@bp.before_request
+def ensure_dataframe_for_tagged_route():
+    return ensure_current_dataframe_loaded_for_request()
 
 
 @bp.route('/dataset/load', methods=['POST'])
@@ -109,29 +89,24 @@ def load_dataset():
     )
 
     try:
-        target = resolve_dataset_load_target(load_request)
-        if _get_current_session_dataset(session_id) == target.file_snapshot_path:
-            return load_existing_session_dataframe(load_request, target)
-
-        _evict_stale_dataframes_before_load()
-        # TODO this could wait for a while. can we have a multi minute timeout on requests?
-        # should we have an expiration on requests?
-        return dataset_load_request_queue.get_dataset_load_request_queue().submit_and_wait(
+        result = load_dataset_from_request_context(
             load_request,
-            process_dataset_load_request,
+            clear_chat_history=True,
         )
-    except dataset_load_request_queue.DatasetLoadRequestQueueFullError as exc:
+        return jsonify(result.payload), result.status_code
+    except DatasetLoadQueueFull as exc:
         raise TooManyRequests(
             description="Sorry, we can't process your dataset, this server is at capacity."
         ) from exc
 
-    except file_size_limits.DataFileTooLarge as exc:
+    except DatasetLoadTooLarge as exc:
         raise RequestEntityTooLarge(
-            description=str(exc),
+            description=exc.message,
         ) from exc
 
 
 @bp.route('/dataset/metadata', methods=['GET'])
+@requires_current_dataframe
 def get_dataset_metadata():
     """Proxy the current dataset's verbatim embedded metadata from the MCP server.
 
@@ -154,6 +129,7 @@ def get_dataset_metadata():
 
 
 @bp.route('/dataset/data', methods=['GET'])
+@requires_current_dataframe
 def get_dataset_data():
     """Get the current dataset data and metadata for visualization"""
     try:
@@ -176,6 +152,7 @@ def get_dataset_data():
 # ===== TABLE VIEW ENDPOINTS =====
 
 @bp.route('/table/data', methods=['POST'])
+@requires_current_dataframe
 def get_table_data():
     """Get paginated table data with filtering and sorting"""
     try:
@@ -193,6 +170,7 @@ def get_table_data():
 
 
 @bp.route('/table/column_values/<column>', methods=['GET'])
+@requires_current_dataframe
 def get_column_values(column):
     """Get distinct values for a column (autocomplete)"""
     try:
@@ -223,6 +201,7 @@ def get_column_values(column):
 
 
 @bp.route('/table/summary', methods=['POST'])
+@requires_current_dataframe
 def get_table_summary():
     """Get summary statistics for filtered data"""
     try:
@@ -240,6 +219,7 @@ def get_table_summary():
 
 
 @bp.route('/table/column_stats/<column>', methods=['GET'])
+@requires_current_dataframe
 def get_column_stats(column):
     """Get statistics for a specific column"""
     try:
@@ -282,6 +262,7 @@ def get_column_labels():
 # Allow filtering using SAS WHERE, R dplyr, or Python pandas syntax
 
 @bp.route('/table/expression_filter', methods=['POST'])
+@requires_current_dataframe
 def expression_filter():
     """Filter table data using expression syntax (SAS, R, or Python)"""
     try:
@@ -300,6 +281,7 @@ def expression_filter():
 
 
 @bp.route('/table/expression_samples', methods=['GET'])
+@requires_current_dataframe
 def get_expression_samples():
     """Get sample column data for generating expression examples"""
     try:

@@ -403,7 +403,35 @@ def test_get_current_session_dataframe_endpoint_reports_loaded_dataset(_mcp_app,
     response = client.get("/dataframe/current-session")
 
     assert response.status_code == 200
-    assert response.json() == {"dataset": "adsl.csv"}
+    assert response.json() == {"dataset": "adsl.csv", "loaded": True, "cache_hit": True}
+
+
+def test_get_current_session_dataframe_endpoint_reports_cache_miss(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "session-current-dataset"})
+    session_module._current_user_id.set(None)
+    session_module._sessions["session-current-dataset"] = session_module.LoadedDataEntry(
+        file_snapshot_path="adsl.csv",
+        last_accessed=time.time(),
+    )
+
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataframe/current-session")
+
+    assert response.status_code == 200
+    assert response.json() == {"dataset": "adsl.csv", "loaded": True, "cache_hit": False}
+
+
+def test_get_current_session_dataframe_endpoint_reports_no_session(_mcp_app, monkeypatch):
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "missing-session"})
+    session_module._current_user_id.set(None)
+
+    client = TestClient(_mcp_app)
+
+    response = client.get("/dataframe/current-session")
+
+    assert response.status_code == 200
+    assert response.json() == {"dataset": None, "loaded": False, "cache_hit": False}
 
 
 def test_load_current_df_reuses_matching_cached_dataframe(monkeypatch):
