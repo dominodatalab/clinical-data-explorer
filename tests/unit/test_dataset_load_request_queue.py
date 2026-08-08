@@ -53,7 +53,7 @@ def test_get_current_session_dataframe_size_requires_successful_mcp_response(mon
         calls.append((url, headers, timeout))
         return response
 
-    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", fake_get)
+    monkeypatch.setattr(dataset_load_request_queue_module.httpclient.requests, "get", fake_get)
 
     size = _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")
 
@@ -70,7 +70,7 @@ def test_get_current_session_dataframe_size_requires_successful_mcp_response(mon
 
 def test_get_current_session_dataframe_size_propagates_mcp_status_errors(monkeypatch):
     response = _FakeMcpResponse({"dataframe_size_bytes": 1234}, status_error=RuntimeError("boom"))
-    monkeypatch.setattr(dataset_load_request_queue_module.requests, "get", lambda *args, **kwargs: response)
+    monkeypatch.setattr(dataset_load_request_queue_module.httpclient.requests, "get", lambda *args, **kwargs: response)
 
     with pytest.raises(RuntimeError, match="boom"):
         _GET_CURRENT_SESSION_DATAFRAME_SIZE_BYTES(DatasetLoadRequestQueue(), "Bearer tok-1")

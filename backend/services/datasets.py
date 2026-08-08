@@ -25,7 +25,6 @@ import tempfile
 import traceback
 from pathlib import Path
 
-import requests
 from flask import jsonify
 from werkzeug.exceptions import (
     Forbidden,
@@ -110,11 +109,13 @@ def _fetch_remotefs_volumes(token, params):
         logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
         return []
 
-    response = requests.get(
+    response = httpclient.get(
         f'{remotefs_host}/remotefs/v1/volumes',
         params=params,
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -130,10 +131,12 @@ def _fetch_remotefs_volume(volume_id, token):
     if not remotefs_host:
         raise InternalServerError("RemoteFS host is not configured")
 
-    response = requests.get(
+    response = httpclient.get(
         f'{remotefs_host}/remotefs/v1/volumes/{volume_id}',
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -148,10 +151,12 @@ def _fetch_remotefs_snapshot(snapshot_id, token):
     if not remotefs_host:
         raise InternalServerError("RemoteFS host is not configured")
 
-    response = requests.get(
+    response = httpclient.get(
         f'{remotefs_host}/remotefs/v1/snapshots/{snapshot_id}',
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -319,10 +324,12 @@ def _dataset_client_key(ds):
 
 
 def _fetch_dataset_details(api_host, dataset_id, headers):
-    response = requests.get(
+    response = httpclient.get(
         f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
         headers=headers,
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -343,10 +350,12 @@ def _fetch_project_owner_username(api_host, project_id, headers, project_owner_c
     if project_id in project_owner_cache:
         return project_owner_cache[project_id]
 
-    response = requests.get(
+    response = httpclient.get(
         f'{api_host}/api/projects/v1/projects/{project_id}',
         headers=headers,
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -365,10 +374,12 @@ def _fetch_project_owner_username(api_host, project_id, headers, project_owner_c
 
 
 def _fetch_project_shared_datasets(api_host, project_id, headers):
-    response = requests.get(
+    response = httpclient.get(
         f'{api_host}/api/projects/v1/projects/{project_id}/shared-datasets',
         headers=headers,
         timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code != 200:
@@ -401,7 +412,7 @@ def _fetch_project_shared_datasets(api_host, project_id, headers):
 
 
 def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
-    response = requests.get(
+    response = httpclient.get(
         f'{api_host}/api/datasetrw/v2/datasets',
         params={
             'projectIdsToInclude': project_id,
@@ -409,7 +420,9 @@ def _project_dataset_entries(api_host, project_id, headers, purpose='list'):
             'limit': 100,
         },
         headers=headers,
-        timeout=30
+        timeout=30,
+        is_json=False,
+        raise_for_status=False,
     )
 
     if response.status_code == 401 or response.status_code == 403:
@@ -496,7 +509,7 @@ def list_datasets_via_api(project_id):
 
     except ProjectDatasetEntriesError as e:
         return e.to_response()
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to Domino API for dataset listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
     except Exception as e:
@@ -561,10 +574,12 @@ def list_dataset_files_by_id(dataset_id, snapshot_id=None):
     try:
         headers = {'Authorization': f'Bearer {token}'}
 
-        response = requests.get(
+        response = httpclient.get(
             f'{api_host}/api/datasetrw/v1/datasets/{dataset_id}',
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code == 401 or response.status_code == 403:
@@ -610,7 +625,7 @@ def list_dataset_files_by_id(dataset_id, snapshot_id=None):
             'dataset_id': ds_id
         })
 
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to Domino API for dataset file listing")
         return jsonify({'error': 'Could not connect to Domino API', 'datasets': []}), 503
     except Exception as e:
@@ -632,10 +647,12 @@ def _get_active_dataset_snapshot_id(api_host, dataset_id, token):
         return None
     try:
         headers = {'Authorization': f'Bearer {token}'}
-        response = requests.get(
+        response = httpclient.get(
             f'{api_host}/v4/datasetrw/snapshots/{dataset_id}',
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
         if response.status_code != 200:
             logger.debug(f"Could not list snapshots for dataset {dataset_id}: HTTP {response.status_code}")
@@ -661,8 +678,6 @@ def _download_dataset_file(dataset, file_name, token):
     """Download a file from a dataset, working around a SDK bug where nested paths
     (containing slashes) in the signed URL cause 404 errors."""
     import urllib.parse
-    import httpx
-
     url = dataset.get_file_url(file_name)
 
     # The SDK generates URLs like .../keys/sub_folder/sub_sub_folder/file.csv
@@ -673,10 +688,8 @@ def _download_dataset_file(dataset, file_name, token):
         url = url.replace('/keys/' + file_name, '/keys/' + encoded_name)
 
     headers = {'Authorization': f'Bearer {token}'}
-    with httpx.Client() as http_client:
-        response = http_client.get(url, headers=headers)
-        response.raise_for_status()
-        return response.content
+    response = httpclient.get(url, headers=headers, is_json=False)
+    return response.content
 
 
 def load_local_dataset_file(dataset_display_name, session_id=None):
@@ -845,7 +858,7 @@ def load_dataset_via_api(dataset_display_name, project_id, token=None, session_i
         return load_dataset_file_by_id(dataset_display_name, ds_id, token, session_id)
     except ProjectDatasetEntriesError as e:
         return e.to_response()
-    except requests.exceptions.ConnectionError as e:
+    except httpclient.ConnectionError as e:
         logger.error(f"Connection error loading dataset via API: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
     except Exception as e:
@@ -929,12 +942,14 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
         headers = {'Authorization': f'Bearer {token}'}
         # Download file from specific snapshot via raw content API
         download_url = f'{api_host}/v4/datasetrw/snapshot/{snapshot_id}/file/raw'
-        response = requests.get(
+        response = httpclient.get(
             download_url,
             params={'path': file_path, 'download': 'true'},
             headers=headers,
             timeout=120,
-            stream=True
+            stream=True,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code in (401, 403):
@@ -972,7 +987,7 @@ def load_dataset_file_from_snapshot(dataset_display_name, dataset_id, snapshot_i
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
                 return jsonify({'error': error_detail}), mcp_response.status_code
 
-    except requests.exceptions.ConnectionError as e:
+    except httpclient.ConnectionError as e:
         logger.error(f"Connection error loading snapshot file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
     except Exception as e:
@@ -1084,7 +1099,7 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
                 error_detail = mcp_response.json().get('detail', 'Failed to load dataset')
                 return jsonify({'error': error_detail}), mcp_response.status_code
 
-    except requests.exceptions.ConnectionError as e:
+    except httpclient.ConnectionError as e:
         logger.error(f"Connection error loading NetApp volume file: {e}")
         return jsonify({'error': 'Could not connect to required services'}), 503
     except Exception as e:
@@ -1144,10 +1159,12 @@ def _list_dataset_snapshots(dataset_id, token):
 
     try:
         headers = {'Authorization': f'Bearer {token}'}
-        response = requests.get(
+        response = httpclient.get(
             f'{api_host}/v4/datasetrw/snapshots/{dataset_id}',
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code in (401, 403):
@@ -1182,7 +1199,7 @@ def _list_dataset_snapshots(dataset_id, token):
             'datasetId': dataset_id
         })
 
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to Domino API for snapshot listing")
         return jsonify({'error': 'Could not connect to Domino API', 'snapshots': []}), 503
     except Exception as e:

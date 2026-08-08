@@ -12,12 +12,12 @@ keeps just the URL builder (`get_governance_api_url`).
 """
 import logging
 
-import requests
 from flask import Blueprint, jsonify, request
 
 from backend import config
 from backend.auth import get_domino_api_host, get_passthrough_token
 from backend.services.governance import get_governance_api_url
+import backend.services.httpclient as httpclient
 
 logger = logging.getLogger(__name__)
 
@@ -57,11 +57,13 @@ def get_attachment_overviews():
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
-        response = requests.get(
+        response = httpclient.get(
             f"{governance_url}/attachment-overviews",
             params=params,
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code == 200:
@@ -69,7 +71,7 @@ def get_attachment_overviews():
         else:
             logger.debug(f"Governance API returned {response.status_code}: {response.text[:200]}")
             return jsonify({'error': 'Failed to query governance API', 'items': [], 'available': False}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Governance API not available")
         return jsonify({'error': 'Governance API not available', 'items': [], 'available': False})
     except Exception as e:
@@ -94,10 +96,12 @@ def get_bundle_details(bundle_id):
     try:
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
-        response = requests.get(
+        response = httpclient.get(
             f"{governance_url}/bundles/{bundle_id}",
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code == 200:
@@ -105,7 +109,7 @@ def get_bundle_details(bundle_id):
         else:
             logger.error(f"Governance API error: {response.status_code} - {response.text}")
             return jsonify({'error': 'Failed to get bundle details'}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Governance API not available")
         return jsonify({'error': 'Governance API not available', 'available': False})
     except Exception as e:
@@ -131,10 +135,12 @@ def get_bundle_stages(bundle_id):
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
         # Get the bundle to access its stages and approvals
-        response = requests.get(
+        response = httpclient.get(
             f"{governance_url}/bundles/{bundle_id}",
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code == 200:
@@ -157,10 +163,12 @@ def get_bundle_stages(bundle_id):
             # its actual approval record.
             approval_instances_by_stage = {}
             try:
-                approvals_resp = requests.get(
+                approvals_resp = httpclient.get(
                     f"{governance_url}/bundles/{bundle_id}/approvals",
                     headers=headers,
                     timeout=30,
+                    is_json=False,
+                    raise_for_status=False,
                 )
                 if approvals_resp.status_code == 200:
                     for inst in approvals_resp.json() or []:
@@ -172,7 +180,7 @@ def get_bundle_stages(bundle_id):
                         f"Could not fetch bundle approvals ({approvals_resp.status_code}): "
                         f"{approvals_resp.text}"
                     )
-            except requests.exceptions.RequestException as e:
+            except httpclient.RequestException as e:
                 logger.warning(f"Could not fetch bundle approvals: {e}")
 
             # Extract approvals from stageApprovals (at bundle level, not per-stage)
@@ -222,7 +230,7 @@ def get_bundle_stages(bundle_id):
         else:
             logger.error(f"Governance API error: {response.status_code} - {response.text}")
             return jsonify({'error': 'Failed to get bundle stages'}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Governance API not available")
         return jsonify({'error': 'Governance API not available', 'available': False})
     except Exception as e:
@@ -268,11 +276,13 @@ def create_finding():
 
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
 
-        response = requests.post(
+        response = httpclient.post(
             f"{governance_url}/findings",
             json=finding_data,
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code in [200, 201]:
@@ -280,7 +290,7 @@ def create_finding():
         else:
             logger.error(f"Governance API error creating finding: {response.status_code} - {response.text}")
             return jsonify({'error': 'Failed to create finding', 'detail': response.text}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Governance API not available")
         return jsonify({'error': 'Governance API not available', 'available': False}), 503
     except Exception as e:
@@ -309,10 +319,12 @@ def get_current_user():
 
     try:
         headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {token}'}
-        response = requests.get(
+        response = httpclient.get(
             f"{domino_api_host}/v4/users/self",
             headers=headers,
             timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
         if response.status_code == 200:
             person = response.json()
@@ -323,7 +335,7 @@ def get_current_user():
             })
         logger.error(f"Error getting current user from /v4/users/self: {response.status_code} - {response.text}")
         return jsonify({'error': 'Failed to get current user'}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         return jsonify({'error': 'Domino API not available'}), 503
     except Exception as e:
         logger.error(f"Error getting current user: {e}")
@@ -355,11 +367,13 @@ def get_project_collaborators():
         # Use /v4/projects/{projectId}/collaborators instead of projectSettingsCollaborators:
         # the latter requires ManageCollaborators (owner/admin only), while the former
         # is readable by any project member and returns Person objects directly.
-        response = requests.get(
+        response = httpclient.get(
             f"{domino_api_host}/v4/projects/{project_id}/collaborators",
             params={'getUsers': 'true'},
             headers=headers,
-            timeout=30
+            timeout=30,
+            is_json=False,
+            raise_for_status=False,
         )
 
         if response.status_code == 200:
@@ -378,7 +392,7 @@ def get_project_collaborators():
         else:
             logger.error(f"Error getting collaborators: {response.status_code} - {response.text}")
             return jsonify({'error': 'Failed to get collaborators', 'collaborators': []})
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.warning("Domino API not available for collaborators")
         return jsonify({'error': 'Domino API not available', 'collaborators': []})
     except Exception as e:

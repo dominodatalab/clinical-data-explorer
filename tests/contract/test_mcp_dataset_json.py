@@ -31,9 +31,10 @@ FIXTURES = REPO_ROOT / "datasets" / "testing_json"
 
 
 @pytest.fixture
-def json_client(_mcp_app):
+def json_client(_mcp_app, monkeypatch):
     """TestClient under a unique session, no dataset pre-loaded."""
     session_id = f"dsjson-{uuid.uuid4().hex}"
+    monkeypatch.setattr("mcp_server.session.get_current_user", lambda: {"id": session_id})
     client = TestClient(_mcp_app, headers={"X-Session-Id": session_id})
     yield client
     from data_analysis_mcp import _sessions

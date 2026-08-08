@@ -12,9 +12,9 @@ never transfer full datasets to the client.
 """
 import logging
 
-import requests
 from flask import Blueprint, jsonify, request
 
+import backend.services.httpclient as httpclient
 from backend.session import mcp_post
 
 logger = logging.getLogger(__name__)
@@ -31,7 +31,7 @@ def get_bar_chart_data():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get bar chart data')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for bar chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -48,7 +48,7 @@ def get_xy_chart_data():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get XY chart data')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for XY chart")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -65,7 +65,7 @@ def get_time_series_data():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get time series data')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for time series")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
@@ -82,7 +82,7 @@ def get_histogram_data():
             return jsonify(response.json())
         else:
             return jsonify({'error': response.json().get('detail', 'Failed to get histogram data')}), response.status_code
-    except requests.exceptions.ConnectionError:
+    except httpclient.ConnectionError:
         logger.error("Could not connect to MCP server for histogram")
         return jsonify({'error': 'Could not connect to MCP server'}), 503
     except Exception as e:
