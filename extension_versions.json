@@ -8,6 +8,14 @@
       "releaseTag": "v1.0.0",
       "isProvisional": false,
       "minDominoVersion": "6.3.0"
+    },
+    {
+      "manifestSchemaVersion": 1,
+      "version": "1.0.1",
+      "releaseTag": "v1.0.1",
+      "isProvisional": false,
+      "minDominoVersion": "6.3.0",
+      "testedWithDominoVersions": ["6.4.0"]
     }
   ]
 }
