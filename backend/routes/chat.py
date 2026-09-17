@@ -12,11 +12,14 @@ import traceback
 from flask import Blueprint, jsonify, request
 
 from chat_agent import (
+    NOT_CONFIGURED_ERROR_DETAIL,
     clear_history,
     get_agent_response,
     get_history,
     get_chat_status,
     is_chat_configured,
+    reset_gateway_passthrough_token,
+    set_gateway_passthrough_token,
 )
 
 from backend.auth import get_passthrough_token
@@ -54,7 +57,7 @@ def chat():
         logger.warning("Chat request received but chat is not configured")
         return jsonify({
             'error': 'Chat is not configured',
-            'error_detail': 'Please set the required environment variables (LLM_API_KEY, and optionally LLM_BASE_URL and LLM_MODEL) to enable the chat feature.',
+            'error_detail': NOT_CONFIGURED_ERROR_DETAIL,
             'error_type': 'NotConfigured'
         }), 503
 
@@ -67,8 +70,16 @@ def chat():
     logger.info(f"Processing chat message with {message_length} characters")
 
     # Get response from the chat agent using the async function
+    token = get_passthrough_token()
+
+    # Forward the visiting user's JWT into the Domino LLM Gateway auth flow so
+    # the Gateway audit log attributes the call to the user rather than the app
+    # owner, matching what the datasets/governance calls already do. In classic
+    # App mode there is no inbound JWT and the auth flow falls back to the
+    # access-token sidecar (app owner). Must be reset in `finally` — see
+    # reset_gateway_passthrough_token.
+    passthrough_handle = set_gateway_passthrough_token(token)
     try:
-        token = get_passthrough_token()
         agent_response = asyncio.run(get_agent_response(
             user_message,
             session_id=get_session_id(),
@@ -113,3 +124,5 @@ def chat():
             'error_detail': error_detail,
             'error_type': error_type
         }), 500
+    finally:
+        reset_gateway_passthrough_token(passthrough_handle)

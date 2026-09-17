@@ -95,6 +95,7 @@ function updateChatUI() {
 function initChatEmptyStateTabs() {
     const exampleTabs = document.querySelectorAll('.example-tab');
     const exampleContents = {
+        'domino': document.getElementById('example-domino'),
         'openai': document.getElementById('example-openai'),
         'ollama': document.getElementById('example-ollama'),
         'together': document.getElementById('example-together')

@@ -46,11 +46,51 @@ def get_mcp_request_timeout_seconds() -> float:
 
 
 def get_llm_config():
+    """Return (base_url, api_key, model) for the direct OpenAI-compatible path.
+
+    This is the *non-Gateway* configuration. See the Domino LLM Gateway
+    getters below; `chat_agent.get_llm_config()` picks between the two.
+    """
     return (
         os.environ.get("LLM_BASE_URL", "https://api.openai.com/v1"),
         os.environ.get("LLM_API_KEY") or os.environ.get("OPENAI_API_KEY"),
         os.environ.get("LLM_MODEL", "gpt-4o-mini"),
     )
+
+
+# ===== DOMINO LLM GATEWAY =====
+# The Gateway is OpenAI-API-compatible, so it reuses the OpenAI provider. What
+# differs is auth: the bearer token is an ephemeral Domino access token that has
+# to be re-fetched per request from the sidecar below (see
+# `chat_agent.DominoAccessTokenAuth`).
+#
+# These are deliberately read per call rather than snapshotted into module-level
+# constants like the settings above, because the auth flow re-reads
+# API_KEY_OVERRIDE on every outbound request.
+
+DOMINO_TOKEN_URL_DEFAULT = "http://localhost:8899/access-token"
+
+
+def get_domino_llm_gateway_url():
+    """Gateway App base URL, e.g. https://<deploy>/apps/<app-id> (with or without /v1)."""
+    return os.environ.get("DOMINO_LLM_GATEWAY_URL")
+
+
+def get_domino_llm_gateway_model():
+    """Model alias as registered in the Gateway App, e.g. gpt-5.4-nano."""
+    return os.environ.get("DOMINO_LLM_GATEWAY_MODEL")
+
+
+def get_domino_llm_gateway_token_url():
+    """Domino access-token sidecar URL. Only overridden for local development —
+    real Domino workspaces/jobs/apps always expose it on localhost:8899."""
+    return os.environ.get("DOMINO_LLM_GATEWAY_TOKEN_URL", DOMINO_TOKEN_URL_DEFAULT)
+
+
+def get_api_key_override():
+    """Standard Domino-app convention: when set, used verbatim as the bearer
+    token for Gateway calls and the sidecar is skipped entirely."""
+    return os.environ.get("API_KEY_OVERRIDE")
 
 
 def get_dev_access_token():

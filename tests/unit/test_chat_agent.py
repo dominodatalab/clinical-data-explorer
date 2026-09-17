@@ -19,6 +19,10 @@ def reset_chat_agent_state(monkeypatch):
         "LLM_API_KEY",
         "OPENAI_API_KEY",
         "LLM_MODEL",
+        "DOMINO_LLM_GATEWAY_URL",
+        "DOMINO_LLM_GATEWAY_MODEL",
+        "DOMINO_LLM_GATEWAY_TOKEN_URL",
+        "API_KEY_OVERRIDE",
     ):
         monkeypatch.delenv(env_var, raising=False)
 
@@ -110,6 +114,7 @@ def test_get_llm_config_uses_defaults_and_openai_key_fallback(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "openai-key")
 
     assert chat_agent.get_llm_config() == (
+        "openai",
         "https://api.openai.com/v1",
         "openai-key",
         "gpt-4o-mini",
@@ -123,6 +128,7 @@ def test_get_llm_config_prefers_llm_api_key(monkeypatch):
     monkeypatch.setenv("LLM_MODEL", "test-model")
 
     assert chat_agent.get_llm_config() == (
+        "openai",
         "https://llm.example/v1",
         "llm-key",
         "test-model",
@@ -152,6 +158,7 @@ def test_get_chat_status_hides_remote_config_when_api_key_missing(monkeypatch):
 
     assert chat_agent.get_chat_status() == {
         "configured": False,
+        "provider": "openai",
         "base_url": None,
         "model": None,
         "is_local": False,
@@ -427,7 +434,11 @@ def test_create_agent_for_session_uses_authorization_header_for_mcp_connection(m
 
     monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
     monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
-    monkeypatch.setattr(chat_agent, "Agent", lambda model, toolsets, system_prompt, retries: None)
+    monkeypatch.setattr(
+        chat_agent,
+        "Agent",
+        lambda model, toolsets, system_prompt, retries, model_settings: None,
+    )
 
     chat_agent._create_agent_for_session("user-id-123", authorization_header="Bearer jwt-token-xyz")
 
@@ -445,7 +456,11 @@ def test_create_agent_for_session_falls_back_to_session_id_when_no_authorization
 
     monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
     monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
-    monkeypatch.setattr(chat_agent, "Agent", lambda model, toolsets, system_prompt, retries: None)
+    monkeypatch.setattr(
+        chat_agent,
+        "Agent",
+        lambda model, toolsets, system_prompt, retries, model_settings: None,
+    )
 
     chat_agent._create_agent_for_session("user-id-123")
 

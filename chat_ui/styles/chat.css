@@ -293,6 +293,22 @@
     gap: var(--spacing-small);
 }
 
+/* Divider that separates the provider groups inside .env-var-group, so the
+   Gateway vars read as an alternative to the cloud-provider vars rather than
+   as more variables you also have to set. */
+.env-var-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-textsecondary);
+    letter-spacing: 0.5px;
+    margin: var(--spacing-small) 0 var(--spacing-xxsmall) 0;
+}
+
+.env-var-section-label:first-child {
+    margin-top: 0;
+}
+
 .env-var-item {
     display: flex;
     flex-wrap: wrap;

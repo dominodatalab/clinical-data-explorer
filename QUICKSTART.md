@@ -25,7 +25,12 @@ uv sync --locked
 The Chat tab requires an LLM provider. Set these environment variables:
 
 ```bash
-# For OpenAI (default)
+# For the Domino LLM Gateway (recommended on Domino) — no API key needed, the
+# app fetches a short-lived Domino access token on every request
+export DOMINO_LLM_GATEWAY_URL="https://<your-deploy>/apps/<app-id>"
+export DOMINO_LLM_GATEWAY_MODEL="gpt-5.4-nano"   # alias registered in the Gateway App
+
+# For OpenAI
 export LLM_API_KEY="sk-your-api-key"
 export LLM_MODEL="gpt-4o"  # optional, defaults to gpt-4o-mini
 
@@ -38,6 +43,10 @@ export LLM_BASE_URL="https://api.together.xyz/v1"
 export LLM_API_KEY="your-api-key"
 export LLM_MODEL="meta-llama/Llama-3-70b-chat-hf"
 ```
+
+The Domino LLM Gateway takes precedence when both of its variables are set;
+otherwise `LLM_API_KEY` is used, and finally a localhost `LLM_BASE_URL` is
+treated as Ollama.
 
 **Note:** The app will run without LLM configuration - the Table and Explore tabs work without it. The Chat tab will show setup instructions if not configured.
 
@@ -180,6 +189,7 @@ kill -9 <PID>
 Common issues and solutions:
 1. **Servers won't start**: Check if ports 5000 and 8888 are available
 2. **Chat not working**: Check your LLM configuration (see Step 2 above)
+   - For the Domino LLM Gateway: `export DOMINO_LLM_GATEWAY_URL='https://<deploy>/apps/<app-id>' DOMINO_LLM_GATEWAY_MODEL='gpt-5.4-nano'` (both are required)
    - For OpenAI: `export LLM_API_KEY='sk-your-key'`
    - For Ollama: `export LLM_BASE_URL='http://localhost:11434/v1' LLM_MODEL='llama3'`
 3. **Dataset won't load**: Check file format and location
