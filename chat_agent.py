@@ -23,8 +23,14 @@ from backend import config as backend_config
 MCP_SERVER_URL = backend_config.MCP_SERVER_MCP_URL
 
 
-CHART_DATA_PATTERN = re.compile(r'\[CHART_DATA\](.*?)\[/CHART_DATA\]', re.DOTALL)
+CHART_DATA_PATTERN = re.compile(
+    r'(?:```[a-zA-Z]*\s*)?\[CHART_DATA\](.*?)\[/CHART_DATA\](?:\s*```)?',
+    re.DOTALL,
+)
+UNTERMINATED_CHART_DATA_PATTERN = re.compile(r'\[CHART_DATA\][\s\S]*$')
+BLANK_LINE_RUN_PATTERN = re.compile(r'\n{3,}')
 MALFORMED_CHART_WARNING = 'A chart could not be rendered because the chart data was malformed.'
+TRUNCATED_CHART_WARNING = 'A chart could not be rendered because the response was cut off.'
 
 # Per-turn output cap, applied at the agent level so it can be tuned without
 # rebuilding the shared model singleton. Generous because a tool-calling data
@@ -363,9 +369,20 @@ def _extract_response_payload(response_text: str) -> dict:
             logger.warning(f"Chart JSON that failed: {chart_json[:200]}")
         return ''
 
-    clean_text = CHART_DATA_PATTERN.sub(remove_chart_block, response_text).strip()
+    clean_text = CHART_DATA_PATTERN.sub(remove_chart_block, response_text)
+
+    truncated = False
+    if UNTERMINATED_CHART_DATA_PATTERN.search(clean_text):
+        clean_text = UNTERMINATED_CHART_DATA_PATTERN.sub('', clean_text)
+        truncated = True
+        logger.warning('Dropped an unterminated [CHART_DATA] block from the response.')
+
+    clean_text = BLANK_LINE_RUN_PATTERN.sub('\n\n', clean_text).strip()
+
     if malformed_chart_count:
         clean_text = f"{clean_text}\n\n{MALFORMED_CHART_WARNING}".strip()
+    if truncated:
+        clean_text = f"{clean_text}\n\n{TRUNCATED_CHART_WARNING}".strip()
 
     return {
         'text': clean_text,

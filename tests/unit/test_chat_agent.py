@@ -342,6 +342,73 @@ Another note.
     assert "[CHART_DATA]" not in payload["text"]
 
 
+def test_extract_response_payload_strips_fence_wrapped_chart_block():
+    response_text = (
+        "Here is the breakdown.\n"
+        "```json\n"
+        '[CHART_DATA]\n{"type": "bar", "data": {"categories": ["A"], "values": [1]}}\n[/CHART_DATA]\n'
+        "```\n"
+        "Done."
+    )
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert payload["charts"] == [{"type": "bar", "data": {"categories": ["A"], "values": [1]}}]
+    assert "```" not in payload["text"]
+    assert "Here is the breakdown." in payload["text"]
+    assert "Done." in payload["text"]
+
+
+def test_extract_response_payload_parses_two_chart_blocks():
+    response_text = (
+        "First chart.\n"
+        '[CHART_DATA]{"type": "bar", "data": {}}[/CHART_DATA]\n'
+        "Second chart.\n"
+        '[CHART_DATA]{"type": "pie", "data": {}}[/CHART_DATA]\n'
+    )
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert [chart["type"] for chart in payload["charts"]] == ["bar", "pie"]
+    assert "First chart." in payload["text"]
+    assert "Second chart." in payload["text"]
+
+
+def test_extract_response_payload_drops_unterminated_chart_block():
+    response_text = (
+        "Here is the distribution.\n"
+        '[CHART_DATA]\n{"type": "bar", "data": {"categories": ["A", "B"'
+    )
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert payload["charts"] == []
+    assert "[CHART_DATA]" not in payload["text"]
+    assert "categories" not in payload["text"]
+    assert chat_agent.TRUNCATED_CHART_WARNING in payload["text"]
+    assert "Here is the distribution." in payload["text"]
+
+
+def test_extract_response_payload_collapses_blank_line_runs_left_by_chart_removal():
+    response_text = (
+        "Text A.\n\n\n\n"
+        '[CHART_DATA]{"type": "bar", "data": {}}[/CHART_DATA]'
+        "\n\n\n\nText B."
+    )
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert payload["text"] == "Text A.\n\nText B."
+
+
+def test_extract_response_payload_returns_text_unchanged_when_no_chart_present():
+    response_text = "Just a plain text answer with no charts at all."
+
+    payload = chat_agent._extract_response_payload(response_text)
+
+    assert payload == {"text": response_text, "charts": []}
+
+
 def test_get_agent_response_keeps_chart_payloads_in_message_history(monkeypatch):
     output = (
         "Here is the distribution.\n"

@@ -234,11 +234,90 @@ def test_chat_text_and_chart_errors_are_not_rendered_as_html(page, chat_ui_stati
         }"""
     )
 
+    # Agent replies render through the Markdown pipeline (marked + DOMPurify),
+    # which strips disallowed elements like <img> entirely rather than
+    # escaping them to visible text — either way, no element is created and
+    # no inline handler runs.
     assert "<img" not in result["messageHtml"]
-    assert "&lt;img" in result["messageHtml"]
+    assert "hello" in result["messageHtml"]
     assert "<svg" not in result["chartErrorHtml"]
     assert "&lt;svg" in result["chartErrorHtml"]
     assert result["chatImages"] == 0
     assert result["chartSvgs"] == 0
     assert result["chatXss"] is False
     assert result["chartXss"] is False
+
+
+def test_chat_agent_reply_renders_markdown_and_sanitizes_script(page, chat_ui_static_url):
+    page.goto(chat_ui_static_url)
+    expect(page.locator("#chat-box")).to_be_attached(timeout=15_000)
+
+    markdown_fixture = "\n".join([
+        "**Key finding:** BMI correlates with age.",
+        "",
+        "- item one",
+        "- item two",
+        "",
+        "| Col A | Col B |",
+        "| --- | --- |",
+        "| 1 | 2 |",
+        "",
+        "```python",
+        "print('hi')",
+        "```",
+        "",
+        "<script>window.__mdXss = true</script>",
+        "[bad link](javascript:alert(1))",
+    ])
+
+    result = page.evaluate(
+        """async (markdownFixture) => {
+            window.__mdXss = false;
+
+            const { displayMessage } = await import('/modules/chat.js');
+            displayMessage(markdownFixture, 'agent');
+
+            const agentMessages = document.querySelectorAll('#chat-box .agent-message');
+            const lastMessage = agentMessages[agentMessages.length - 1];
+
+            return {
+                html: lastMessage.innerHTML,
+                hasStrong: !!lastMessage.querySelector('strong'),
+                hasListItems: lastMessage.querySelectorAll('ul > li').length,
+                hasTable: !!lastMessage.querySelector('table'),
+                hasCodeBlock: !!lastMessage.querySelector('pre code'),
+                hasScript: !!lastMessage.querySelector('script'),
+                badLinkHref: lastMessage.querySelector('a') ? lastMessage.querySelector('a').getAttribute('href') : null,
+                mdXss: window.__mdXss,
+            };
+        }""",
+        markdown_fixture,
+    )
+
+    assert result["hasStrong"] is True
+    assert result["hasListItems"] == 2
+    assert result["hasTable"] is True
+    assert result["hasCodeBlock"] is True
+    assert result["hasScript"] is False
+    assert "<script" not in result["html"]
+    assert result["badLinkHref"] is None
+    assert result["mdXss"] is False
+
+
+def test_chat_user_message_stays_literal_text(page, chat_ui_static_url):
+    page.goto(chat_ui_static_url)
+    expect(page.locator("#chat-box")).to_be_attached(timeout=15_000)
+
+    result = page.evaluate(
+        """async () => {
+            const { displayMessage } = await import('/modules/chat.js');
+            displayMessage('**hi** <b>there</b>', 'user');
+
+            const userMessages = document.querySelectorAll('#chat-box .user-message');
+            const lastMessage = userMessages[userMessages.length - 1];
+            return { text: lastMessage.textContent, hasStrong: !!lastMessage.querySelector('strong') };
+        }"""
+    )
+
+    assert result["text"] == "**hi** <b>there</b>"
+    assert result["hasStrong"] is False
