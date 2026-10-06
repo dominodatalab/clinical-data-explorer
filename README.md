@@ -143,22 +143,68 @@ These settings control how downloaded files, MCP server DataFrames, and session 
 
 #### Optional: AI Chat Feature
 
-To enable the natural language chat feature, configure an LLM provider:
+To enable the natural language chat feature, configure an LLM provider. Three
+paths are supported, checked in this order — the first one whose variables are
+set wins:
+
+1. **Domino LLM Gateway** (recommended on Domino) — `DOMINO_LLM_GATEWAY_URL` + `DOMINO_LLM_GATEWAY_MODEL`
+2. **OpenAI-compatible endpoint** — `LLM_API_KEY` (+ optional `LLM_BASE_URL`, `LLM_MODEL`)
+3. **Local Ollama** — `LLM_BASE_URL` pointing at localhost + `LLM_MODEL`
+
+The Gateway deliberately outranks `LLM_API_KEY`, because stale keys often linger
+in project settings. Setting only *one* of the two Gateway variables means
+"Gateway not requested" and falls through to the next path.
+
+##### Domino LLM Gateway
+
+| Variable | Description |
+|----------|-------------|
+| `DOMINO_LLM_GATEWAY_URL` | Gateway App base URL, e.g. `https://<deploy>/apps/<app-id>`. A `/v1` suffix is appended if missing, so `.../v1` and `.../v1/` also work. |
+| `DOMINO_LLM_GATEWAY_MODEL` | Model alias as registered in the Gateway App, e.g. `gpt-5.4-nano`. Not a vendor model name. |
+| `DOMINO_LLM_GATEWAY_TOKEN_URL` | Override for the Domino access-token sidecar (default: `http://localhost:8899/access-token`). Only needed for local development — real Domino workspaces, jobs and apps always expose it on localhost. |
+| `API_KEY_OVERRIDE` | When set, used verbatim as the bearer token and the sidecar is skipped. Useful for local development against a deployed Gateway. |
+
+No API key is needed inside Domino: the app fetches a short-lived Domino access
+token on every request. When the app is accessed as a Domino Extension, the
+visiting user's JWT is forwarded to the Gateway instead, so the Gateway's audit
+log attributes each call to the person who typed it rather than to the app
+owner. That does mean the visiting user needs access to the Gateway App.
+
+Verify a Gateway configuration by hand with:
+
+```bash
+TOKEN=$(curl -s http://localhost:8899/access-token)
+curl -X POST "$DOMINO_LLM_GATEWAY_URL/v1/chat/completions" \
+  -H "Authorization: Bearer $TOKEN" \
+  -H 'Content-Type: application/json' \
+  -d "{\"model\":\"$DOMINO_LLM_GATEWAY_MODEL\",\"messages\":[{\"role\":\"user\",\"content\":\"Hello!\"}]}"
+```
+
+##### OpenAI-compatible providers and Ollama
 
 | Variable | Description |
 |----------|-------------|
 | `LLM_API_KEY` | API key for your LLM provider (not required for local Ollama) |
 | `LLM_BASE_URL` | Base URL for OpenAI-compatible API (default: `https://api.openai.com/v1`) |
 | `LLM_MODEL` | Model name to use (default: `gpt-4o-mini`) |
+
+##### Shared
+
+| Variable | Description |
+|----------|-------------|
 | `CHAT_AGENT_MESSAGE_HISTORY_CACHE_SIZE_B` | Maximum size, in bytes, of the in-memory chat message history cache (default: `524288000`, or 500 MiB) |
 | `CHAT_AGENT_MESSAGE_HISTORY_CAP` | Maximum number of messages to retain per chat session (default: `100`) |
 
 **Example configurations:**
 
+- **Domino LLM Gateway**: Set `DOMINO_LLM_GATEWAY_URL=https://<deploy>/apps/<app-id>` and `DOMINO_LLM_GATEWAY_MODEL=gpt-5.4-nano`
 - **OpenAI**: Set `LLM_API_KEY=sk-xxx` and optionally `LLM_MODEL=gpt-4o`
 - **Local Ollama**: Set `LLM_BASE_URL=http://localhost:11434/v1` and `LLM_MODEL=llama3`
 - **Azure OpenAI**: Set `LLM_BASE_URL=https://your-resource.openai.azure.com/openai/deployments/your-deployment` and `LLM_API_KEY`
 - **Together AI**: Set `LLM_BASE_URL=https://api.together.xyz/v1`, `LLM_API_KEY`, and `LLM_MODEL=meta-llama/Llama-3-70b-chat-hf`
+
+> Note: LLM configuration is read once per process. Changing these variables
+> requires restarting the app.
 
 #### Logging
 
@@ -292,9 +338,23 @@ Ask the chatbot about the columns in your dataset or request specific analyses:
 
 ### Chat feature shows "Not Configured"
 
-- Ensure LLM environment variables are set in your Domino project
+- Ensure LLM environment variables are set in your Domino project, then restart
+  the app — configuration is read once per process
+- For the Domino LLM Gateway, confirm **both** `DOMINO_LLM_GATEWAY_URL` and
+  `DOMINO_LLM_GATEWAY_MODEL` are set; setting only one falls through to the
+  other providers
 - For cloud providers, verify your `LLM_API_KEY` is valid
 - For local Ollama, confirm the service is running and `LLM_BASE_URL` is correct
+
+### Chat returns a network error when using the Domino LLM Gateway
+
+- The access-token sidecar (`http://localhost:8899/access-token`) only exists
+  inside Domino. Outside it, set `API_KEY_OVERRIDE` to a Domino API key or point
+  `DOMINO_LLM_GATEWAY_TOKEN_URL` at a local stand-in
+- Confirm `DOMINO_LLM_GATEWAY_MODEL` is an alias registered in the Gateway App,
+  not a vendor model name
+- When the app runs as a Domino Extension the *visiting* user's token is used,
+  so that user needs access to the Gateway App
 
 ### Filters not persisting
 

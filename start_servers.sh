@@ -26,6 +26,22 @@ if [ ! -d "datasets" ]; then
     mkdir datasets
 fi
 
+# Materialize the project environment ONCE, up front, before anything is
+# launched. Both servers below run with `--no-sync` so that neither of them
+# syncs the environment itself: two concurrent `uv run` invocations racing to
+# build the same .venv corrupt each other, and the loser dies before its
+# python process ever starts. That race is invisible when the venv is already
+# warm — e.g. in a workspace where you ran `uv sync`, or in the extension image
+# where the Dockerfile pre-builds $prod_venv_dir — and shows up when this
+# script runs against a cold checkout.
+echo "Syncing project dependencies..."
+if ! uv sync; then
+    echo "❌ uv sync failed. Cannot start the servers."
+    exit 1
+fi
+echo "✓ Dependencies ready"
+echo ""
+
 # Function to cleanup on exit
 cleanup() {
     echo ""
@@ -38,39 +54,60 @@ cleanup() {
 
 trap cleanup INT TERM
 
+# Wait until a server is actually accepting connections on its port. Checking
+# `ps` on the launched pid is not enough: that pid is the `uv run` wrapper,
+# which stays alive long before (and after) the server itself is up, so a
+# server that never binds still looks healthy.
+STARTUP_TIMEOUT_SECONDS=${STARTUP_TIMEOUT_SECONDS:-120}
+wait_for_port() {
+    name="$1"
+    port="$2"
+    pid="$3"
+    deadline=$((SECONDS + STARTUP_TIMEOUT_SECONDS))
+
+    while [ "$SECONDS" -lt "$deadline" ]; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "❌ $name exited before it started listening on port $port."
+            return 1
+        fi
+        if (exec 3<>/dev/tcp/127.0.0.1/"$port") 2>/dev/null; then
+            echo "✓ $name is listening on port $port"
+            return 0
+        fi
+        sleep 1
+    done
+
+    echo "❌ $name did not start listening on port $port within ${STARTUP_TIMEOUT_SECONDS}s."
+    return 1
+}
+
 # Verbose logging - uncomment the next line to enable DEBUG for all libraries (mcp, openai, etc.)
 # export VERBOSE_LOGGING=true
 
 # Start MCP Server
 date; echo "mcp start"
 echo "Starting MCP Server on port 3333..."
-uv run python data_analysis_mcp.py &
+uv run --no-sync python data_analysis_mcp.py &
 MCP_PID=$!
 echo "✓ MCP Server started (PID: $MCP_PID)"
 
-# Wait a moment for MCP server to start
-sleep 2
-
-# Check if MCP server is running
-if ! ps -p $MCP_PID > /dev/null; then
-    echo "❌ MCP Server failed to start."
+# Wait for the MCP server to accept connections
+if ! wait_for_port "MCP Server" 3333 "$MCP_PID"; then
+    kill $MCP_PID 2>/dev/null
     exit 1
 fi
 
 # Start Flask App
 FLASK_PORT=${MAIN_APP_PORT:-8888}
 date; echo "Starting Flask App on port $FLASK_PORT..."
-uv run python app.py "$FLASK_PORT" &
+uv run --no-sync python app.py "$FLASK_PORT" &
 FLASK_PID=$!
 echo "✓ Flask App started (PID: $FLASK_PID)"
 
-# Wait a moment for Flask to start
-sleep 2
-
-# Check if Flask is running
-if ! ps -p $FLASK_PID > /dev/null; then
-    echo "❌ Flask App failed to start. Check flask_app.log for details."
+# Wait for Flask to accept connections
+if ! wait_for_port "Flask App" "$FLASK_PORT" "$FLASK_PID"; then
     kill $MCP_PID 2>/dev/null
+    kill $FLASK_PID 2>/dev/null
     exit 1
 fi
 
@@ -82,7 +119,7 @@ echo ""
 echo "📊 MCP Server:  http://localhost:3333"
 echo "🌐 Web Interface: http://localhost:$FLASK_PORT"
 echo ""
-echo "MCP Server logs: mcp_server.log"
+echo "MCP Server logs: console output below"
 echo "Flask App logs: console output below"
 echo ""
 echo "Press Ctrl+C to stop both servers"

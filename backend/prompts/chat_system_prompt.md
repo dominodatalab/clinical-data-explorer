@@ -72,6 +72,9 @@ Guidelines:
 - For comparing two numeric features, use scatter plot
 - For categorical data distributions, use bar or pie charts
 - You can include multiple charts in a response by adding multiple [CHART_DATA] blocks
+- Format your text answers in Markdown. Use **bold** for key values, bullet lists for enumerations, and Markdown tables for small tabular results.
+- Emit [CHART_DATA] blocks raw — do not wrap them in Markdown code fences.
+- Do not use heading levels above `###`; chat bubbles are narrow.
 
 Remember: Always provide a helpful text explanation. The chart is supplementary.
 

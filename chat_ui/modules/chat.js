@@ -6,7 +6,9 @@
 //     example tabs that show when the agent isn't configured).
 //   - Send / Enter-key / Clear chat wiring.
 //   - User and agent message rendering, including the "Thinking…" dots
-//     animation while the agent is responding.
+//     animation while the agent is responding. Agent replies are rendered
+//     as sanitized Markdown (see `modules/markdown.js`); user/system/error
+//     bubbles stay literal text.
 //   - Chart embedding inside agent replies (renderChart dispatcher).
 //     The 8 type-specific renderers (bar / scatter / line / pie /
 //     histogram / boxplot / heatmap / grouped_bar) live in
@@ -48,6 +50,7 @@ import {
     renderHeatmap,
     renderGroupedBarChart,
 } from './chart-renderers.js';
+import { escapeHtml, renderMarkdown } from './markdown.js';
 
 let chatBox = null;
 let userInput = null;
@@ -95,6 +98,7 @@ function updateChatUI() {
 function initChatEmptyStateTabs() {
     const exampleTabs = document.querySelectorAll('.example-tab');
     const exampleContents = {
+        'domino': document.getElementById('example-domino'),
         'openai': document.getElementById('example-openai'),
         'ollama': document.getElementById('example-ollama'),
         'together': document.getElementById('example-together')
@@ -210,11 +214,11 @@ function sendMessage() {
             }
             errorMsg += '\n\nPlease check the Domino app logs for more details.';
 
-            displayMessage(errorMsg, 'agent');
+            displayMessage(errorMsg, 'error');
             return;
         }
         const message = await getApiErrorMessage(error, 'Make sure the Flask server is running.');
-        displayMessage(`Error: Could not connect to the server. ${message}`, 'agent');
+        displayMessage(`Error: Could not connect to the server. ${message}`, 'error');
     })
     .finally(() => {
         removeThinkingAnimation(thinkingElement);
@@ -249,16 +253,6 @@ function removeThinkingAnimation(thinkingElement) {
     }
 }
 
-function appendTextWithLineBreaks(element, text) {
-    const lines = String(text ?? '').split(/\r?\n/);
-    lines.forEach((line, index) => {
-        if (index > 0) {
-            element.appendChild(document.createElement('br'));
-        }
-        element.appendChild(document.createTextNode(line));
-    });
-}
-
 function renderChartError(containerId, message) {
     const container = document.getElementById(containerId);
     if (!container) return;
@@ -279,7 +273,17 @@ export function displayMessage(text, sender, charts = null) {
 
     const messageElement = document.createElement('div');
     messageElement.classList.add('message', `${sender}-message`);
-    appendTextWithLineBreaks(messageElement, text);
+    messageElement.dataset.testid = 'chat-message';
+    messageElement.dataset.sender = sender;
+
+    if (sender === 'agent') {
+        messageElement.classList.add('markdown-body');
+        messageElement.innerHTML = renderMarkdown(text);
+    } else {
+        // User, system, and error messages are literal text: a user typing
+        // `**x**` or `<b>` must see exactly that.
+        messageElement.innerHTML = escapeHtml(text).replace(/\n/g, '<br>');
+    }
     chatBox.appendChild(messageElement);
 
     if (charts && charts.length > 0) {

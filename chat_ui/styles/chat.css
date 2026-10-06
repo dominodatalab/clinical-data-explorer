@@ -16,6 +16,7 @@
     max-width: 80%;
     font-size: 14px;
     line-height: 22px;
+    overflow-wrap: anywhere;
 }
 
 .user-message {
@@ -33,6 +34,7 @@
     margin-right: auto;
     border: 1px solid var(--color-border-borderlight);
     box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    max-width: 92%;
 }
 
 .system-message {
@@ -43,6 +45,118 @@
     text-align: center;
     font-style: italic;
     max-width: 90%;
+}
+
+.error-message {
+    background-color: var(--color-background-bg);
+    color: var(--color-text-textprimary);
+    align-self: flex-start;
+    margin-right: auto;
+    border: 1px solid var(--color-border-borderlight);
+    border-left: 3px solid #dc3545;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+    max-width: 92%;
+}
+
+/* Markdown typography for rendered agent replies. Scoped under
+   .message so browser-default block margins don't blow the bubbles apart. */
+.message.markdown-body > *:first-child {
+    margin-top: 0;
+}
+
+.message.markdown-body > *:last-child {
+    margin-bottom: 0;
+}
+
+.markdown-body p {
+    margin: 0 0 8px;
+}
+
+.markdown-body ul,
+.markdown-body ol {
+    margin: 0 0 8px;
+    padding-left: 20px;
+}
+
+.markdown-body li {
+    margin: 2px 0;
+}
+
+.markdown-body h1,
+.markdown-body h2,
+.markdown-body h3,
+.markdown-body h4 {
+    font-weight: 600;
+    margin: 12px 0 6px;
+}
+
+.markdown-body h1 {
+    font-size: 17px;
+}
+
+.markdown-body h2 {
+    font-size: 16px;
+}
+
+.markdown-body h3,
+.markdown-body h4 {
+    font-size: 15px;
+}
+
+.markdown-body code {
+    font-family: 'SF Mono', 'Consolas', 'Monaco', monospace;
+    font-size: 12.5px;
+    background: var(--color-background-bglight1);
+    padding: 1px 4px;
+    border-radius: 3px;
+}
+
+.markdown-body pre {
+    background: var(--color-background-bglight1);
+    padding: 10px;
+    border-radius: var(--radius-small);
+    overflow-x: auto;
+    white-space: pre;
+}
+
+.markdown-body pre code {
+    background: none;
+    padding: 0;
+}
+
+.markdown-body table {
+    border-collapse: collapse;
+    font-size: 13px;
+    display: block;
+    overflow-x: auto;
+}
+
+.markdown-body th,
+.markdown-body td {
+    border: 1px solid var(--color-border-borderlight);
+    padding: 4px 8px;
+}
+
+.markdown-body th {
+    background: var(--color-background-bglight1);
+    text-align: left;
+}
+
+.markdown-body blockquote {
+    margin: 0 0 8px;
+    padding-left: 10px;
+    border-left: 3px solid var(--color-border-bordermedium);
+    color: var(--color-text-textsecondary);
+}
+
+.markdown-body a {
+    color: var(--color-primary-primary);
+    text-decoration: underline;
+}
+
+.markdown-body hr {
+    border: none;
+    border-top: 1px solid var(--color-border-borderlight);
 }
 
 /* Input Area */
@@ -291,6 +405,22 @@
     display: flex;
     flex-direction: column;
     gap: var(--spacing-small);
+}
+
+/* Divider that separates the provider groups inside .env-var-group, so the
+   Gateway vars read as an alternative to the cloud-provider vars rather than
+   as more variables you also have to set. */
+.env-var-section-label {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    color: var(--color-text-textsecondary);
+    letter-spacing: 0.5px;
+    margin: var(--spacing-small) 0 var(--spacing-xxsmall) 0;
+}
+
+.env-var-section-label:first-child {
+    margin-top: 0;
 }
 
 .env-var-item {

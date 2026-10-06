@@ -16,6 +16,9 @@
     <script src="vendor/highcharts/heatmap.js"></script>
     <script src="vendor/highcharts/exporting.js"></script>
     <script src="vendor/highcharts/export-data.js"></script>
+    <!-- Markdown rendering for agent chat replies (vendored locally) -->
+    <script src="vendor/markdown/marked.min.js"></script>
+    <script src="vendor/markdown/purify.min.js"></script>
 </head>
 <body>
     <!-- Top Loading Banner (more visible than button indicator) -->
@@ -504,6 +507,19 @@
                 </p>
                 <div class="env-var-instructions">
                     <div class="env-var-group">
+                        <div class="env-var-section-label">Domino LLM Gateway (recommended on Domino)</div>
+                        <div class="env-var-item required">
+                            <code>DOMINO_LLM_GATEWAY_URL</code>
+                            <span class="env-var-desc">Base URL of the Gateway App, e.g. https://&lt;deploy&gt;/apps/&lt;app-id&gt;</span>
+                            <span class="conditional-badge">Required for Gateway mode</span>
+                        </div>
+                        <div class="env-var-item required">
+                            <code>DOMINO_LLM_GATEWAY_MODEL</code>
+                            <span class="env-var-desc">Gateway model alias (e.g. gpt-5.4-nano)</span>
+                            <span class="conditional-badge">Required for Gateway mode</span>
+                        </div>
+
+                        <div class="env-var-section-label">OpenAI-compatible LLM endpoint</div>
                         <div class="env-var-item required">
                             <code>LLM_API_KEY</code>
                             <span class="env-var-desc">Your API key for the LLM provider</span>
@@ -527,11 +543,19 @@
                 <div class="provider-examples">
                     <h4>Example Configurations</h4>
                     <div class="example-tabs">
-                        <button class="example-tab active" data-example="openai">OpenAI</button>
+                        <button class="example-tab active" data-example="domino">Domino Gateway</button>
+                        <button class="example-tab" data-example="openai">OpenAI</button>
                         <button class="example-tab" data-example="ollama">Ollama (Local)</button>
                         <button class="example-tab" data-example="together">Together AI</button>
                     </div>
-                    <div class="example-content" id="example-openai">
+                    <div class="example-content" id="example-domino">
+                        <pre><code>export DOMINO_LLM_GATEWAY_URL="https://&lt;your-deploy&gt;/apps/&lt;app-id&gt;"
+export DOMINO_LLM_GATEWAY_MODEL="gpt-5.4-nano"
+
+# Inside Domino, the access token is fetched automatically from
+# http://localhost:8899/access-token on every request — no API key needed.</code></pre>
+                    </div>
+                    <div class="example-content" id="example-openai" style="display: none;">
                         <pre><code>export LLM_API_KEY="sk-..."
 export LLM_MODEL="gpt-4o"  # optional</code></pre>
                     </div>
