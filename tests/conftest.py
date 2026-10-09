@@ -23,6 +23,20 @@ def _mcp_app():
     return app
 
 
+@pytest.fixture(autouse=True)
+def _stub_domino_user(_mcp_app, monkeypatch):
+    """Stub the Domino /users/v1/self lookup that SessionMiddleware performs.
+
+    Session identity comes from the Domino API, so without this every request
+    needs DOMINO_API_HOST and a passthrough token. Each test gets a unique user ID.
+    """
+    user_id = f"test-user-{uuid.uuid4().hex}"
+    monkeypatch.setattr("mcp_server.session.get_current_user", lambda: {"id": user_id})
+    yield user_id
+    from data_analysis_mcp import _sessions
+    _sessions.pop(user_id, None)
+
+
 @pytest.fixture
 def mcp_client(_mcp_app):
     """TestClient with a unique session ID header and sample.csv pre-loaded.
