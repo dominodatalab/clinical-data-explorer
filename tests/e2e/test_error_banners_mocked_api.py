@@ -145,6 +145,7 @@ def test_summary_and_snapshot_error_banners_from_mocked_api(page, chat_ui_static
         ),
     ],
 )
+@pytest.mark.skip(reason="Governance UI is disabled (GOVERNANCE_FEATURES_ENABLED = False in chat_ui/modules/governance.js); re-enable with the feature.")
 def test_governance_error_banners_from_mocked_api(
     page, chat_ui_static_url, overrides, expected_message
 ):

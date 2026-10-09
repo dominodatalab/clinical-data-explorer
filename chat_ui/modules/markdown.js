@@ -59,6 +59,15 @@ function normalize(text) {
         .trim();
 }
 
+// Raw HTML in a reply is shown as literal text rather than parsed. LLMs often
+// write placeholders like `<column_name>` outside backticks, which DOMPurify
+// would otherwise strip silently. DOMPurify remains the safety net regardless.
+function buildRenderer() {
+    const renderer = new window.marked.Renderer();
+    renderer.html = (token) => escapeHtml(typeof token === 'string' ? token : token.text);
+    return renderer;
+}
+
 export function renderMarkdown(text) {
     if (!window.marked || !window.DOMPurify) {
         if (!warnedMissingLibraries) {
@@ -71,7 +80,7 @@ export function renderMarkdown(text) {
     registerLinkHardeningHook();
 
     const src = normalize(text);
-    const html = window.marked.parse(src, { gfm: true, breaks: true });
+    const html = window.marked.parse(src, { gfm: true, breaks: true, renderer: buildRenderer() });
 
     return window.DOMPurify.sanitize(html, {
         ALLOWED_TAGS,
