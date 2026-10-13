@@ -121,6 +121,69 @@ def get_domino_remote_file_system_hostport():
     return os.environ.get("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT")
 
 
+# ===== CHAT TOOL ACCESS POLICY =====
+# See backend/chat_tools/ and README "Chat tool access settings".
+
+CHAT_TOOL_POLICY_FILE_NAME = "chat_tool_policy.json"
+CHAT_TOOL_POLICY_DATASET_DEFAULT = "chat-tool-settings"
+CHAT_USER_ONLY_RESULT_MAX_BYTES_DEFAULT = 256 * 1024
+
+# (directory whose presence means "this kind of project", where its datasets are
+# mounted). Git-based projects mount datasets at /mnt/data/<name>; DFS projects
+# at /domino/datasets/local/<name>.
+DOMINO_DATASET_ROOTS = (
+    ("/mnt/data", "/mnt/data"),
+    ("/domino/datasets", "/domino/datasets/local"),
+)
+LOCAL_CHAT_TOOL_POLICY_PATH = ".chat_tool_policy.json"
+
+
+def get_chat_tool_policy_dataset() -> str:
+    """Name of the Domino Dataset (in the extension's project) holding the policy file."""
+    return os.environ.get("CHAT_TOOL_POLICY_DATASET") or CHAT_TOOL_POLICY_DATASET_DEFAULT
+
+
+def get_chat_tool_policy_path() -> str:
+    """Resolve where the chat tool policy file lives. First match wins:
+
+    1. CHAT_TOOL_POLICY_PATH: an explicit full path to the file.
+    2. On Domino, the mounted policy dataset: /mnt/data/<dataset> (Git-based
+       projects) or /domino/datasets/local/<dataset> (DFS projects), whichever
+       has the dataset mounted.
+    3. Local dev (no DOMINO_RUN_ID): ./.chat_tool_policy.json
+
+    On Domino the returned path may not exist yet (dataset not mounted); the
+    store reports that rather than silently writing to ephemeral local disk.
+    """
+    explicit = os.environ.get("CHAT_TOOL_POLICY_PATH")
+    if explicit:
+        return explicit
+
+    if not get_domino_run_id():
+        return LOCAL_CHAT_TOOL_POLICY_PATH
+
+    dataset = get_chat_tool_policy_dataset()
+    roots = [(probe, parent) for probe, parent in DOMINO_DATASET_ROOTS if os.path.isdir(probe)]
+    for _probe, parent in roots:
+        if os.path.isdir(os.path.join(parent, dataset)):
+            return os.path.join(parent, dataset, CHAT_TOOL_POLICY_FILE_NAME)
+    parent = roots[0][1] if roots else DOMINO_DATASET_ROOTS[0][1]
+    return os.path.join(parent, dataset, CHAT_TOOL_POLICY_FILE_NAME)
+
+
+def get_chat_tool_admin_usernames() -> set:
+    """Lower-cased usernames that count as chat-tool admins regardless of project role.
+
+    For local dev (no Domino project) and as a break-glass option."""
+    raw = os.environ.get("CHAT_TOOL_ADMIN_USERNAMES", "")
+    return {name.strip().lower() for name in raw.split(",") if name.strip()}
+
+
+def get_chat_user_only_result_max_bytes() -> int:
+    """Cap on one hidden-from-AI tool result kept in the chat history cache."""
+    return int(os.environ.get("CHAT_USER_ONLY_RESULT_MAX_BYTES", CHAT_USER_ONLY_RESULT_MAX_BYTES_DEFAULT))
+
+
 def get_vscode_proxy_uri():
     return os.environ.get("VSCODE_PROXY_URI")
 
