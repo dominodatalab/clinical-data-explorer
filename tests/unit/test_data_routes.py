@@ -225,6 +225,7 @@ def test_load_dataset_raises_when_queue_is_full(monkeypatch):
     full_queue = dataset_load_request_queue_module.DatasetLoadRequestQueue(max_length=0)
     app = _create_test_app(testing=True)
 
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-full")
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "get_dataset_load_request_queue", lambda: full_queue)
     monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
 
