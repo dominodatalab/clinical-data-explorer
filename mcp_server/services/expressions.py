@@ -30,7 +30,7 @@ import re as regex_module
 from typing import List
 
 import pandas as pd
-from fastapi import HTTPException
+from mcp_server.errors import ToolError
 
 logger = logging.getLogger(__name__)
 
@@ -433,7 +433,9 @@ def apply_expression_filter(df: pd.DataFrame, expression: str, syntax: str) -> p
             return df.query(pandas_expr)
     except Exception as e:
         logger.error(f"Error applying expression filter: {e}")
-        raise HTTPException(
+        raise ToolError(
             status_code=400,
-            detail=f"Invalid expression: {str(e)}. Translated expression was: {pandas_expr}"
+            detail=f"Invalid expression: {str(e)}. Translated expression was: {pandas_expr}",
+            # `e` can quote cell values, so it is not model-safe.
+            model_safe_detail="Invalid expression. Check the syntax and that the values match the column types.",
         )

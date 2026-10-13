@@ -17,8 +17,9 @@ Request models live in `mcp_server/types.py`.
 """
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter
 
+from mcp_server.errors import ToolError
 from mcp_server.session import get_current_df
 from mcp_server.types import (
     BarChartRequest,
@@ -49,7 +50,7 @@ def _resolve_bar_aggregation(requested_aggregation):
 
     parts = aggregation.split(":", 1)
     if len(parts) != 2 or not parts[1].strip():
-        raise HTTPException(status_code=400, detail=f"Invalid aggregation format: {requested_aggregation}")
+        raise ToolError.safe(status_code=400, detail=f"Invalid aggregation format: {requested_aggregation}")
 
     return _resolve_aggregation(parts[0], NUMERIC_AGGREGATIONS), parts[1].strip()
 
@@ -78,7 +79,7 @@ def _apply_chart_filter(df, chart_filter):
         return df
 
     if chart_filter.column not in df.columns:
-        raise HTTPException(status_code=400, detail=f"Filter column '{chart_filter.column}' not found")
+        raise ToolError.safe(status_code=400, detail=f"Filter column '{chart_filter.column}' not found")
 
     filter_col = df[chart_filter.column]
     if pd.api.types.is_numeric_dtype(filter_col):
@@ -97,7 +98,7 @@ async def get_bar_chart_data(request: BarChartRequest):
     df = get_current_df()
 
     if request.category_column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Column '{request.category_column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Column '{request.category_column}' not found")
 
     df = _apply_chart_filter(df, request.filter)
 
@@ -108,10 +109,10 @@ async def get_bar_chart_data(request: BarChartRequest):
         chart_data = [{"label": str(k), "value": int(v)} for k, v in counts.items()]
     else:
         if agg_column not in df.columns:
-            raise HTTPException(status_code=404, detail=f"Aggregation column '{agg_column}' not found")
+            raise ToolError.safe(status_code=404, detail=f"Aggregation column '{agg_column}' not found")
 
         if not pd.api.types.is_numeric_dtype(df[agg_column]):
-            raise HTTPException(status_code=400, detail=f"Column '{agg_column}' is not numeric")
+            raise ToolError.safe(status_code=400, detail=f"Column '{agg_column}' is not numeric")
 
         # Group by category and aggregate
         grouped = df.groupby(request.category_column, dropna=False)[agg_column]
@@ -135,9 +136,9 @@ async def get_xy_chart_data(request: XYChartRequest):
     df = get_current_df()
 
     if request.x_column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"X column '{request.x_column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"X column '{request.x_column}' not found")
     if request.y_column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Y column '{request.y_column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Y column '{request.y_column}' not found")
 
     df = _apply_chart_filter(df, request.filter)
 
@@ -147,7 +148,7 @@ async def get_xy_chart_data(request: XYChartRequest):
     is_numeric_y = pd.api.types.is_numeric_dtype(y_col)
 
     if not is_numeric_y:
-        raise HTTPException(status_code=400, detail=f"Y column '{request.y_column}' must be numeric")
+        raise ToolError.safe(status_code=400, detail=f"Y column '{request.y_column}' must be numeric")
 
     # Drop rows with NaN in either column
     valid_mask = x_col.notna() & y_col.notna()
@@ -237,9 +238,9 @@ async def get_time_series_data(request: TimeSeriesRequest):
     df = get_current_df()
 
     if request.date_column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Date column '{request.date_column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Date column '{request.date_column}' not found")
     if request.value_column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Value column '{request.value_column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Value column '{request.value_column}' not found")
 
     df = _apply_chart_filter(df, request.filter)
 
@@ -247,12 +248,17 @@ async def get_time_series_data(request: TimeSeriesRequest):
     try:
         dates = pd.to_datetime(df[request.date_column], errors='coerce')
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Could not parse dates: {e}")
+        raise ToolError(
+            status_code=400,
+            detail=f"Could not parse dates: {e}",
+            # `e` can quote the offending cell value, so it is not model-safe.
+            model_safe_detail=f"Could not parse dates in column '{request.date_column}'",
+        )
 
     values = df[request.value_column]
 
     if not pd.api.types.is_numeric_dtype(values):
-        raise HTTPException(status_code=400, detail=f"Value column '{request.value_column}' must be numeric")
+        raise ToolError.safe(status_code=400, detail=f"Value column '{request.value_column}' must be numeric")
 
     # Drop invalid rows
     valid_mask = dates.notna() & values.notna()
@@ -316,7 +322,7 @@ async def get_histogram_data(request: HistogramRequest):
     df = get_current_df()
 
     if request.column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Column '{request.column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Column '{request.column}' not found")
 
     df = _apply_chart_filter(df, request.filter)
 

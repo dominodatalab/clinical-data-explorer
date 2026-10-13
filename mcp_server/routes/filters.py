@@ -20,6 +20,7 @@ import logging
 import pandas as pd
 from fastapi import APIRouter, HTTPException
 
+from mcp_server.errors import ToolError
 from mcp_server.session import get_current_df
 from mcp_server.services.columns import (
     _get_categorical_columns,
@@ -64,7 +65,8 @@ async def expression_filter(request: ExpressionFilterRequest):
             suggestion_strs = [f"'{k}' - did you mean: {', '.join(v)}?" for k, v in suggestions.items()]
             error_msg += ". " + " ".join(suggestion_strs)
 
-        raise HTTPException(status_code=400, detail=error_msg)
+        # Names real column names (schema) but no cell values.
+        raise ToolError.safe(status_code=400, detail=error_msg)
 
     # Apply UI filters first (if any)
     filtered_df = apply_filters(df, request.filters)
@@ -76,7 +78,12 @@ async def expression_filter(request: ExpressionFilterRequest):
         raise
     except Exception as e:
         logger.error(f"Expression filter error: {e}")
-        raise HTTPException(status_code=400, detail=f"Error applying expression: {str(e)}")
+        raise ToolError(
+            status_code=400,
+            detail=f"Error applying expression: {str(e)}",
+            # `e` can quote cell values, so it is not model-safe.
+            model_safe_detail="Error applying expression. Check that the columns and values in the expression match the column types.",
+        )
 
     # Apply sorting
     if request.sort_column and request.sort_column in filtered_df.columns:
