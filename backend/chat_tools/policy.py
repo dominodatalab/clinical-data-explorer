@@ -40,7 +40,7 @@ class ToolMode(str, Enum):
 
 class ToolPolicyEntry(BaseModel):
     mode: ToolMode
-    note: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=500)
 
 
 class PolicyChange(BaseModel):

@@ -491,3 +491,21 @@ def test_preview_header_must_be_exactly_one(monkeypatch):
 
     assert client.get("/test-session", headers={"X-Chat-Tool-Preview": "0"}).json() == {"session": "owner-2"}
     assert client.get("/test-session").json() == {"session": "owner-2"}
+
+
+@pytest.mark.parametrize("header, expected", [
+    ({"X-Chat-Tool-Preview": "1"}, "owner-3::chat-tool-preview"),
+    ({}, "owner-3"),
+])
+def test_inherited_session_id_never_doubles_or_carries_the_preview_suffix(monkeypatch, header, expected):
+    """A tool call over /mcp inherits the MCP connection request's contextvar value."""
+    from mcp_server.app import create_app
+
+    app = create_app()
+    monkeypatch.setattr(session_module, "_get_session_id", lambda: "owner-3::chat-tool-preview")
+
+    @app.get("/test-session")
+    async def current_session():
+        return {"session": session_module._current_user_id.get()}
+
+    assert TestClient(app).get("/test-session", headers=header).json() == {"session": expected}

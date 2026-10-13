@@ -105,6 +105,11 @@ class SessionMiddleware(BaseHTTPMiddleware):
             session_id = _get_session_id()
         except HTTPException as exc:
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        # A tool call made over `/mcp` runs as an internal request spawned from the
+        # long-lived MCP connection request, so it inherits that request's session id
+        # (suffix included) through the contextvar. Strip it and apply this request's
+        # own header, so the suffix is never doubled or carried over.
+        session_id = session_id.removesuffix(PREVIEW_SESSION_SUFFIX)
         if request.headers.get(PREVIEW_HEADER) == "1":
             # The namespace is still derived from the caller's verified identity,
             # so a spoofed header can only ever reach the caller's own sandbox.
