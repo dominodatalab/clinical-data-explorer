@@ -4,6 +4,7 @@ from pydantic_ai.providers.openai import OpenAIProvider
 from pydantic_ai.settings import ModelSettings
 
 from pydantic_ai.mcp import MCPServerSSE
+from pydantic_ai.messages import ToolCallPart, ToolReturnPart
 import chat_agent_message_cache
 import asyncio
 import json
@@ -19,6 +20,13 @@ import requests
 
 import config as chat_agent_config
 from backend import config as backend_config
+from backend.chat_tools.policy import PolicyInvalid, get_policy_store
+from backend.chat_tools.toolset import (
+    HIDDEN_RESULT_METADATA_KEY,
+    ChatToolPolicyToolset,
+    build_policy_instructions,
+    make_policy_history_processor,
+)
 
 MCP_SERVER_URL = backend_config.MCP_SERVER_MCP_URL
 
@@ -50,6 +58,13 @@ NOT_CONFIGURED_ERROR_DETAIL = (
     '  • Local Ollama:      LLM_BASE_URL + LLM_MODEL'
 )
 NOT_CONFIGURED_ERROR = f'Chat is not configured. {NOT_CONFIGURED_ERROR_DETAIL}'
+
+# Shown to the user when the chat tool policy file can't be trusted: the agent
+# runs without any MCP data tools rather than guessing what is allowed.
+POLICY_UNAVAILABLE_NOTICE = (
+    'Data tools are temporarily unavailable: the chat tool settings could not be loaded. '
+    'Ask the app administrator to check them.'
+)
 
 # Configure logging - write to both file and stdout so logs appear in Domino app logs
 logging.basicConfig(
@@ -316,10 +331,27 @@ def _create_agent_for_session(session_id: str, authorization_header: str = None)
     authorization_header is the raw Authorization header value (e.g. "Bearer <JWT>")
     forwarded from the original browser request so the MCP server can authenticate
     and route tool calls to the correct DataFrame.
+
+    The MCP toolset is wrapped in the chat tool policy (see backend/chat_tools):
+    one policy snapshot is taken here, so a save by an admin never changes
+    behavior halfway through a turn. The returned agent carries two extra
+    attributes read by `get_agent_response`: `policy_toolset` (collects the full
+    errors of failed hidden-output calls) and `policy_notice` (set when the
+    policy is unreadable and the agent was built without any data tools).
     """
     llm_model = _get_llm_model()
     if llm_model is None:
         return None
+
+    try:
+        policy = get_policy_store().load()
+    except PolicyInvalid as exc:
+        # Fail closed: an unreadable policy must never turn into "everything allowed".
+        logger.error(f"Chat tool policy is invalid; running without data tools: {exc}")
+        agent = _create_agent_without_mcp()
+        if agent is not None:
+            agent.policy_notice = POLICY_UNAVAILABLE_NOTICE
+        return agent
 
     # The MCP server derives the session key by calling /api/users/v1/self with the
     # Authorization header, so we must forward the original JWT — not the user ID.
@@ -328,13 +360,29 @@ def _create_agent_for_session(session_id: str, authorization_header: str = None)
         url=MCP_SERVER_URL,
         headers={'Authorization': mcp_auth_header},
     )
-    return Agent(
+    policy_toolset = ChatToolPolicyToolset(
+        wrapped=server,
+        policy=policy,
+        max_result_bytes=backend_config.get_chat_user_only_result_max_bytes(),
+    )
+
+    async def policy_instructions(ctx):
+        # Evaluated on every run (unlike `system_prompt`, which pydantic-ai does not
+        # regenerate when message history is passed), so policy changes show up.
+        visible = await policy_toolset.get_tools(ctx)
+        return build_policy_instructions(policy, visible.keys())
+
+    agent = Agent(
         llm_model,
-        toolsets=[server],
+        toolsets=[policy_toolset],
         system_prompt=SYSTEM_PROMPT,
+        instructions=policy_instructions,
+        history_processors=[make_policy_history_processor(policy)],
         retries=5,
         model_settings=ModelSettings(max_tokens=LLM_MAX_OUTPUT_TOKENS),
     )
+    agent.policy_toolset = policy_toolset
+    return agent
 
 
 def _create_agent_without_mcp() -> Agent | None:
@@ -399,6 +447,65 @@ def _text_from_part(part) -> str | None:
     return str(content)
 
 
+def _hidden_result(part) -> dict | None:
+    """The hidden-from-AI result a `ToolReturnPart` carries in its metadata, if any."""
+    metadata = getattr(part, 'metadata', None)
+    if isinstance(metadata, dict):
+        return metadata.get(HIDDEN_RESULT_METADATA_KEY)
+    return None
+
+
+def _user_only_result_payload(tool_call_id, hidden: dict) -> dict:
+    return {
+        'tool_call_id': tool_call_id,
+        'tool_name': hidden['tool_name'],
+        'title': hidden.get('title') or hidden['tool_name'],
+        'args': hidden.get('args') or {},
+        'content': hidden.get('content'),
+        'truncated': bool(hidden.get('truncated')),
+        'size_bytes': hidden.get('size_bytes'),
+    }
+
+
+def _extract_user_only_results(messages, hidden_errors=None) -> list[dict]:
+    """Collect the results the user should see but the model never did.
+
+    Walks `messages` (typically `result.new_messages()`) for `ToolReturnPart`s of
+    "run, hide output from AI" tools, in the order the tool calls were made.
+    `hidden_errors` are failed calls of such tools (full error text for the user;
+    the model only got a model-safe description) and are slotted in by call id.
+    """
+    successes = {}
+    for message in messages:
+        for part in getattr(message, 'parts', None) or []:
+            if isinstance(part, ToolReturnPart):
+                hidden = _hidden_result(part)
+                if hidden is not None:
+                    successes[part.tool_call_id] = _user_only_result_payload(part.tool_call_id, hidden)
+    errors = {}
+    for error in hidden_errors or []:
+        errors[error.get('tool_call_id') or f"error-{len(errors)}"] = {
+            'tool_call_id': error.get('tool_call_id'),
+            'tool_name': error['tool_name'],
+            'title': error.get('title') or error['tool_name'],
+            'args': error.get('args') or {},
+            'is_error': True,
+            'error': error['error'],
+        }
+
+    results = []
+    for message in messages:
+        for part in getattr(message, 'parts', None) or []:
+            if isinstance(part, ToolCallPart):
+                item = successes.pop(part.tool_call_id, None) or errors.pop(part.tool_call_id, None)
+                if item is not None:
+                    results.append(item)
+    # Anything not matched to a tool call part (shouldn't happen) still gets shown.
+    results.extend(successes.values())
+    results.extend(errors.values())
+    return results
+
+
 def get_history(session_id: str = 'default') -> list[dict]:
     """Return a UI-friendly transcript for a session's cached chat history."""
     transcript = []
@@ -409,6 +516,15 @@ def get_history(session_id: str = 'default') -> list[dict]:
 
         for part in parts:
             part_type = type(part).__name__
+            if isinstance(part, ToolReturnPart):
+                hidden = _hidden_result(part)
+                if hidden is not None:
+                    transcript.append({
+                        'sender': 'tool_result',
+                        **_user_only_result_payload(part.tool_call_id, hidden),
+                    })
+                continue
+
             text = _text_from_part(part)
             if not text:
                 continue
@@ -427,7 +543,9 @@ def get_history(session_id: str = 'default') -> list[dict]:
 
 async def get_agent_response(message: str, session_id: str = 'default', authorization_header: str = None) -> dict:
     """Gets a response from the agent, running with MCP servers.
-    Returns a dict with 'text' and optional 'charts' list.
+    Returns a dict with 'text', a 'charts' list, a 'user_only_results' list (results of
+    tools whose output is hidden from the model and shown to the user instead) and,
+    when the chat tool policy is unreadable, a 'notice' for the user.
     Raises RuntimeError if chat is not configured.
 
     session_id: Domino user ID, used for keying per-user chat history.
@@ -471,6 +589,14 @@ async def get_agent_response(message: str, session_id: str = 'default', authoriz
         logger.debug(f"Got response text of length {len(response_text)}")
 
         response_payload = _extract_response_payload(response_text)
+        policy_toolset = getattr(current_agent, 'policy_toolset', None)
+        response_payload['user_only_results'] = _extract_user_only_results(
+            result.new_messages(),
+            policy_toolset.hidden_errors if policy_toolset is not None else None,
+        )
+        notice = getattr(current_agent, 'policy_notice', None)
+        if notice:
+            response_payload['notice'] = notice
 
         logger.info(f"Successfully generated response with {len(response_payload['charts'])} charts")
         return response_payload

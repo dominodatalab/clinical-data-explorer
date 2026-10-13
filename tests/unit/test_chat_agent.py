@@ -2,6 +2,7 @@
 
 import asyncio
 import importlib
+from types import SimpleNamespace
 
 from cachetools import LRUCache
 import pytest
@@ -11,7 +12,9 @@ import chat_agent
 
 
 @pytest.fixture(autouse=True)
-def reset_chat_agent_state(monkeypatch):
+def reset_chat_agent_state(monkeypatch, tmp_path):
+    # Never read a real policy file (developer workspaces on Domino mount datasets).
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", str(tmp_path / "chat_tool_policy.json"))
     for env_var in (
         "CHAT_AGENT_MESSAGE_HISTORY_CACHE_SIZE_B",
         "CHAT_AGENT_MESSAGE_HISTORY_CAP",
@@ -302,6 +305,7 @@ def test_get_agent_response_parses_charts_and_updates_message_history(monkeypatc
     assert response == {
         "text": "Here is a chart",
         "charts": [{"type": "bar", "x": "age"}],
+        "user_only_results": [],
     }
     assert agent.run_calls == [
         {
@@ -449,7 +453,7 @@ def test_get_agent_response_caps_message_history(monkeypatch):
         chat_agent.get_agent_response("hello", session_id="session-1")
     )
 
-    assert response == {"text": "plain response", "charts": []}
+    assert response == {"text": "plain response", "charts": [], "user_only_results": []}
     assert agent.run_calls == [
         {
             "message": "hello",
@@ -477,7 +481,7 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
         chat_agent.get_agent_response("hello", session_id="session-1")
     )
 
-    assert response == {"text": "plain response", "charts": []}
+    assert response == {"text": "plain response", "charts": [], "user_only_results": []}
     assert mcp_agent.run_calls == []
     assert fallback_agent.run_calls == [
         {
@@ -501,11 +505,7 @@ def test_create_agent_for_session_uses_authorization_header_for_mcp_connection(m
 
     monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
     monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
-    monkeypatch.setattr(
-        chat_agent,
-        "Agent",
-        lambda model, toolsets, system_prompt, retries, model_settings: None,
-    )
+    monkeypatch.setattr(chat_agent, "Agent", lambda model, **kwargs: SimpleNamespace(**kwargs))
 
     chat_agent._create_agent_for_session("user-id-123", authorization_header="Bearer jwt-token-xyz")
 
@@ -523,11 +523,7 @@ def test_create_agent_for_session_falls_back_to_session_id_when_no_authorization
 
     monkeypatch.setattr(chat_agent, "MCPServerSSE", CapturingMCPServerSSE)
     monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
-    monkeypatch.setattr(
-        chat_agent,
-        "Agent",
-        lambda model, toolsets, system_prompt, retries, model_settings: None,
-    )
+    monkeypatch.setattr(chat_agent, "Agent", lambda model, **kwargs: SimpleNamespace(**kwargs))
 
     chat_agent._create_agent_for_session("user-id-123")
 
@@ -559,3 +555,275 @@ def test_get_agent_response_passes_authorization_header_to_agent_creation(monkey
 
     assert captured["session_id"] == "user-id-123"
     assert captured["authorization_header"] == "Bearer jwt-token-xyz"
+
+
+# ----- chat tool policy wiring -----
+
+import json  # noqa: E402
+
+from pydantic_ai.messages import (  # noqa: E402
+    ModelRequest,
+    ToolCallPart,
+    ToolReturnPart,
+    UserPromptPart as RealUserPromptPart,
+)
+from pydantic_ai.models.function import FunctionModel  # noqa: E402
+from pydantic_ai.toolsets import FunctionToolset  # noqa: E402
+
+from backend.chat_tools.policy import get_policy_store  # noqa: E402
+from backend.chat_tools.toolset import (  # noqa: E402
+    HIDDEN_RESULT_METADATA_KEY,
+    USER_ONLY_PLACEHOLDER,
+)
+
+SECRET = 42.42
+
+
+def _write_policy(tmp_path, tools, default_mode="enabled"):
+    (tmp_path / "chat_tool_policy.json").write_text(json.dumps({
+        "default_mode": default_mode,
+        "tools": {name: {"mode": mode} for name, mode in tools.items()},
+    }))
+
+
+class _ScriptedModel:
+    """FunctionModel callable: makes the given tool calls, one per request, then answers."""
+
+    def __init__(self, calls):
+        self.calls = list(calls)
+        self.step = 0
+        self.requests = []
+        self.tool_names = []
+
+    def respond(self, messages, info):
+        from pydantic_ai.messages import ModelResponse as Resp, TextPart as Text
+
+        self.requests.append(list(messages))
+        self.tool_names.append([tool.name for tool in info.function_tools])
+        if self.step < len(self.calls):
+            name, args = self.calls[self.step]
+            self.step += 1
+            return Resp(parts=[ToolCallPart(name, args, tool_call_id=f"call-{self.step}")])
+        return Resp(parts=[Text("All done")])
+
+    def serialized(self):
+        chunks = []
+        for request in self.requests:
+            for message in request:
+                if isinstance(message, ModelRequest):
+                    for part in message.parts:
+                        if isinstance(part, ToolReturnPart):
+                            chunks.append(part.model_response_str())
+        return "\n".join(chunks)
+
+
+@pytest.fixture
+def wired_agent(monkeypatch):
+    """Real Agent + real policy store; FunctionModel instead of an LLM, FunctionToolset instead of MCP."""
+    def install(calls):
+        model = _ScriptedModel(calls)
+        data_tools = FunctionToolset()
+
+        @data_tools.tool
+        def mean_age() -> dict:
+            """Mean Age"""
+            return {"mean": SECRET}
+
+        @data_tools.tool
+        def head(rows: int = 2) -> list:
+            """Head"""
+            return [{"row": i, "value": SECRET} for i in range(rows)]
+
+        @data_tools.tool
+        def fails() -> str:
+            """Fails"""
+            from pydantic_ai import ModelRetry
+            raise ModelRetry('Error calling fails. Status code: 400. Response: {"detail": "bad value Placebo"}')
+
+        monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
+        monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: FunctionModel(model.respond))
+        monkeypatch.setattr(chat_agent, "MCPServerSSE", lambda url, headers: data_tools)
+        return model
+
+    return install
+
+
+def test_user_only_results_are_returned_to_the_user_and_hidden_from_the_model(wired_agent, tmp_path):
+    _write_policy(tmp_path, {"mean_age": "user_only"})
+    model = wired_agent([("mean_age", {}), ("head", {"rows": 1})])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-hidden"))
+
+    assert response["text"] == "All done"
+    assert [r["tool_name"] for r in response["user_only_results"]] == ["mean_age"]
+    hidden = response["user_only_results"][0]
+    assert hidden == {
+        "tool_call_id": "call-1",
+        "tool_name": "mean_age",
+        "title": "Mean Age",
+        "args": {},
+        "content": {"mean": SECRET},
+        "truncated": False,
+        "size_bytes": hidden["size_bytes"],
+    }
+    # `head` is still On: the model saw its output; mean_age's never reached it.
+    assert "[{\"row\":0,\"value\":42.42}]" in model.serialized().replace(" ", "")
+    assert str({"mean": SECRET}).replace(" ", "") not in model.serialized().replace(" ", "")
+    assert '"mean"' not in model.serialized()
+    assert USER_ONLY_PLACEHOLDER.format(tool="mean_age") in model.serialized()
+
+
+def test_disabled_tool_is_not_offered_through_the_real_agent(wired_agent, tmp_path):
+    _write_policy(tmp_path, {"head": "disabled"})
+    model = wired_agent([])
+
+    asyncio.run(chat_agent.get_agent_response("go", session_id="s-disabled"))
+
+    assert sorted(model.tool_names[0]) == ["fails", "mean_age"]
+
+
+def test_user_only_instructions_reach_the_model_only_when_needed(wired_agent, tmp_path):
+    _write_policy(tmp_path, {"mean_age": "user_only"})
+    captured = []
+    model = wired_agent([])
+    original = model.respond
+
+    def respond(messages, info):
+        captured.append(info.instructions)
+        return original(messages, info)
+
+    chat_agent._get_llm_model = lambda: FunctionModel(respond)
+
+    asyncio.run(chat_agent.get_agent_response("go", session_id="s-instr"))
+
+    assert "- mean_age" in captured[0]
+    assert "head" not in captured[0]
+
+
+def test_stored_history_keeps_hidden_result_and_get_history_interleaves_it(wired_agent, tmp_path):
+    _write_policy(tmp_path, {"mean_age": "user_only"})
+    wired_agent([("mean_age", {})])
+
+    asyncio.run(chat_agent.get_agent_response("how old?", session_id="s-hist"))
+    transcript = chat_agent.get_history("s-hist")
+
+    assert [entry["sender"] for entry in transcript] == ["user", "tool_result", "agent"]
+    assert transcript[0]["text"] == "how old?"
+    assert transcript[1]["tool_name"] == "mean_age"
+    assert transcript[1]["content"] == {"mean": SECRET}
+    assert transcript[1]["title"] == "Mean Age"
+    assert transcript[2]["text"] == "All done"
+
+
+def test_policy_change_redacts_earlier_outputs_from_the_next_turn(wired_agent, tmp_path):
+    model = wired_agent([("mean_age", {})])
+    asyncio.run(chat_agent.get_agent_response("first", session_id="s-switch"))
+    assert '"mean"' in model.serialized()  # On: the model saw the output
+
+    _write_policy(tmp_path, {"mean_age": "user_only"})
+    second = wired_agent([])
+    asyncio.run(chat_agent.get_agent_response("second", session_id="s-switch"))
+
+    assert '"mean"' not in second.serialized()
+    assert USER_ONLY_PLACEHOLDER.format(tool="mean_age") in second.serialized()
+    # the UI transcript still shows the real earlier result via the cached originals
+    stored = chat_agent.chat_agent_message_cache.get_messages("s-switch")
+    assert any(
+        isinstance(part, ToolReturnPart) and part.content == {"mean": SECRET}
+        for message in stored
+        for part in getattr(message, "parts", [])
+    )
+
+
+def test_oversized_hidden_result_is_truncated_at_the_cap(wired_agent, tmp_path, monkeypatch):
+    _write_policy(tmp_path, {"head": "user_only"})
+    monkeypatch.setenv("CHAT_USER_ONLY_RESULT_MAX_BYTES", "1500")
+    wired_agent([("head", {"rows": 300})])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-cap"))
+
+    hidden = response["user_only_results"][0]
+    assert hidden["truncated"] is True
+    assert hidden["size_bytes"] > 1500
+    assert hidden["content"]["truncated"] is True
+    assert len(hidden["content"]["preview"]) < 300
+
+
+def test_failed_hidden_call_shows_the_user_the_full_error_and_the_model_a_safe_one(wired_agent, tmp_path):
+    _write_policy(tmp_path, {"fails": "user_only"})
+    model = wired_agent([("fails", {})])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-err"))
+
+    [card] = response["user_only_results"]
+    assert card["is_error"] is True
+    assert card["tool_name"] == "fails"
+    assert "Placebo" in card["error"]
+    retry_texts = [
+        part.model_response()
+        for request in model.requests
+        for message in request
+        if isinstance(message, ModelRequest)
+        for part in message.parts
+        if hasattr(part, "model_response") and type(part).__name__ == "RetryPromptPart"
+    ]
+    assert retry_texts and all("Placebo" not in text for text in retry_texts)
+
+
+def test_extract_user_only_results_follows_tool_call_order_and_ignores_other_parts():
+    def ret(call_id, name):
+        return ModelRequest(parts=[ToolReturnPart(name, "placeholder", tool_call_id=call_id, metadata={
+            HIDDEN_RESULT_METADATA_KEY: {"tool_name": name, "args": {}, "content": [name], "truncated": False, "size_bytes": 3}
+        })])
+
+    plain = ModelRequest(parts=[ToolReturnPart("plain", {"x": 1}, tool_call_id="c3")])
+    messages = [
+        ModelRequest(parts=[RealUserPromptPart("hi")]),
+        ModelResponse(parts=[ToolCallPart("b", {}, tool_call_id="c1"), ToolCallPart("a", {}, tool_call_id="c2")]),
+        ret("c2", "a"),
+        plain,
+        ret("c1", "b"),
+        "not-a-message",
+    ]
+
+    results = chat_agent._extract_user_only_results(messages, hidden_errors=[
+        {"tool_call_id": "c9", "tool_name": "z", "args": {"q": 1}, "error": "boom"},
+    ])
+
+    assert [r["tool_name"] for r in results] == ["b", "a", "z"]
+    assert results[0]["title"] == "b"  # falls back to the tool name
+    assert results[2] == {
+        "tool_call_id": "c9", "tool_name": "z", "title": "z", "args": {"q": 1}, "is_error": True, "error": "boom",
+    }
+
+
+def test_invalid_policy_runs_without_mcp_and_returns_a_notice(wired_agent, tmp_path, monkeypatch):
+    (tmp_path / "chat_tool_policy.json").write_text("{corrupt")
+    model = wired_agent([])
+    built = []
+    monkeypatch.setattr(chat_agent, "MCPServerSSE", lambda url, headers: built.append(url))
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-invalid"))
+
+    assert built == []  # MCP never connected: fail closed
+    assert model.tool_names == [[]]  # the model was offered no tools at all
+    assert response["notice"] == chat_agent.POLICY_UNAVAILABLE_NOTICE
+    assert response["user_only_results"] == []
+
+
+def test_valid_policy_has_no_notice(wired_agent, tmp_path):
+    _write_policy(tmp_path, {})
+    wired_agent([])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-ok"))
+
+    assert "notice" not in response
+
+
+def test_missing_policy_file_uses_built_in_defaults(wired_agent):
+    model = wired_agent([])
+
+    asyncio.run(chat_agent.get_agent_response("go", session_id="s-defaults"))
+
+    # No file: defaults apply (only get_dataset_data is off, and it isn't in this stub catalog).
+    assert sorted(model.tool_names[0]) == ["fails", "head", "mean_age"]
