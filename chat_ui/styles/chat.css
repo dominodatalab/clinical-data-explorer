@@ -565,3 +565,159 @@
     color: #cdd6f4;
     line-height: 1.6;
 }
+
+/* Result cards for tools whose output is hidden from the AI.
+   Dashed border + neutral background keep them visually distinct from
+   agent and user bubbles; the badge says so in text, not color alone. */
+.tool-result-message {
+    background-color: var(--color-background-bglight1);
+    color: var(--color-text-textprimary);
+    align-self: flex-start;
+    margin-right: auto;
+    border: 1px dashed var(--color-border-bordermedium);
+    max-width: 92%;
+    min-width: 0;
+}
+
+.tool-result-message.tool-result-error {
+    border-color: #dc3545;
+}
+
+.tool-result-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--spacing-xsmall);
+    flex-wrap: wrap;
+    margin-bottom: var(--spacing-xsmall);
+}
+
+.tool-result-title {
+    font-weight: 600;
+}
+
+.tool-result-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--spacing-xxsmall);
+    padding: 2px 8px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-large);
+    background: var(--color-background-bg);
+    color: var(--color-text-textsecondary);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: nowrap;
+}
+
+.tool-result-args {
+    margin-bottom: var(--spacing-xsmall);
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-result-args summary {
+    cursor: pointer;
+}
+
+.tool-result-args pre,
+.tool-result-error-text {
+    margin: var(--spacing-xxsmall) 0 0;
+    padding: var(--spacing-xsmall);
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-borderlight);
+    border-radius: var(--radius-small);
+    font-size: 12px;
+    line-height: 18px;
+    white-space: pre-wrap;
+    overflow-x: auto;
+}
+
+.tool-result-failed {
+    font-weight: 600;
+    color: #dc3545;
+}
+
+/* Shared tool output renderer (modules/tool-output.js); also used on the admin page. */
+.tool-output {
+    font-size: 13px;
+    line-height: 20px;
+    min-width: 0;
+}
+
+.tool-output-table-wrap {
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-table {
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.tool-output-table th,
+.tool-output-table td {
+    border: 1px solid var(--color-border-borderlight);
+    padding: 3px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.tool-output-table th {
+    background: var(--color-background-bg);
+    position: sticky;
+    top: 0;
+}
+
+.tool-output-kv th {
+    position: static;
+    font-weight: 600;
+}
+
+.tool-output-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-output-note {
+    margin-top: var(--spacing-xxsmall);
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-pre {
+    margin: 0;
+    padding: var(--spacing-xsmall);
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-borderlight);
+    border-radius: var(--radius-small);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-children {
+    margin-left: var(--spacing-small);
+    border-left: 1px solid var(--color-border-borderlight);
+    padding-left: var(--spacing-xsmall);
+}
+
+.tool-output-node > summary {
+    cursor: pointer;
+}
+
+.tool-output-key {
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-summary {
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.tool-output-leaf {
+    overflow-wrap: anywhere;
+}
