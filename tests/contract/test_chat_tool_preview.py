@@ -161,3 +161,19 @@ def test_preview_session_is_evicted_independently(live_mcp):
     assert evicted["evicted_sessions"] == 1
     assert _current(live_mcp, preview=True) is None
     assert _current(live_mcp, preview=False) is not None
+
+
+def test_every_shipped_example_names_a_real_tool_and_runs_on_the_sample(live_mcp):
+    from backend.chat_tools.catalog import PREVIEW_EXAMPLES_PATH
+    import json
+
+    _load(live_mcp, SAMPLE_CSV, preview=True)
+    examples = json.loads(PREVIEW_EXAMPLES_PATH.read_text())
+    tool_names = {tool.name for tool in _list(live_mcp)}
+
+    assert set(examples) <= tool_names
+    for name, args in examples.items():
+        if name == "get_dataset_head_dataset_head_get":
+            continue  # see the xfail above: a pre-existing NaN serialization bug
+        result = _call(live_mcp, name, args)
+        assert result is not None, name

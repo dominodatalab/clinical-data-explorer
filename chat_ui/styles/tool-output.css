@@ -1,0 +1,84 @@
+/* Shared tool output renderer (modules/tool-output.js), used by the chat result
+   cards and by the chat tool settings page, so an admin sees exactly what users see. */
+.tool-output {
+    font-size: 13px;
+    line-height: 20px;
+    min-width: 0;
+}
+
+.tool-output-table-wrap {
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-table {
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.tool-output-table th,
+.tool-output-table td {
+    border: 1px solid var(--color-border-borderlight);
+    padding: 3px 8px;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+}
+
+.tool-output-table th {
+    background: var(--color-background-bg);
+    position: sticky;
+    top: 0;
+}
+
+.tool-output-kv th {
+    position: static;
+    font-weight: 600;
+}
+
+.tool-output-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-output-note {
+    margin-top: var(--spacing-xxsmall);
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-pre {
+    margin: 0;
+    padding: var(--spacing-xsmall);
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-borderlight);
+    border-radius: var(--radius-small);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-children {
+    margin-left: var(--spacing-small);
+    border-left: 1px solid var(--color-border-borderlight);
+    padding-left: var(--spacing-xsmall);
+}
+
+.tool-output-node > summary {
+    cursor: pointer;
+}
+
+.tool-output-key {
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-summary {
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.tool-output-leaf {
+    overflow-wrap: anywhere;
+}

@@ -100,6 +100,7 @@ def list_chat_tools():
 
     tools, catalog_error = _load_catalog()
     known = {tool.name for tool in tools}
+    examples = catalog.load_preview_examples(known) if tools else {}
     never_saved = policy.revision == 0
 
     tool_rows = []
@@ -111,6 +112,7 @@ def list_chat_tools():
             "description": tool.description,
             "input_schema": tool.input_schema,
             "declared_output_example": tool.declared_output_example,
+            "example_args": examples.get(tool.name),
             "mode": policy.mode_for(tool.name).value,
             "note": entry.note if entry else None,
             "is_default": entry is None,

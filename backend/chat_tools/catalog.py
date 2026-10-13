@@ -8,16 +8,22 @@ Uses the same client class as the agent (`MCPServerSSE`). Calls carry
 `X-Chat-Tool-Preview: 1`, so they run in the caller's preview session.
 """
 import json
+import logging
 import re
 import time
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from pathlib import Path
+from typing import Any, Dict, Iterable, List, Optional
 
 from pydantic_ai import ModelRetry
 from pydantic_ai.mcp import MCPServerSSE
 
 from backend import config
 from backend.chat_tools.toolset import tool_title
+
+logger = logging.getLogger(__name__)
+
+PREVIEW_EXAMPLES_PATH = Path(__file__).resolve().parent / "preview_examples.json"
 
 _RESPONSES_SPLIT = re.compile(r"\n+###\s*Responses:", re.IGNORECASE)
 _EXAMPLE_BLOCK = re.compile(r"\*\*Example Response:\*\*\s*```(?:json)?\s*(.*?)\s*```", re.DOTALL)
@@ -62,6 +68,33 @@ def to_catalog_tool(mcp_tool) -> CatalogTool:
         input_schema=mcp_tool.inputSchema or {"type": "object", "properties": {}},
         declared_output_example=example,
     )
+
+
+def load_preview_examples(known_names: Iterable[str]) -> Dict[str, Dict[str, Any]]:
+    """Optional example arguments per tool, used to pre-fill the "Try it" form.
+
+    Purely a convenience: a tool without an entry still works, and entries for tools
+    that no longer exist are ignored with a warning.
+    """
+    try:
+        raw = json.loads(PREVIEW_EXAMPLES_PATH.read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return {}
+    except ValueError as exc:
+        logger.warning("Ignoring %s: %s", PREVIEW_EXAMPLES_PATH.name, exc)
+        return {}
+    if not isinstance(raw, dict):
+        logger.warning("Ignoring %s: expected an object", PREVIEW_EXAMPLES_PATH.name)
+        return {}
+
+    known = set(known_names)
+    examples = {}
+    for name, args in raw.items():
+        if name not in known:
+            logger.warning("%s has an example for unknown tool %r; ignoring it", PREVIEW_EXAMPLES_PATH.name, name)
+        elif isinstance(args, dict):
+            examples[name] = args
+    return examples
 
 
 def _server(authorization_header: str) -> MCPServerSSE:

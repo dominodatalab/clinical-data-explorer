@@ -162,6 +162,22 @@ def test_non_admin_page_request_gets_a_static_403_page(client, monkeypatch):
     assert FORBIDDEN in response.get_data(as_text=True)
 
 
+def test_admin_page_is_served_to_admins(client):
+    response = client.get("/admin/chat-tools")
+
+    assert response.status_code == 200
+    assert response.mimetype == "text/html"
+    html = response.get_data(as_text=True)
+    assert "Chat tool settings" in html
+    assert 'src="chat-tools.js"' in html
+
+
+def test_admin_assets_are_served_next_to_the_page(client):
+    assert client.get("/admin/chat-tools.js").status_code == 200
+    assert client.get("/admin/chat-tools.css").status_code == 200
+    assert client.get("/modules/tool-output.js").status_code == 200
+
+
 def test_admin_routes_win_over_the_static_catch_all(client, catalog_tools):
     response = client.get("/admin/api/chat-tools")
 
@@ -242,6 +258,7 @@ def test_catalog_lists_tools_with_modes_and_defaults(client, catalog_tools):
         "description": "tool_a description",
         "input_schema": {"type": "object", "properties": {"x": {"type": "integer"}}},
         "declared_output_example": [{"a": 1}],
+        "example_args": None,
         "mode": "enabled",
         "note": None,
         "is_default": True,
@@ -254,6 +271,17 @@ def test_catalog_lists_tools_with_modes_and_defaults(client, catalog_tools):
     assert body["stale"] == []
     assert body["store"]["durable"] is True
     assert "CDISC" in body["sample"]["label"]
+
+
+def test_catalog_includes_example_args_for_known_tools(client, catalog_tools, monkeypatch):
+    monkeypatch.setattr(
+        admin_routes.catalog, "load_preview_examples", lambda names: {"tool_a": {"x": 1}} if "tool_a" in names else {}
+    )
+
+    by_name = {tool["name"]: tool for tool in _get_policy(client)["tools"]}
+
+    assert by_name["tool_a"]["example_args"] == {"x": 1}
+    assert by_name["tool_b"]["example_args"] is None
 
 
 def test_catalog_marks_new_and_stale_tools(client, catalog_tools, monkeypatch):

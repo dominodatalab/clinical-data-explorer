@@ -246,3 +246,27 @@ def test_role_lookup_needs_an_api_host_and_token(role_lookup, monkeypatch):
 
     with pytest.raises(RuntimeError):
         lookup()
+
+
+# ----- preview examples -----
+
+def test_load_preview_examples_ignores_unknown_tools_with_a_warning(tmp_path, monkeypatch, caplog):
+    path = tmp_path / "examples.json"
+    path.write_text(json.dumps({"known": {"x": 1}, "gone": {"y": 2}, "bad": [1, 2]}))
+    monkeypatch.setattr(catalog, "PREVIEW_EXAMPLES_PATH", path)
+
+    with caplog.at_level("WARNING"):
+        examples = catalog.load_preview_examples(["known", "bad", "other"])
+
+    assert examples == {"known": {"x": 1}}
+    assert "gone" in caplog.text
+
+
+@pytest.mark.parametrize("content", [None, "{not json", "[1]"])
+def test_load_preview_examples_is_optional_and_never_raises(tmp_path, monkeypatch, content):
+    path = tmp_path / "examples.json"
+    if content is not None:
+        path.write_text(content)
+    monkeypatch.setattr(catalog, "PREVIEW_EXAMPLES_PATH", path)
+
+    assert catalog.load_preview_examples(["known"]) == {}

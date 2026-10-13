@@ -70,6 +70,28 @@ Bearer token is used to authorize API calls to Domino. The user is not used to m
 local to the app. The session ID is the closest thing to the user ID which is used for identifying state
 that belongs to a user.
 
+### Chat Tool Policy
+
+Which MCP data tools the chat agent may use is an app-wide policy (`backend/chat_tools/`), edited on an admin page
+by Owners and Contributors of the extension's project. Each tool is `enabled`, `disabled` or `user_only` (the agent
+can run it but its output is hidden from the model and shown to the user in a result card).
+
+- **Enforcement lives in one place.** `chat_agent.py` wraps the MCP toolset in `ChatToolPolicyToolset`
+  (a pydantic-ai `WrapperToolset`): `get_tools` drops disabled tools, `call_tool` swaps a user-only result for a fixed
+  placeholder and keeps the real one in `ToolReturn.metadata` (model adapters serialize only `content`), and a history
+  processor redacts earlier outputs of tools that are now restricted. One policy snapshot is taken per chat request.
+  The system prompt only *explains* the policy; it is not what enforces it.
+- **The REST path is untouched.** The Table, Explore and Filter views call the MCP server's REST routes through
+  Flask; only the chat agent uses `/mcp`. Maintenance and loading routes are tagged `internal` and are not MCP tools.
+- **Errors never leak data.** A failed user-only call shows the user the full error but tells the model only what the
+  server marked `model_safe_detail` (`mcp_server/errors.py`), else a generic message.
+- **Fail closed.** An unreadable policy file means no data tools; an unverifiable admin is denied; an unmounted
+  settings dataset blocks saving rather than writing to ephemeral disk.
+- **Storage** is a JSON file in a Domino Dataset (network storage mounted into every replica), written atomically
+  with an optimistic revision check. Each chat request costs one `stat()`.
+- **Previews** run in a sandbox MCP session (`X-Chat-Tool-Preview`) on a bundled sample, so they never replace the
+  admin's own dataset.
+
 ### Dataset Loads Are Queued
 
 Dataset loading is expensive because it includes file downloading,

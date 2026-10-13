@@ -206,6 +206,33 @@ curl -X POST "$DOMINO_LLM_GATEWAY_URL/v1/chat/completions" \
 > Note: LLM configuration is read once per process. Changing these variables
 > requires restarting the app.
 
+#### Chat tool access settings
+
+Editors of the extension's project can control which data tools the chat assistant may use, from an admin page that is not linked from the normal UI:
+
+`https://<your-domino>/apps/<app-vanity-url>/admin/chat-tools` (the bare App URL, not the extension iframe)
+
+The page lists every data tool the assistant can reach, read live from the MCP server (so new tools appear automatically). For each tool you can read its description and parameters, **try it** against a built-in clinical sample (never your own data), and choose one of three modes:
+
+| Mode | Assistant can call it? | Assistant sees the output? | User sees the output? |
+|------|------------------------|----------------------------|-----------------------|
+| **On** | Yes | Yes | No (the assistant summarizes it) |
+| **Hidden from AI** | Yes | **No**, it only learns that the tool ran | **Yes**, in a tagged result card in the chat |
+| **Off** | No, the tool is never offered to the model | n/a | n/a |
+
+The policy is enforced on the server (the model is never offered an Off tool, and Hidden-from-AI output never reaches it), not by asking the model to behave. Changes apply to each user's next message, including earlier outputs in an ongoing conversation. Tools added later use the page's **Default for new tools** setting (initially On). By default `get_dataset_data`, which returns the whole DataFrame, is Off. The Table, Explore and Filter views are unaffected: they use the REST endpoints, not these tools.
+
+**Who is an admin:** the Owner or a Contributor of the project the app runs in, checked server-side through the Domino API with the visiting user's own token. If the check can't be completed, access is denied.
+
+**Where the settings live:** one file, `chat_tool_policy.json`, in a Domino Dataset of the extension's project (see [INSTALL.md](./INSTALL.md)). Each app replica reads it on every chat request, so a save reaches all replicas. Locally, it is `./.chat_tool_policy.json`. If the file is unreadable the assistant runs with no data tools (and says so) rather than guessing.
+
+| Variable | Description |
+|----------|-------------|
+| `CHAT_TOOL_POLICY_DATASET` | Name of the Domino Dataset holding the policy file (default: `chat-tool-settings`) |
+| `CHAT_TOOL_POLICY_PATH` | Full path of the policy file; overrides the dataset lookup |
+| `CHAT_TOOL_ADMIN_USERNAMES` | Comma-separated usernames that are also admins. Use for local development (set it to the mock user's `userName`, with `DEV_MODE=dev`) and as a break-glass option |
+| `CHAT_USER_ONLY_RESULT_MAX_BYTES` | Cap on one Hidden-from-AI result kept in chat history (default: `262144`, or 256 KB); larger results are truncated |
+
 #### Logging
 
 | Variable | Description |
@@ -313,6 +340,8 @@ The chart plots the aggregated Y values for each group on the X axis, making it 
 ## Use the Chat Feature
 
 When configured with an LLM provider, the Chat tab enables natural language queries about your data. The AI assistant can answer questions about your dataset structure, compute statistics, and generate visualizations directly in the conversation.
+
+If the app administrator has set a tool to **Hidden from AI**, its result appears in the chat as a dashed card tagged "Hidden from AI": only you can see it, and the assistant is told only that the tool ran.
 
 ### Example: Asking About Your Data
 
