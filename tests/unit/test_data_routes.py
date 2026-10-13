@@ -28,6 +28,12 @@ def _create_test_app(testing=False):
 
 
 @pytest.fixture(autouse=True)
+def local_dev_environment(monkeypatch):
+    """Default to local dev: developer workspaces on Domino export DOMINO_RUN_ID."""
+    monkeypatch.delenv("DOMINO_RUN_ID", raising=False)
+
+
+@pytest.fixture(autouse=True)
 def stub_queue_mcp_dataframe_hooks(monkeypatch):
     queue = get_dataset_load_request_queue()
     monkeypatch.setattr(
@@ -183,6 +189,55 @@ def test_load_dataset_does_not_enqueue_invalid_request():
     assert response.status_code == 400
     assert response.get_json() == {"error": "No dataset name provided"}
     assert queue.peek_all() == []
+
+
+def test_load_dataset_rejects_raw_local_path_on_domino(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+    mcp_calls = []
+
+    monkeypatch.setenv("DOMINO_RUN_ID", "run-1")
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-1")
+    monkeypatch.setattr(data_routes, "mcp_get", lambda *a, **k: mcp_calls.append(("get", a)))
+    monkeypatch.setattr(data_routes, "mcp_post", lambda *a, **k: mcp_calls.append(("post", a)))
+    monkeypatch.setattr(datasets_service, "mcp_post", lambda *a, **k: mcp_calls.append(("post", a)))
+
+    with app.test_client() as client:
+        response = client.post(
+            "/dataset/load",
+            json={"dataset": "/etc/hosts"},
+            headers={"Authorization": "Bearer token-1"},
+        )
+
+    assert response.status_code == 400
+    assert "Dataset source is required" in response.get_data(as_text=True)
+    assert mcp_calls == []
+    assert queue.peek_all() == []
+
+
+def test_load_dataset_allows_local_path_outside_domino(monkeypatch):
+    queue = get_dataset_load_request_queue()
+    queue.clear()
+    app = _create_test_app()
+    captured_requests = []
+
+    monkeypatch.delenv("DOMINO_RUN_ID", raising=False)
+    monkeypatch.setattr(data_routes, "get_session_id", lambda: "sid-1")
+    monkeypatch.setattr(data_routes, "_get_current_session_dataset", lambda session_id: None)
+    monkeypatch.setattr(data_routes, "_evict_stale_dataframes_before_load", lambda: None)
+    monkeypatch.setattr(data_routes.dataset_load_request_queue, "resolve_dataset_load_request_file_size", lambda load_request: 1)
+    monkeypatch.setattr(
+        data_routes,
+        "process_dataset_load_request",
+        lambda load_request: captured_requests.append(load_request) or jsonify({"loaded": True}),
+    )
+
+    with app.test_client() as client:
+        response = client.post("/dataset/load", json={"dataset": "datasets/adsl.csv"})
+
+    assert response.status_code == 200
+    assert len(captured_requests) == 1
 
 
 def test_load_dataset_evicts_stale_dataframes_before_resolving_file_size(monkeypatch):

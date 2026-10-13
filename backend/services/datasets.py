@@ -28,6 +28,7 @@ from pathlib import Path
 import requests
 from flask import jsonify
 from werkzeug.exceptions import (
+    BadRequest,
     Forbidden,
     HTTPException,
     InternalServerError,
@@ -776,6 +777,12 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
             source_type='dataset',
             file_path=file_path,
         )
+
+    if config.get_domino_run_id():
+        # On Domino a request without a project/dataset/volume source would make
+        # the MCP server read an arbitrary local path. Local paths are a
+        # local-development convenience only.
+        raise BadRequest(description="Dataset source is required")
 
     return DatasetLoadTarget(file_snapshot_path=load_request.dataset)
 
