@@ -87,8 +87,9 @@ can run it but its output is hidden from the model and shown to the user in a re
   server marked `model_safe_detail` (`mcp_server/errors.py`), else a generic message.
 - **Fail closed.** An unreadable policy file means no data tools; an unverifiable admin is denied; an unmounted
   settings dataset blocks saving rather than writing to ephemeral disk.
-- **Storage** is a JSON file in a Domino Dataset (network storage mounted into every replica), written atomically
-  with an optimistic revision check. Each chat request costs one `stat()`.
+- **Storage** is a JSON file in the project's default dataset (network storage mounted into every replica; found for
+  both Git-based and DFS projects, seeded with defaults at app start), written atomically with an optimistic revision
+  check. Each chat request costs one `stat()`.
 - **Previews** run in a sandbox MCP session (`X-Chat-Tool-Preview`) on a bundled sample, so they never replace the
   admin's own dataset.
 

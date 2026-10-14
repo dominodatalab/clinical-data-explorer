@@ -125,50 +125,77 @@ def get_domino_remote_file_system_hostport():
 # See backend/chat_tools/ and README "Chat tool access settings".
 
 CHAT_TOOL_POLICY_FILE_NAME = "chat_tool_policy.json"
-CHAT_TOOL_POLICY_DATASET_DEFAULT = "chat-tool-settings"
+# The file lives in a hidden folder so it doesn't show up among the project's data files.
+CHAT_TOOL_POLICY_DIR_NAME = ".clinical-data-explorer"
+CHAT_TOOL_POLICY_DATASET_FALLBACK = "chat-tool-settings"
 CHAT_USER_ONLY_RESULT_MAX_BYTES_DEFAULT = 256 * 1024
 
-# (directory whose presence means "this kind of project", where its datasets are
-# mounted). Git-based projects mount datasets at /mnt/data/<name>; DFS projects
-# at /domino/datasets/local/<name>.
-DOMINO_DATASET_ROOTS = (
-    ("/mnt/data", "/mnt/data"),
-    ("/domino/datasets", "/domino/datasets/local"),
-)
+# Where Domino mounts a project's datasets, by project type:
+# Git-based projects at <DOMINO_DATASETS_DIR, usually /mnt/data>/<name>;
+# DFS projects at /domino/datasets/local/<name>.
+GIT_DATASETS_ROOT = "/mnt/data"
+DFS_DATASETS_ROOT = "/domino/datasets/local"
 LOCAL_CHAT_TOOL_POLICY_PATH = ".chat_tool_policy.json"
 
 
 def get_chat_tool_policy_dataset() -> str:
-    """Name of the Domino Dataset (in the extension's project) holding the policy file."""
-    return os.environ.get("CHAT_TOOL_POLICY_DATASET") or CHAT_TOOL_POLICY_DATASET_DEFAULT
+    """Name of the Domino Dataset that holds the policy file.
+
+    CHAT_TOOL_POLICY_DATASET if set; otherwise the project's *default dataset*, which
+    Domino creates for every project and names after the project (DOMINO_PROJECT_NAME),
+    so there is nothing for the owner to create."""
+    return (
+        os.environ.get("CHAT_TOOL_POLICY_DATASET")
+        or os.environ.get("DOMINO_PROJECT_NAME")
+        or CHAT_TOOL_POLICY_DATASET_FALLBACK
+    )
+
+
+def _dataset_parent_candidates() -> list:
+    """Directories that may contain the dataset, most likely first for this project type."""
+    git_roots = [os.environ.get("DOMINO_DATASETS_DIR") or GIT_DATASETS_ROOT, GIT_DATASETS_ROOT]
+    dfs_roots = [DFS_DATASETS_ROOT]
+    # DFS-project executions may point DOMINO_DATASETS_DIR at /domino/datasets.
+    datasets_dir = os.environ.get("DOMINO_DATASETS_DIR")
+    if datasets_dir:
+        dfs_roots.insert(0, os.path.join(datasets_dir, "local"))
+    is_git = os.environ.get("DOMINO_IS_GIT_BASED", "true").lower() != "false"
+    ordered = git_roots + dfs_roots if is_git else dfs_roots + git_roots
+    return list(dict.fromkeys(ordered))
+
+
+def get_chat_tool_policy_dataset_dir() -> str:
+    """Directory of the dataset holding the policy, found by checking where Domino
+    mounted it (works for both Git-based and DFS projects). When it isn't mounted
+    anywhere, the path the project type would use is returned so errors can name it."""
+    dataset = get_chat_tool_policy_dataset()
+    candidates = [os.path.join(parent, dataset) for parent in _dataset_parent_candidates()]
+    for candidate in candidates:
+        if os.path.isdir(candidate):
+            return candidate
+    return candidates[0]
 
 
 def get_chat_tool_policy_path() -> str:
     """Resolve where the chat tool policy file lives. First match wins:
 
     1. CHAT_TOOL_POLICY_PATH: an explicit full path to the file.
-    2. On Domino, the mounted policy dataset: /mnt/data/<dataset> (Git-based
-       projects) or /domino/datasets/local/<dataset> (DFS projects), whichever
-       has the dataset mounted.
-    3. Local dev (no DOMINO_RUN_ID): ./.chat_tool_policy.json
+    2. Local dev (no DOMINO_RUN_ID): ./.chat_tool_policy.json
+    3. On Domino: `.clinical-data-explorer/chat_tool_policy.json` inside the project's
+       default dataset (or CHAT_TOOL_POLICY_DATASET), wherever Domino mounted it.
 
-    On Domino the returned path may not exist yet (dataset not mounted); the
-    store reports that rather than silently writing to ephemeral local disk.
+    The file is seeded with defaults at app start (see `seed_default_policy`), so the
+    owner never has to create anything. If the dataset isn't mounted, the store
+    reports that instead of silently writing to ephemeral local disk.
     """
     explicit = os.environ.get("CHAT_TOOL_POLICY_PATH")
     if explicit:
         return explicit
-
     if not get_domino_run_id():
         return LOCAL_CHAT_TOOL_POLICY_PATH
-
-    dataset = get_chat_tool_policy_dataset()
-    roots = [(probe, parent) for probe, parent in DOMINO_DATASET_ROOTS if os.path.isdir(probe)]
-    for _probe, parent in roots:
-        if os.path.isdir(os.path.join(parent, dataset)):
-            return os.path.join(parent, dataset, CHAT_TOOL_POLICY_FILE_NAME)
-    parent = roots[0][1] if roots else DOMINO_DATASET_ROOTS[0][1]
-    return os.path.join(parent, dataset, CHAT_TOOL_POLICY_FILE_NAME)
+    return os.path.join(
+        get_chat_tool_policy_dataset_dir(), CHAT_TOOL_POLICY_DIR_NAME, CHAT_TOOL_POLICY_FILE_NAME
+    )
 
 
 def get_chat_tool_admin_usernames() -> set:

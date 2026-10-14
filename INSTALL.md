@@ -68,17 +68,21 @@ For 12 users per hour usage, 300 MB files max size
 - DATA_FILE_SIZE_LIMIT_B=300000 (350 MB)
 - Enable autoscaling and configure scale up to happen when RAM is at 50%
 
-## Chat Tool Settings Dataset
+## Chat Tool Settings
 
-The chat tool settings page (see "Chat tool access settings" in the [README.md](./README.md)) stores its settings in a
-Domino Dataset of the extension project, and the extension manifest sets `mountDatasets: true` so the app can reach it.
+Nothing to set up. The chat tool settings page (see "Chat tool access settings" in the [README.md](./README.md)) keeps its
+settings in the extension project's **default dataset** (the one Domino creates for every project, named after the project),
+in a hidden folder `.clinical-data-explorer/chat_tool_policy.json`. The extension manifest sets `mountDatasets: true` so the
+app can reach it, and the app creates the file with sensible defaults when it starts. Both Git-based and DFS projects are
+supported; the app finds where Domino mounted the dataset (`/mnt/data/<project>` or `/domino/datasets/local/<project>`).
 
-In the extension project, create a Dataset named `chat-tool-settings` (or choose another name and set
-`CHAT_TOOL_POLICY_DATASET` to it). The app creates `chat_tool_policy.json` inside it the first time an admin saves.
+To keep the settings somewhere else, set `CHAT_TOOL_POLICY_DATASET` to another dataset's name or `CHAT_TOOL_POLICY_PATH` to a
+full file path.
 
 **Do not add extension users as collaborators on the extension project.** Anyone with access to the project can edit the
-settings file directly, and Owners and Contributors of the project are the administrators of the settings page. Until
-the dataset exists, the settings page shows a banner naming the expected path and can't save.
+settings file directly, and Owners and Contributors of the project are the administrators of the settings page. Users of the
+extension don't need any access to the project or its dataset: only the app, running as its owner, reads and writes the file.
+If the dataset isn't mounted, the settings page shows a banner naming the expected location and can't save.
 
 Admins reach the settings page from the **Chat tool settings** link on the Chat tab. Its address is
 `/admin/chat-tools` on the app's own URL (`https://apps.<your-domino>/apps-internal/<app-id>/admin/chat-tools`), not under

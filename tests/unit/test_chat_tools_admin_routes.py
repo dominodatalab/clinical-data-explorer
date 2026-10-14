@@ -351,7 +351,7 @@ def test_invalid_policy_file_is_reported_with_defaults(client, catalog_tools, tm
 
 
 def test_unmounted_store_is_reported(client, catalog_tools, monkeypatch, tmp_path):
-    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", str(tmp_path / "missing" / "chat_tool_policy.json"))
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", str(tmp_path / "missing" / "deeper" / "chat_tool_policy.json"))
 
     body = _get_policy(client)
 

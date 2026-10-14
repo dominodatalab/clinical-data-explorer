@@ -132,21 +132,25 @@ class ChatToolPolicyStore:
     def status(self) -> StoreStatus:
         path = self.path()
         parent = path.parent
-        dataset = config.get_chat_tool_policy_dataset()
-        if not parent.is_dir():
+        # The policy folder is created on first write, so only its parent has to exist.
+        folder_creatable = not parent.is_dir() and parent.parent.is_dir()
+        if not parent.is_dir() and not folder_creatable:
             if config.get_domino_run_id() and not os.environ.get("CHAT_TOOL_POLICY_PATH"):
+                dataset = config.get_chat_tool_policy_dataset()
                 error = (
-                    f"The settings dataset '{dataset}' is not mounted (expected {path}). "
-                    f"Create a Domino Dataset named '{dataset}' in the extension's project "
-                    "and restart the app. Changes can't be saved until then."
+                    f"The dataset '{dataset}' that holds the chat tool settings is not mounted "
+                    f"(expected {parent.parent}). By default this is the project's default dataset; "
+                    "check that the app has dataset mounting enabled, or point CHAT_TOOL_POLICY_DATASET "
+                    "or CHAT_TOOL_POLICY_PATH at another location. Changes can't be saved until then."
                 )
             else:
                 error = f"The directory for the policy file does not exist: {parent}"
             return StoreStatus(durable=False, path=str(path), error=error)
+        writable_dir = parent.parent if folder_creatable else parent
         if path.exists():
             writable = os.access(path, os.W_OK) and os.access(parent, os.W_OK)
         else:
-            writable = os.access(parent, os.W_OK)
+            writable = os.access(writable_dir, os.W_OK)
         if not writable:
             return StoreStatus(
                 durable=False,
@@ -203,6 +207,50 @@ class ChatToolPolicyStore:
             return self._last_good.model_copy(deep=True)
         logger.error("Could not read chat tool policy %s: %s", path, exc)
         raise PolicyInvalid(f"The chat tool policy file {path} could not be read: {exc}") from exc
+
+    # ----- seeding -----
+
+    def seed_if_missing(self) -> bool:
+        """Create the policy file with the built-in defaults when there is none.
+
+        Lets the app set itself up (the owner can then edit it in the dataset or on the
+        settings page). Never overwrites: the file is written to a temp file and then
+        hard-linked into place, so a replica that starts at the same time either loses
+        the race harmlessly or sees the complete file, never a partial one. Returns True
+        when this call created it.
+        """
+        with self._lock:
+            path = self.path()
+            if path.exists():
+                return False
+            status = self.status()
+            if not status.durable:
+                logger.info("Not seeding the chat tool policy: %s", status.error)
+                return False
+            tmp_name = None
+            try:
+                path.parent.mkdir(exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+                ) as tmp:
+                    tmp_name = tmp.name
+                    tmp.write(default_policy().model_dump_json(indent=2))
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                os.link(tmp_name, path)
+            except FileExistsError:
+                return False  # another replica seeded it first
+            except OSError as exc:
+                logger.warning("Could not seed the chat tool policy at %s: %s", path, exc)
+                return False
+            finally:
+                if tmp_name:
+                    try:
+                        os.unlink(tmp_name)
+                    except OSError:
+                        pass
+            logger.info("Seeded the chat tool policy with defaults at %s", path)
+            return True
 
     # ----- writing -----
 
@@ -277,6 +325,7 @@ class ChatToolPolicyStore:
         payload = policy.model_dump_json(indent=2)
         tmp_name = None
         try:
+            path.parent.mkdir(exist_ok=True)  # the policy folder inside the dataset
             with tempfile.NamedTemporaryFile(
                 "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
             ) as tmp:
@@ -305,3 +354,18 @@ def get_policy_store() -> ChatToolPolicyStore:
         if _store is None:
             _store = ChatToolPolicyStore()
         return _store
+
+
+def seed_default_policy() -> bool:
+    """App-start hook: create the default policy file where it will live on Domino.
+
+    Skipped in plain local development (no Domino run and no explicit path), so running the
+    app or tests locally doesn't drop files into the working directory. Never raises.
+    """
+    if not (config.get_domino_run_id() or os.environ.get("CHAT_TOOL_POLICY_PATH")):
+        return False
+    try:
+        return get_policy_store().seed_if_missing()
+    except Exception:
+        logger.exception("Could not seed the chat tool policy")
+        return False

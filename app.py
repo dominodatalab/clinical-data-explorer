@@ -9,8 +9,12 @@ import sys
 
 from backend import config
 from backend.app import create_app
+from backend.chat_tools.policy import seed_default_policy
 
 app = create_app()
+
+# Give the chat tool settings their default file (in the project's default dataset on Domino).
+seed_default_policy()
 
 logging.basicConfig(level=config.LOG_LEVEL)
 

@@ -26,6 +26,9 @@ DATASET_TOOL = "get_dataset_data_dataset_data_get"
 def clean_env(monkeypatch):
     for name in (
         "DOMINO_RUN_ID",
+        "DOMINO_PROJECT_NAME",
+        "DOMINO_DATASETS_DIR",
+        "DOMINO_IS_GIT_BASED",
         "CHAT_TOOL_POLICY_PATH",
         "CHAT_TOOL_POLICY_DATASET",
         "CHAT_TOOL_ADMIN_USERNAMES",
@@ -248,7 +251,7 @@ def test_status_durable_when_directory_writable(store):
 
 
 def test_status_not_durable_when_directory_missing(tmp_path):
-    store = ChatToolPolicyStore(lambda: str(tmp_path / "missing" / "chat_tool_policy.json"))
+    store = ChatToolPolicyStore(lambda: str(tmp_path / "missing" / "deeper" / "chat_tool_policy.json"))
 
     status = store.status()
 
@@ -292,55 +295,188 @@ def test_local_dev_uses_gitignored_local_file():
     assert config.get_chat_tool_policy_path() == ".chat_tool_policy.json"
 
 
-def _roots(monkeypatch, tmp_path, git=True, dfs=True):
-    git_root, dfs_probe, dfs_parent = tmp_path / "mnt_data", tmp_path / "domino_datasets", tmp_path / "domino_datasets" / "local"
-    if git:
-        git_root.mkdir()
-    if dfs:
-        dfs_parent.mkdir(parents=True)
-    monkeypatch.setattr(
-        config, "DOMINO_DATASET_ROOTS", ((str(git_root), str(git_root)), (str(dfs_probe), str(dfs_parent)))
-    )
+def _roots(monkeypatch, tmp_path, project="My-Project"):
+    """Fake Domino mounts: a Git-style root and a DFS-style root, nothing mounted yet."""
+    git_root, dfs_root = tmp_path / "mnt_data", tmp_path / "domino_datasets_local"
+    git_root.mkdir()
+    dfs_root.mkdir()
+    monkeypatch.setattr(config, "GIT_DATASETS_ROOT", str(git_root))
+    monkeypatch.setattr(config, "DFS_DATASETS_ROOT", str(dfs_root))
     monkeypatch.setenv("DOMINO_RUN_ID", "run")
-    return git_root, dfs_parent
+    monkeypatch.setenv("DOMINO_PROJECT_NAME", project)
+    return git_root, dfs_root
 
 
-def test_git_based_project_dataset_path(monkeypatch, tmp_path):
-    git_root, _ = _roots(monkeypatch, tmp_path, dfs=False)
-    (git_root / "chat-tool-settings").mkdir()
-
-    assert config.get_chat_tool_policy_path() == str(git_root / "chat-tool-settings" / "chat_tool_policy.json")
+def _policy_file(dataset_dir):
+    return str(dataset_dir / ".clinical-data-explorer" / "chat_tool_policy.json")
 
 
-def test_dfs_project_dataset_path(monkeypatch, tmp_path):
-    _, dfs_parent = _roots(monkeypatch, tmp_path, git=False)
-    (dfs_parent / "chat-tool-settings").mkdir()
+def test_defaults_to_the_projects_default_dataset_named_after_the_project(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    (git_root / "My-Project").mkdir()
 
-    assert config.get_chat_tool_policy_path() == str(dfs_parent / "chat-tool-settings" / "chat_tool_policy.json")
+    assert config.get_chat_tool_policy_dataset() == "My-Project"
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "My-Project")
 
 
-def test_mounted_dataset_chosen_over_first_existing_root(monkeypatch, tmp_path):
-    git_root, dfs_parent = _roots(monkeypatch, tmp_path)
+def test_git_based_project_uses_datasets_dir(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOMINO_IS_GIT_BASED", "true")
+    monkeypatch.setenv("DOMINO_DATASETS_DIR", str(git_root))
+    (git_root / "My-Project").mkdir()
+
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "My-Project")
+
+
+def test_dfs_project_dataset_is_found_under_local(monkeypatch, tmp_path):
+    _, dfs_root = _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOMINO_IS_GIT_BASED", "false")
+    (dfs_root / "My-Project").mkdir()
+
+    assert config.get_chat_tool_policy_path() == _policy_file(dfs_root / "My-Project")
+
+
+def test_dfs_datasets_dir_env_is_honoured(monkeypatch, tmp_path):
+    _roots(monkeypatch, tmp_path)
+    datasets_dir = tmp_path / "domino_datasets"
+    (datasets_dir / "local" / "My-Project").mkdir(parents=True)
+    monkeypatch.setenv("DOMINO_IS_GIT_BASED", "false")
+    monkeypatch.setenv("DOMINO_DATASETS_DIR", str(datasets_dir))
+
+    assert config.get_chat_tool_policy_path() == _policy_file(datasets_dir / "local" / "My-Project")
+
+
+def test_whichever_root_has_the_dataset_wins_whatever_the_project_type_says(monkeypatch, tmp_path):
+    git_root, dfs_root = _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOMINO_IS_GIT_BASED", "true")  # says Git, but the dataset is only under the DFS root
+    (dfs_root / "My-Project").mkdir()
+
+    assert config.get_chat_tool_policy_path() == _policy_file(dfs_root / "My-Project")
+
+
+def test_explicit_dataset_name_overrides_the_project_default(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
     monkeypatch.setenv("CHAT_TOOL_POLICY_DATASET", "my-settings")
-    (dfs_parent / "my-settings").mkdir()
+    (git_root / "my-settings").mkdir()
+    (git_root / "My-Project").mkdir()
 
-    assert config.get_chat_tool_policy_path() == str(dfs_parent / "my-settings" / "chat_tool_policy.json")
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "my-settings")
+
+
+def test_project_names_with_odd_characters_are_used_verbatim(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path, project="CDE test_v2 (QA)")
+    (git_root / "CDE test_v2 (QA)").mkdir()
+
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "CDE test_v2 (QA)")
+
+
+def test_without_a_project_name_the_legacy_dataset_name_is_used(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    monkeypatch.delenv("DOMINO_PROJECT_NAME")
+
+    assert config.get_chat_tool_policy_dataset() == "chat-tool-settings"
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "chat-tool-settings")
 
 
 def test_unmounted_on_domino_reports_expected_path_and_refuses_saves(monkeypatch, tmp_path):
     git_root, _ = _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOMINO_IS_GIT_BASED", "true")
     store = ChatToolPolicyStore()
 
     status = store.status()
 
-    assert status.path == str(git_root / "chat-tool-settings" / "chat_tool_policy.json")
+    assert status.path == _policy_file(git_root / "My-Project")
     assert status.durable is False
-    assert "chat-tool-settings" in status.error
-    assert "not mounted" in status.error
+    assert "My-Project" in status.error and "not mounted" in status.error
+    assert str(git_root / "My-Project") in status.error
     with pytest.raises(PolicyStoreUnavailable):
         store.save(default_policy(), 0, "alice")
-    assert not (git_root / "chat-tool-settings").exists()  # never writes to ephemeral disk
+    assert not (git_root / "My-Project").exists()  # never writes to ephemeral disk
     assert store.load().revision == 0
+
+
+# ----- the policy folder and seeding -----
+
+def test_first_save_creates_the_policy_folder_inside_the_mounted_dataset(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    (git_root / "My-Project").mkdir()
+    store = ChatToolPolicyStore()
+
+    assert store.status().durable is True  # the folder is created on demand
+    store.save(_policy(a="user_only"), 0, "alice")
+
+    assert (git_root / "My-Project" / ".clinical-data-explorer" / "chat_tool_policy.json").is_file()
+    assert store.load().mode_for("a") is ToolMode.USER_ONLY
+
+
+def test_seed_creates_the_default_file_without_the_owner_doing_anything(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    (git_root / "My-Project").mkdir()
+    store = ChatToolPolicyStore()
+
+    assert store.seed_if_missing() is True
+
+    seeded = json.loads((git_root / "My-Project" / ".clinical-data-explorer" / "chat_tool_policy.json").read_text())
+    assert seeded["revision"] == 0
+    assert seeded["tools"] == {DATASET_TOOL: {"mode": "disabled", "note": None}}
+    assert store.load().mode_for(DATASET_TOOL) is ToolMode.DISABLED
+    # a seeded file behaves like "never saved": the first save still expects revision 0
+    assert store.save(_policy(a="disabled"), 0, "alice").revision == 1
+    assert [p.name for p in (git_root / "My-Project" / ".clinical-data-explorer").iterdir()] == ["chat_tool_policy.json"]
+
+
+def test_seed_never_overwrites_an_existing_file(store, tmp_path):
+    store.save(_policy(a="user_only"), 0, "alice")
+
+    assert store.seed_if_missing() is False
+
+    assert store.load().mode_for("a") is ToolMode.USER_ONLY
+    assert store.load().revision == 1
+
+
+def test_seed_loses_a_race_harmlessly(store, tmp_path, monkeypatch):
+    real_link = os.link
+
+    def other_replica_wins(src, dst):
+        (tmp_path / "chat_tool_policy.json").write_text(default_policy().model_dump_json())
+        return real_link(src, dst)  # now raises FileExistsError
+
+    monkeypatch.setattr(os, "link", other_replica_wins)
+
+    assert store.seed_if_missing() is False
+    assert [p.name for p in tmp_path.iterdir()] == ["chat_tool_policy.json"]  # no temp file left
+
+
+def test_seed_skips_when_the_dataset_is_not_mounted(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    store = ChatToolPolicyStore()
+
+    assert store.seed_if_missing() is False
+    assert not (git_root / "My-Project").exists()
+
+
+def test_seed_default_policy_hook_is_skipped_in_plain_local_dev(monkeypatch, tmp_path):
+    from backend.chat_tools import policy as policy_module
+
+    monkeypatch.chdir(tmp_path)
+
+    assert policy_module.seed_default_policy() is False
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_seed_default_policy_hook_seeds_on_domino_and_never_raises(monkeypatch, tmp_path):
+    from backend.chat_tools import policy as policy_module
+
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    (git_root / "My-Project").mkdir()
+
+    assert policy_module.seed_default_policy() is True
+    assert policy_module.seed_default_policy() is False  # already there
+
+    monkeypatch.setattr(
+        ChatToolPolicyStore, "seed_if_missing", lambda self: (_ for _ in ()).throw(RuntimeError("boom"))
+    )
+    assert policy_module.seed_default_policy() is False
 
 
 def test_admin_usernames_are_trimmed_and_lowercased(monkeypatch):
