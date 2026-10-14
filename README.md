@@ -208,9 +208,11 @@ curl -X POST "$DOMINO_LLM_GATEWAY_URL/v1/chat/completions" \
 
 #### Chat tool access settings
 
-Editors of the extension's project can control which data tools the chat assistant may use, from an admin page that is not linked from the normal UI:
+Editors of the extension's project can control which data tools the chat assistant may use, from an admin page. Admins see a **Chat tool settings** link at the bottom of the Chat tab. The page is at `/admin/chat-tools` on the app's own URL:
 
-`https://<your-domino>/apps/<app-vanity-url>/admin/chat-tools` (the bare App URL, not the extension iframe)
+`https://apps.<your-domino>/apps-internal/<app-id>/admin/chat-tools`
+
+Use the app's `url` from the Domino Apps API (or the link in the Chat tab), **not** the `https://<your-domino>/apps/<vanity-url>/…` address: Domino's vanity route only serves the app root, so any sub-path 404s there.
 
 The page lists every data tool the assistant can reach, read live from the MCP server (so new tools appear automatically). For each tool you can read its description and parameters, **try it** against a built-in clinical sample (never your own data), and choose one of three modes:
 

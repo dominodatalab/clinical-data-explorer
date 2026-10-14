@@ -138,10 +138,32 @@ def test_client_supplied_identity_is_never_trusted(client, monkeypatch):
     assert response.status_code == 403
 
 
+def test_me_reports_admin_status_without_denying(client, monkeypatch):
+    assert client.get("/admin/api/chat-tools/me").get_json() == {"is_admin": True}
+
+    monkeypatch.setattr(admin_auth, "get_caller_project_role", lambda project_id: "Results Consumer")
+    response = client.get("/admin/api/chat-tools/me")
+
+    assert response.status_code == 200
+    assert response.get_json() == {"is_admin": False}
+
+
+def test_me_fails_closed_to_false(client, monkeypatch):
+    def boom():
+        raise RuntimeError("no token")
+
+    monkeypatch.setattr(admin_auth, "get_current_user", boom)
+
+    assert client.get("/admin/api/chat-tools/me").get_json() == {"is_admin": False}
+
+
 def test_every_admin_route_is_protected(client, monkeypatch):
     monkeypatch.setattr(admin_auth, "get_caller_project_role", lambda project_id: None)
     app = create_app()
-    admin_rules = [r for r in app.url_map.iter_rules() if r.rule.startswith("/admin/")]
+    admin_rules = [
+        r for r in app.url_map.iter_rules()
+        if r.rule.startswith("/admin/") and r.rule != "/admin/api/chat-tools/me"  # only reports the caller's own status
+    ]
     assert len(admin_rules) >= 6
 
     with app.test_client() as c:

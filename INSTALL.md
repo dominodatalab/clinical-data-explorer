@@ -80,6 +80,10 @@ In the extension project, create a Dataset named `chat-tool-settings` (or choose
 settings file directly, and Owners and Contributors of the project are the administrators of the settings page. Until
 the dataset exists, the settings page shows a banner naming the expected path and can't save.
 
+Admins reach the settings page from the **Chat tool settings** link on the Chat tab. Its address is
+`/admin/chat-tools` on the app's own URL (`https://apps.<your-domino>/apps-internal/<app-id>/admin/chat-tools`), not under
+the `…/apps/<vanity-url>/` address, which Domino only serves at the app root.
+
 ## App Deployment
 
 Open the `Publish` modal and fill out the sections in the wizard. Make sure that you have selected reasonable configuration values for the usage that you expect.

@@ -186,3 +186,34 @@ def test_history_reload_shows_cards_between_prompt_and_reply(page, chat_ui_stati
             .map(el => el.dataset.sender || (el.classList.contains('tool-result-message') ? 'tool_result' : 'other'))"""
     )
     assert order == ["user", "tool_result", "agent"]
+
+
+def test_settings_link_is_shown_only_to_admins(page, chat_ui_static_url):
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "admin/api/chat-tools/me": ok({"is_admin": True}),
+    })
+
+    link = page.locator('[data-testid="chat-tool-settings-link"]')
+    expect(link).to_be_visible(timeout=5_000)
+    expect(link).to_have_text("Chat tool settings")
+    # built from the same base URL as the API, so it works inside the Domino iframe
+    expect(link).to_have_attribute("href", "/admin/chat-tools")
+
+
+def test_settings_link_stays_hidden_for_non_admins_and_on_errors(page, chat_ui_static_url):
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "admin/api/chat-tools/me": ok({"is_admin": False}),
+    })
+    expect(page.locator('[data-testid="chat-tool-settings-link"]')).to_be_hidden()
+
+    page.unroute("**/*")
+    install_api_routes(page, {
+        "chat/status": ok({"configured": True}),
+        "chat/history": ok({"messages": []}),
+        "admin/api/chat-tools/me": (500, {"error": "boom"}),
+    })
+    page.reload()
+    page.locator('[data-testid="tab-chat"]').click()
+    expect(page.locator('[data-testid="chat-tool-settings-link"]')).to_be_hidden()

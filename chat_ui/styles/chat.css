@@ -637,3 +637,17 @@
     font-weight: 600;
     color: #dc3545;
 }
+
+/* Link to the chat tool settings page, shown only to admins. */
+.admin-link {
+    align-self: center;
+    margin-left: var(--spacing-xsmall);
+    font-size: 12px;
+    color: var(--color-primary-primary);
+    text-decoration: underline;
+    white-space: nowrap;
+}
+
+.admin-link[hidden] {
+    display: none;
+}

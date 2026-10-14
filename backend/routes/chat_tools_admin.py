@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field, ValidationError
 
 from backend.auth import get_passthrough_token
 from backend.chat_tools import catalog, preview_sample
-from backend.chat_tools.admin_auth import require_chat_tool_admin
+from backend.chat_tools.admin_auth import require_chat_tool_admin, resolve_admin
 from backend.chat_tools.policy import (
     ChatToolPolicy,
     PolicyConflict,
@@ -86,6 +86,15 @@ def _load_catalog() -> tuple:
 @require_chat_tool_admin(page=True)
 def admin_page():
     return send_from_directory("chat_ui/admin", "chat-tools.html")
+
+
+@bp.route("/admin/api/chat-tools/me", methods=["GET"])
+def whoami():
+    """Whether the caller may open the settings page (so the main UI can show a link).
+
+    Deliberately not behind `require_chat_tool_admin`: it only reveals the caller's own
+    status, always answers 200, and fails closed to `false`."""
+    return jsonify({"is_admin": resolve_admin() is not None})
 
 
 @bp.route("/admin/api/chat-tools", methods=["GET"])
