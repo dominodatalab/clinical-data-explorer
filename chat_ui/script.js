@@ -33,8 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Chat tab DOM lookups, send/clear/keypress wiring, status probe,
-    // displayMessage, thinking animation, renderChart and the 8
-    // type-specific renderers all live in modules/chat.js
+    // displayMessage, thinking animation and chart embedding all live in
+    // modules/chat.js (chart renderers in modules/chart-renderers.js)
     // (plan box 4.4f / P14). We import initChat/displayMessage/
     // checkChatStatus at the top of this file and call initChat()
     // below — see the early-call to initChat() right after this block.

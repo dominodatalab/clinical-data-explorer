@@ -92,6 +92,13 @@ can run it but its output is hidden from the model and shown to the user in a re
   check. Each chat request costs one `stat()`.
 - **Previews** run in a sandbox MCP session (`X-Chat-Tool-Preview`) on a bundled sample, so they never replace the
   admin's own dataset.
+- **Result cards are laid out by data shape, not by tool.** `chat_ui/modules/tool-output.js` turns any output into a
+  plan (tables, summary fields, chips, and a chart where the fields match a known shape such as `bin_start/bin_end/count`
+  or `min/q1/median/q3/max`), so new tools are handled without a per-tool renderer; a `chart_type` field in the output
+  can settle an ambiguous case. The chat and the admin preview share it, and charts go through
+  `chart-renderers.js`'s `renderChartSpec`. Values are inserted as text, and chart strings are HTML-escaped because
+  Highcharts reads markup in labels. `tests/fixtures/tool_outputs.json` holds every tool's real output so a change to
+  a route's response shape shows up as a layout change in the JS tests.
 
 ### Dataset Loads Are Queued
 

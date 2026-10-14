@@ -9,15 +9,16 @@
 //     animation while the agent is responding. Agent replies are rendered
 //     as sanitized Markdown (see `modules/markdown.js`); user/system/error
 //     bubbles stay literal text.
-//   - Chart embedding inside agent replies (renderChart dispatcher).
-//     The 8 type-specific renderers (bar / scatter / line / pie /
-//     histogram / boxplot / heatmap / grouped_bar) live in
-//     `modules/chart-renderers.js` so future chart consumers can share
-//     them — see that file's header for why explore-charts deliberately
+//   - Chart embedding inside agent replies. The dispatcher
+//     (`renderChartSpec`) and the 8 type-specific renderers (bar / scatter /
+//     line / pie / histogram / boxplot / heatmap / grouped_bar) live in
+//     `modules/chart-renderers.js` so other chart consumers (the hidden
+//     result cards, the chat tool settings page) share them — see that file's header for why explore-charts deliberately
 //     keeps its own renderer set rather than reusing these.
 //   - Result cards for tools whose output is hidden from the AI (the admin's
 //     "Run, hide output from AI" mode): the user sees the tool's output in a
-//     tagged card, the model only got a confirmation that it ran.
+//     tagged card, laid out and charted by `modules/tool-output.js`; the model
+//     only got a confirmation that it ran.
 //   - The welcome message displayed on first load.
 //
 // Four exports:
@@ -45,16 +46,7 @@
 
 import { state } from '../core/state.js';
 import { apiUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
-import {
-    renderBarChart,
-    renderScatterChart,
-    renderLineChart,
-    renderPieChart,
-    renderHistogram,
-    renderBoxplot,
-    renderHeatmap,
-    renderGroupedBarChart,
-} from './chart-renderers.js';
+import { renderChartSpec } from './chart-renderers.js';
 import { escapeHtml, renderMarkdown } from './markdown.js';
 import { renderToolOutput } from './tool-output.js';
 
@@ -282,16 +274,6 @@ function removeThinkingAnimation(thinkingElement) {
     }
 }
 
-function renderChartError(containerId, message) {
-    const container = document.getElementById(containerId);
-    if (!container) return;
-
-    const errorElement = document.createElement('p');
-    errorElement.classList.add('error');
-    errorElement.textContent = message;
-    container.replaceChildren(errorElement);
-}
-
 export function displayMessage(text, sender, charts = null) {
     // Lazy-resolve chatBox so callers that fire before initChat()
     // (e.g. very-early dataset-load error paths) still work.
@@ -322,7 +304,7 @@ export function displayMessage(text, sender, charts = null) {
             chartContainer.id = `chart-${Date.now()}-${index}`;
             chatBox.appendChild(chartContainer);
 
-            renderChart(chartContainer.id, chartSpec);
+            renderChartSpec(chartContainer, chartSpec);
         });
     }
 
@@ -395,13 +377,15 @@ export function displayToolResult(result) {
         const content = result.truncated && result.content && 'preview' in result.content
             ? result.content.preview
             : result.content;
-        body.appendChild(renderToolOutput(content));
+        const output = renderToolOutput(content, { renderChart: renderChartSpec });
+        body.appendChild(output);
         if (result.truncated) {
             const size = formatBytes(result.size_bytes);
+            const charted = output.querySelector('.tool-output-chart') ? ' Charts are drawn from that part only.' : '';
             body.appendChild(textElement(
                 'div',
                 'tool-output-note',
-                `This output was too large to keep in full${size ? ` (${size})` : ''}. Showing the first part.`,
+                `This output was too large to keep in full${size ? ` (${size})` : ''}. Showing the first part.${charted}`,
             ));
         }
     }
@@ -410,61 +394,6 @@ export function displayToolResult(result) {
     chatBox.appendChild(card);
     chatBox.scrollTop = chatBox.scrollHeight;
 }
-
-function renderChart(containerId, chartSpec) {
-    console.log('Rendering chart with spec:', chartSpec);
-
-    const { type, title, data } = chartSpec;
-
-    if (!type) {
-        console.error('Chart type is missing:', chartSpec);
-        renderChartError(containerId, 'Invalid chart: missing type');
-        return;
-    }
-
-    if (!data) {
-        console.error('Chart data is missing:', chartSpec);
-        renderChartError(containerId, 'Invalid chart: missing data');
-        return;
-    }
-
-    try {
-        switch (type) {
-            case 'bar':
-                renderBarChart(containerId, title, data);
-                break;
-            case 'scatter':
-                renderScatterChart(containerId, title, data);
-                break;
-            case 'line':
-                renderLineChart(containerId, title, data);
-                break;
-            case 'pie':
-                renderPieChart(containerId, title, data);
-                break;
-            case 'histogram':
-                renderHistogram(containerId, title, data);
-                break;
-            case 'boxplot':
-                renderBoxplot(containerId, title, data);
-                break;
-            case 'heatmap':
-                renderHeatmap(containerId, title, data);
-                break;
-            case 'grouped_bar':
-                renderGroupedBarChart(containerId, title, data);
-                break;
-            default:
-                console.error('Unknown chart type:', type);
-                renderChartError(containerId, 'Unknown chart type: ' + String(type));
-        }
-    } catch (error) {
-        console.error('Error rendering chart:', error);
-        console.error('Chart spec was:', chartSpec);
-        renderChartError(containerId, 'Error rendering chart: ' + String(error.message));
-    }
-}
-
 
 export function initChat() {
     chatBox = document.getElementById('chat-box');

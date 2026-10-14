@@ -394,7 +394,11 @@ def test_run_sends_typed_args_and_renders_the_output_with_size_and_tokens(admin)
     expect(page.locator('[data-testid="output-meta"]')).to_contain_text("123 B", timeout=5_000)
     expect(page.locator('[data-testid="output-meta"]')).to_contain_text("about 30 tokens")
     expect(page.locator('[data-testid="output-meta"]')).to_contain_text("12 ms")
-    expect(page.locator('[data-testid="output-body"] th')).to_have_text(["ARM", "AGE"])
+    # one text and one number column: a bar chart first, the same rows behind the Table toggle
+    output = page.locator('[data-testid="output-body"]')
+    expect(output.locator('.tool-output-chart[data-chart-type="bar"] .highcharts-container')).to_be_visible()
+    output.get_by_role("button", name="Table").click()
+    expect(output.locator("th")).to_have_text(["ARM", "AGE"])
     name, body = admin.previews[0]
     assert name == "get_group_analysis"
     assert body["args"] == {
@@ -405,7 +409,7 @@ def test_run_sends_typed_args_and_renders_the_output_with_size_and_tokens(admin)
     page.locator('[data-testid="raw-toggle"]').check()
     expect(page.locator('[data-testid="output-body"] pre')).to_have_text('[{"ARM": "Placebo", "AGE": 75.2}]')
     page.locator('[data-testid="raw-toggle"]').uncheck()
-    expect(page.locator('[data-testid="output-body"] table')).to_be_visible()
+    expect(output.locator(".tool-output-chart .highcharts-container")).to_be_visible()
 
 
 def test_run_validates_required_fields_and_json_before_calling_the_server(admin):

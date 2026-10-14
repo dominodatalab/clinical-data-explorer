@@ -1,5 +1,6 @@
 """Chat result cards for tools whose output is hidden from the AI."""
 import json
+from pathlib import Path
 
 import pytest
 
@@ -46,6 +47,24 @@ ERROR_CARD = {
     "error": "Error calling x. Status code: 404. Response: {\"detail\":\"Feature 'nope' not found\"}",
 }
 BADGE_TOOLTIP = "The assistant ran this tool but cannot see its output. Only you can see this."
+REAL_OUTPUTS = json.loads(
+    (Path(__file__).resolve().parents[1] / "fixtures" / "tool_outputs.json").read_text()
+)["outputs"]
+
+
+def _card(name, tool_call_id="call-9", **extra):
+    """A result card carrying a tool's real output from tests/fixtures/tool_outputs.json."""
+    entry = REAL_OUTPUTS[name]
+    return {
+        "tool_call_id": tool_call_id,
+        "tool_name": entry["tool"],
+        "title": name,
+        "args": entry["args"],
+        "content": entry["output"],
+        "truncated": False,
+        "size_bytes": 500,
+        **extra,
+    }
 
 
 def _open_chat(page, url, overrides):
@@ -217,3 +236,110 @@ def test_settings_link_stays_hidden_for_non_admins_and_on_errors(page, chat_ui_s
     page.reload()
     page.locator('[data-testid="tab-chat"]').click()
     expect(page.locator('[data-testid="chat-tool-settings-link"]')).to_be_hidden()
+
+
+# ----- charts in result cards -----
+
+def test_chartable_output_is_drawn_as_a_chart_first_with_the_table_one_click_away(page, chat_ui_static_url):
+    card_data = _card("get_feature_comparison_feature_comparison_get")
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "chat": ok({"response": "Displayed above.", "charts": [], "user_only_results": [card_data]}),
+    })
+
+    _send(page, "compare height and weight")
+
+    card = page.locator('[data-testid="tool-result-card"]')
+    chart = card.locator('.tool-output-chart[data-chart-type="scatter"]')
+    expect(chart.locator(".highcharts-container")).to_be_visible(timeout=5_000)
+    expect(chart.locator(".highcharts-xaxis .highcharts-axis-title")).to_have_text("HEIGHTBL")
+    expect(chart.locator(".highcharts-yaxis .highcharts-axis-title")).to_have_text("WEIGHTBL")
+    expect(chart.locator(".highcharts-markers .highcharts-point")).to_have_count(8)
+    expect(card.locator(".tool-output-summary-strip")).to_contain_text("HEIGHTBL")
+    expect(card.locator(".tool-output-table-view")).to_be_hidden()
+
+    card.get_by_role("button", name="Table").click()
+
+    expect(chart).to_be_hidden()
+    expect(card.locator(".tool-output-table-view th")).to_have_text(["HEIGHTBL", "WEIGHTBL"])
+    expect(card.locator(".tool-output-table-view tbody tr")).to_have_count(8)
+    expect(card.get_by_role("button", name="Table")).to_have_attribute("aria-pressed", "true")
+
+
+def test_chart_labels_show_data_as_written_and_never_as_markup(page, chat_ui_static_url):
+    labels = ["<65", "<b>bold</b>", "<img src=x onerror=\"window.__xss=true\">", "A & B"]
+    card_data = {
+        **HEAD_CARD,
+        "title": "Get Bar Chart Data",
+        "content": {"category_column": "AGEGR1", "chart_data": [{"label": label, "value": i + 1} for i, label in enumerate(labels)]},
+    }
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "chat": ok({"response": "ok", "charts": [], "user_only_results": [card_data]}),
+    })
+    page.evaluate("window.__xss = false")
+
+    _send(page, "bars")
+
+    chart = page.locator('[data-testid="tool-result-card"] .tool-output-chart[data-chart-type="bar"]')
+    expect(chart.locator(".highcharts-container")).to_be_visible(timeout=5_000)
+    shown = chart.locator(".highcharts-xaxis-labels text").evaluate_all("els => els.map(el => el.textContent)")
+    assert shown[:2] == ["<65", "<b>bold</b>"]
+    assert shown[2].startswith("<img src=x")  # long labels may be shortened with an ellipsis
+    assert shown[3] == "A & B"
+    assert chart.locator("img, b").count() == 0
+    assert page.evaluate("window.__xss") is False
+
+
+def test_truncated_chart_says_it_shows_only_the_part_kept(page, chat_ui_static_url):
+    preview = _card("get_histogram_data_chart_histogram_post")["content"]
+    card_data = _card(
+        "get_histogram_data_chart_histogram_post",
+        truncated=True,
+        size_bytes=900_000,
+        content={"preview": preview, "truncated": True, "size_bytes": 900_000},
+    )
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "chat": ok({"response": "ok", "charts": [], "user_only_results": [card_data]}),
+    })
+
+    _send(page, "histogram")
+
+    card = page.locator('[data-testid="tool-result-card"]')
+    expect(card.locator('.tool-output-chart[data-chart-type="histogram"] .highcharts-container')).to_be_visible(timeout=5_000)
+    expect(card.locator(".tool-result-body > .tool-output-note")).to_have_text(
+        "This output was too large to keep in full (878.9 KB). Showing the first part. Charts are drawn from that part only."
+    )
+
+
+def test_chart_from_history_fills_the_card_once_the_chat_tab_is_shown(page, chat_ui_static_url):
+    """History loads while the chat tab is hidden; the chart must resize when it becomes visible."""
+    history = [
+        {"sender": "user", "text": "correlations"},
+        {"sender": "tool_result", **_card("get_correlation_matrix_correlation_matrix_get")},
+    ]
+    install_api_routes(page, {"chat/status": ok({"configured": True}), "chat/history": ok({"messages": history})})
+    page.goto(chat_ui_static_url)
+    # The chart is drawn while the chat tab is still hidden, so its box has no width yet.
+    page.wait_for_function(
+        """() => {
+            const box = document.querySelector('.tool-output-chart[data-chart-type="heatmap"]');
+            return box && box.querySelector('svg.highcharts-root') && box.clientWidth === 0;
+        }""",
+        timeout=5_000,
+    )
+
+    page.locator('[data-testid="tab-chat"]').click()
+
+    chart = page.locator('[data-testid="tool-result-card"] .tool-output-chart[data-chart-type="heatmap"]')
+    expect(chart.locator(".highcharts-container")).to_be_visible(timeout=5_000)
+    page.wait_for_function(
+        """() => {
+            const box = document.querySelector('.tool-output-chart[data-chart-type="heatmap"]');
+            const svg = box && box.querySelector('svg.highcharts-root');
+            return svg && box.clientWidth > 0 && Math.abs(svg.getBoundingClientRect().width - box.clientWidth) <= 2;
+        }""",
+        timeout=5_000,
+    )
+

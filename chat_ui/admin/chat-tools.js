@@ -9,6 +9,7 @@
 // `textContent`; the only HTML is sanitized Markdown for tool descriptions.
 
 import { getBaseUrl, fetchJson, getApiErrorMessage, getApiErrorPayload } from '../core/api.js';
+import { renderChartSpec } from '../modules/chart-renderers.js';
 import { renderMarkdown } from '../modules/markdown.js';
 import { renderToolOutput } from '../modules/tool-output.js';
 import { buildArgs, fieldsFromSchema, initialValues, parameterRows } from './schema-form.js';
@@ -514,7 +515,7 @@ function renderOutput(tool, container) {
     const paint = () => {
         body.replaceChildren(result.showRaw
             ? make('pre', 'pre-block', result.content_text)
-            : renderToolOutput(result.content));
+            : renderToolOutput(result.content, { renderChart: renderChartSpec }));
     };
     toggle.addEventListener('change', () => {
         result.showRaw = toggle.checked;

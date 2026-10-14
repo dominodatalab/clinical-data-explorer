@@ -222,6 +222,8 @@ The page lists every data tool the assistant can reach, read live from the MCP s
 | **Hidden from AI** | Yes | **No**, it only learns that the tool ran | **Yes**, in a tagged result card in the chat |
 | **Off** | No, the tool is never offered to the model | n/a | n/a |
 
+**How Hidden-from-AI results look:** the result card lays the output out by its shape, the same way on the settings page's **try it** preview. Rows become a table; counts and settings that come with them (page, total rows, the filter expression) become a summary line above it; per-group or per-column statistics become one table; lists of names become chips. Output that has a natural chart is drawn as one first, with a **Table** button to see the numbers: histograms, box plots, correlation heatmaps, scatter and line plots, and bar charts of counts or aggregates. When a result was too large to keep in full, the card says so, and any chart is drawn from the part that was kept.
+
 The policy is enforced on the server (the model is never offered an Off tool, and Hidden-from-AI output never reaches it), not by asking the model to behave. Changes apply to each user's next message, including earlier outputs in an ongoing conversation. Tools added later use the page's **Default for new tools** setting (initially On). By default `get_dataset_data`, which returns the whole DataFrame, is Off. The Table, Explore and Filter views are unaffected: they use the REST endpoints, not these tools.
 
 **Who is an admin:** the Owner or a Contributor of the project the app runs in, checked server-side through the Domino API with the visiting user's own token. If the check can't be completed, access is denied.

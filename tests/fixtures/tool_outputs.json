@@ -1,0 +1,1694 @@
+{
+ "_about": "Real output of every chat data tool (MCP tool name -> args, output) on the admin preview sample (backend/chat_tools/sample_data/adsl_preview.csv), plus 'variant__' entries for the other shapes some tools return. Lists of rows are cut to 8. get_dataset_head's output is the first rows of get_table_data, the same shape: the route itself fails on the sample's missing values. Used by tests/unit/js/tool_output.test.mjs.",
+ "outputs": {
+  "expression_filter_table_expression_filter_post": {
+   "tool": "expression_filter_table_expression_filter_post",
+   "args": {
+    "expression": "AGE > 75 AND SEX = 'F'",
+    "syntax": "sas"
+   },
+   "output": {
+    "data": [
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-709-1099",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 709,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 79.0,
+      "BMIBL": 19.6,
+      "HEIGHTBL": 165.1,
+      "WEIGHTBL": 53.5,
+      "TRTDURD": 183.0,
+      "CUMDOSE": 13932.0,
+      "TRTSDT": "2013-10-25",
+      "TRTEDT": "2014-04-25"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-710-1045",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 710,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 83.0,
+      "BMIBL": 22.0,
+      "HEIGHTBL": 162.6,
+      "WEIGHTBL": 58.1,
+      "TRTDURD": 72.0,
+      "CUMDOSE": 3888.0,
+      "TRTSDT": "2013-06-03",
+      "TRTEDT": "2013-08-13"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-710-1137",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "F",
+      "RACE": "BLACK OR AFRICAN AMERICAN",
+      "AGEGR1": "65-80",
+      "SITEID": 710,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 79.0,
+      "BMIBL": 24.0,
+      "HEIGHTBL": 165.1,
+      "WEIGHTBL": 65.3,
+      "TRTDURD": 34.0,
+      "CUMDOSE": 2349.0,
+      "TRTSDT": "2013-10-11",
+      "TRTEDT": "2013-11-13"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-711-1433",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 711,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 84.0,
+      "BMIBL": 20.9,
+      "HEIGHTBL": 157.5,
+      "WEIGHTBL": 51.9,
+      "TRTDURD": 10.0,
+      "CUMDOSE": 540.0,
+      "TRTSDT": "2013-01-27",
+      "TRTEDT": "2013-02-05"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-713-1043",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 713,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 78.0,
+      "BMIBL": 18.8,
+      "HEIGHTBL": 165.1,
+      "WEIGHTBL": 51.3,
+      "TRTDURD": 191.0,
+      "CUMDOSE": 10314.0,
+      "TRTSDT": "2013-09-15",
+      "TRTEDT": "2014-03-24"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-716-1024",
+      "ARM": "Placebo",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 716,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 87.0,
+      "BMIBL": 22.7,
+      "HEIGHTBL": 154.9,
+      "WEIGHTBL": 54.4,
+      "TRTDURD": 196.0,
+      "CUMDOSE": 0.0,
+      "TRTSDT": "2012-07-09",
+      "TRTEDT": "2013-01-20"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-716-1071",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 716,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 78.0,
+      "BMIBL": 32.0,
+      "HEIGHTBL": 154.9,
+      "WEIGHTBL": 76.7,
+      "TRTDURD": 55.0,
+      "CUMDOSE": 4050.0,
+      "TRTSDT": "2013-06-08",
+      "TRTEDT": "2013-08-01"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-716-1151",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 716,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 83.0,
+      "BMIBL": 19.7,
+      "HEIGHTBL": 152.4,
+      "WEIGHTBL": 45.8,
+      "TRTDURD": 100.0,
+      "CUMDOSE": 5400.0,
+      "TRTSDT": "2013-02-01",
+      "TRTEDT": "2013-05-11"
+     }
+    ],
+    "page": 1,
+    "page_size": 100,
+    "total_rows": 9,
+    "total_pages": 1,
+    "filtered_rows": 9,
+    "unfiltered_rows": 36,
+    "expression_applied": "AGE > 75 AND SEX = 'F'",
+    "syntax": "sas"
+   }
+  },
+  "get_bar_chart_data_chart_bar_aggregation_post": {
+   "tool": "get_bar_chart_data_chart_bar_aggregation_post",
+   "args": {
+    "category_column": "ARM",
+    "aggregation": "count"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "label": "Placebo",
+      "value": 12
+     },
+     {
+      "label": "Xanomeline High Dose",
+      "value": 12
+     },
+     {
+      "label": "Xanomeline Low Dose",
+      "value": 12
+     }
+    ],
+    "category_column": "ARM",
+    "aggregation": "count",
+    "total_categories": 3
+   }
+  },
+  "get_column_stats_table_column_stats__column__get": {
+   "tool": "get_column_stats_table_column_stats__column__get",
+   "args": {
+    "column": "AGE"
+   },
+   "output": {
+    "column": "AGE",
+    "is_numeric": true,
+    "total_count": 36,
+    "non_null_count": 36,
+    "null_count": 0,
+    "unique_count": 20,
+    "mean": 76.13888888888889,
+    "median": 78.0,
+    "std": 7.623845215704203,
+    "min": 57.0,
+    "max": 87.0,
+    "sum": 2741.0
+   }
+  },
+  "get_column_values_table_column_values__column__get": {
+   "tool": "get_column_values_table_column_values__column__get",
+   "args": {
+    "column": "ARM"
+   },
+   "output": {
+    "column": "ARM",
+    "values": [
+     "Placebo",
+     "Xanomeline High Dose",
+     "Xanomeline Low Dose"
+    ],
+    "total_unique": 3,
+    "is_numeric": false
+   }
+  },
+  "get_correlation_matrix_correlation_matrix_get": {
+   "tool": "get_correlation_matrix_correlation_matrix_get",
+   "args": {},
+   "output": {
+    "SITEID": {
+     "SITEID": 1.0,
+     "AGE": 0.4250430679377248,
+     "BMIBL": -0.22835677843131655,
+     "HEIGHTBL": -0.18465395479555416,
+     "WEIGHTBL": -0.31914636586423417,
+     "TRTDURD": 0.07090857464876307,
+     "CUMDOSE": -0.060135168441449255
+    },
+    "AGE": {
+     "SITEID": 0.4250430679377248,
+     "AGE": 1.0,
+     "BMIBL": -0.07765895221169583,
+     "HEIGHTBL": -0.1240648851475521,
+     "WEIGHTBL": -0.16399844395132565,
+     "TRTDURD": -0.13373467926904384,
+     "CUMDOSE": -0.2587468553209891
+    },
+    "BMIBL": {
+     "SITEID": -0.22835677843131655,
+     "AGE": -0.07765895221169583,
+     "BMIBL": 1.0,
+     "HEIGHTBL": 0.00863705469415722,
+     "WEIGHTBL": 0.7567588319800643,
+     "TRTDURD": -0.1237038326771528,
+     "CUMDOSE": 0.041205380341378585
+    },
+    "HEIGHTBL": {
+     "SITEID": -0.18465395479555416,
+     "AGE": -0.1240648851475521,
+     "BMIBL": 0.00863705469415722,
+     "HEIGHTBL": 1.0,
+     "WEIGHTBL": 0.6545802251428385,
+     "TRTDURD": 0.09900266579459277,
+     "CUMDOSE": 0.21061755267254
+    },
+    "WEIGHTBL": {
+     "SITEID": -0.31914636586423417,
+     "AGE": -0.16399844395132565,
+     "BMIBL": 0.7567588319800643,
+     "HEIGHTBL": 0.6545802251428385,
+     "WEIGHTBL": 1.0,
+     "TRTDURD": -0.039104575386353924,
+     "CUMDOSE": 0.17196800716297836
+    },
+    "TRTDURD": {
+     "SITEID": 0.07090857464876307,
+     "AGE": -0.13373467926904384,
+     "BMIBL": -0.1237038326771528,
+     "HEIGHTBL": 0.09900266579459277,
+     "WEIGHTBL": -0.039104575386353924,
+     "TRTDURD": 1.0,
+     "CUMDOSE": 0.4044891833193149
+    },
+    "CUMDOSE": {
+     "SITEID": -0.060135168441449255,
+     "AGE": -0.2587468553209891,
+     "BMIBL": 0.041205380341378585,
+     "HEIGHTBL": 0.21061755267254,
+     "WEIGHTBL": 0.17196800716297836,
+     "TRTDURD": 0.4044891833193149,
+     "CUMDOSE": 1.0
+    }
+   }
+  },
+  "get_dataset_data_dataset_data_get": {
+   "tool": "get_dataset_data_dataset_data_get",
+   "args": {},
+   "output": {
+    "data": [
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1130",
+      "ARM": "Placebo",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 701,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 84.0,
+      "BMIBL": 27.6,
+      "HEIGHTBL": 169.7,
+      "WEIGHTBL": 79.4,
+      "TRTDURD": 183.0,
+      "CUMDOSE": 0.0,
+      "TRTSDT": "2014-02-15",
+      "TRTEDT": "2014-08-16"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1148",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "<65",
+      "SITEID": 701,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 57.0,
+      "BMIBL": 28.3,
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 87.1,
+      "TRTDURD": 182.0,
+      "CUMDOSE": 14040.0,
+      "TRTSDT": "2013-08-23",
+      "TRTEDT": "2014-02-20"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1188",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 701,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 71.0,
+      "BMIBL": 32.0,
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 101.2,
+      "TRTDURD": 38.0,
+      "CUMDOSE": 2052.0,
+      "TRTSDT": "2013-02-15",
+      "TRTEDT": "2013-03-24"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1210",
+      "ARM": "Placebo",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 72.0,
+      "BMIBL": 23.8,
+      "HEIGHTBL": 144.8,
+      "WEIGHTBL": 49.9,
+      "TRTDURD": 175.0,
+      "CUMDOSE": 0.0,
+      "TRTSDT": "2013-03-16",
+      "TRTEDT": "2013-09-06"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1279",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "WITHDRAWAL BY SUBJECT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 72.0,
+      "BMIBL": 21.1,
+      "HEIGHTBL": 162.6,
+      "WEIGHTBL": 55.8,
+      "TRTDURD": 22.0,
+      "CUMDOSE": 1188.0,
+      "TRTSDT": "2013-05-13",
+      "TRTEDT": "2013-06-03"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1403",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 67.0,
+      "BMIBL": 25.4,
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 80.3,
+      "TRTDURD": 2.0,
+      "CUMDOSE": 108.0,
+      "TRTSDT": "2012-12-12",
+      "TRTEDT": "2012-12-13"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-704-1325",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 704,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "PROTOCOL VIOLATION",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 81.0,
+      "BMIBL": 22.3,
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 68.5,
+      "TRTDURD": 73.0,
+      "CUMDOSE": 3942.0,
+      "TRTSDT": "2014-04-23",
+      "TRTEDT": "2014-07-04"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-704-1332",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 704,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 80.0,
+      "BMIBL": 26.2,
+      "HEIGHTBL": 173.0,
+      "WEIGHTBL": 78.5,
+      "TRTDURD": 68.0,
+      "CUMDOSE": 5103.0,
+      "TRTSDT": "2013-12-09",
+      "TRTEDT": "2014-02-14"
+     }
+    ],
+    "columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "SITEID",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE",
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "numeric_columns": [
+     "SITEID",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE"
+    ],
+    "categorical_columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "date_columns": [],
+    "column_types": {
+     "STUDYID": "str",
+     "USUBJID": "str",
+     "ARM": "str",
+     "SEX": "str",
+     "RACE": "str",
+     "AGEGR1": "str",
+     "SITEID": "int64",
+     "EOSSTT": "str",
+     "DCSREAS": "str",
+     "SAFFL": "str",
+     "ITTFL": "str",
+     "AGE": "float64",
+     "BMIBL": "float64",
+     "HEIGHTBL": "float64",
+     "WEIGHTBL": "float64",
+     "TRTDURD": "float64",
+     "CUMDOSE": "float64",
+     "TRTSDT": "str",
+     "TRTEDT": "str"
+    },
+    "num_rows": 36
+   }
+  },
+  "get_dataset_description_dataset_describe_get": {
+   "tool": "get_dataset_description_dataset_describe_get",
+   "args": {},
+   "output": {
+    "SITEID": {
+     "count": 36.0,
+     "mean": 709.2222222222,
+     "std": 5.6066853519,
+     "min": 701.0,
+     "25%": 704.75,
+     "50%": 709.5,
+     "75%": 716.0,
+     "max": 718.0
+    },
+    "AGE": {
+     "count": 36.0,
+     "mean": 76.1388888889,
+     "std": 7.6238452157,
+     "min": 57.0,
+     "25%": 71.75,
+     "50%": 78.0,
+     "75%": 82.25,
+     "max": 87.0
+    },
+    "BMIBL": {
+     "count": 36.0,
+     "mean": 24.6611111111,
+     "std": 3.7354118364,
+     "min": 18.8,
+     "25%": 21.825,
+     "50%": 24.15,
+     "75%": 27.2,
+     "max": 32.3
+    },
+    "HEIGHTBL": {
+     "count": 36.0,
+     "mean": 164.2222222222,
+     "std": 10.530530067,
+     "min": 144.8,
+     "25%": 158.475,
+     "50%": 163.85,
+     "75%": 171.625,
+     "max": 186.2
+    },
+    "WEIGHTBL": {
+     "count": 36.0,
+     "mean": 66.775,
+     "std": 13.27854069,
+     "min": 45.8,
+     "25%": 54.4,
+     "50%": 66.9,
+     "75%": 77.15,
+     "max": 101.2
+    },
+    "TRTDURD": {
+     "count": 36.0,
+     "mean": 104.0833333333,
+     "std": 71.8905417979,
+     "min": 2.0,
+     "25%": 37.75,
+     "50%": 82.5,
+     "75%": 182.25,
+     "max": 212.0
+    },
+    "CUMDOSE": {
+     "count": 36.0,
+     "mean": 3733.5,
+     "std": 4752.7389847479,
+     "min": 0.0,
+     "25%": 0.0,
+     "50%": 2025.0,
+     "75%": 5177.25,
+     "max": 14499.0
+    }
+   }
+  },
+  "get_dataset_head_dataset_head_get": {
+   "tool": "get_dataset_head_dataset_head_get",
+   "args": {
+    "rows": 5
+   },
+   "output": [
+    {
+     "STUDYID": "CDISCPILOT01",
+     "USUBJID": "01-701-1130",
+     "ARM": "Placebo",
+     "SEX": "M",
+     "RACE": "WHITE",
+     "AGEGR1": ">80",
+     "SITEID": 701,
+     "EOSSTT": "COMPLETED",
+     "DCSREAS": null,
+     "SAFFL": "Y",
+     "ITTFL": "Y",
+     "AGE": 84.0,
+     "BMIBL": 27.6,
+     "HEIGHTBL": 169.7,
+     "WEIGHTBL": 79.4,
+     "TRTDURD": 183.0,
+     "CUMDOSE": 0.0,
+     "TRTSDT": "2014-02-15",
+     "TRTEDT": "2014-08-16"
+    },
+    {
+     "STUDYID": "CDISCPILOT01",
+     "USUBJID": "01-701-1148",
+     "ARM": "Xanomeline High Dose",
+     "SEX": "M",
+     "RACE": "WHITE",
+     "AGEGR1": "<65",
+     "SITEID": 701,
+     "EOSSTT": "COMPLETED",
+     "DCSREAS": null,
+     "SAFFL": "Y",
+     "ITTFL": "Y",
+     "AGE": 57.0,
+     "BMIBL": 28.3,
+     "HEIGHTBL": 175.3,
+     "WEIGHTBL": 87.1,
+     "TRTDURD": 182.0,
+     "CUMDOSE": 14040.0,
+     "TRTSDT": "2013-08-23",
+     "TRTEDT": "2014-02-20"
+    },
+    {
+     "STUDYID": "CDISCPILOT01",
+     "USUBJID": "01-701-1188",
+     "ARM": "Xanomeline Low Dose",
+     "SEX": "M",
+     "RACE": "WHITE",
+     "AGEGR1": "65-80",
+     "SITEID": 701,
+     "EOSSTT": "DISCONTINUED",
+     "DCSREAS": "ADVERSE EVENT",
+     "SAFFL": "Y",
+     "ITTFL": "Y",
+     "AGE": 71.0,
+     "BMIBL": 32.0,
+     "HEIGHTBL": 177.8,
+     "WEIGHTBL": 101.2,
+     "TRTDURD": 38.0,
+     "CUMDOSE": 2052.0,
+     "TRTSDT": "2013-02-15",
+     "TRTEDT": "2013-03-24"
+    },
+    {
+     "STUDYID": "CDISCPILOT01",
+     "USUBJID": "01-703-1210",
+     "ARM": "Placebo",
+     "SEX": "F",
+     "RACE": "WHITE",
+     "AGEGR1": "65-80",
+     "SITEID": 703,
+     "EOSSTT": "COMPLETED",
+     "DCSREAS": null,
+     "SAFFL": "Y",
+     "ITTFL": "Y",
+     "AGE": 72.0,
+     "BMIBL": 23.8,
+     "HEIGHTBL": 144.8,
+     "WEIGHTBL": 49.9,
+     "TRTDURD": 175.0,
+     "CUMDOSE": 0.0,
+     "TRTSDT": "2013-03-16",
+     "TRTEDT": "2013-09-06"
+    },
+    {
+     "STUDYID": "CDISCPILOT01",
+     "USUBJID": "01-703-1279",
+     "ARM": "Xanomeline Low Dose",
+     "SEX": "F",
+     "RACE": "WHITE",
+     "AGEGR1": "65-80",
+     "SITEID": 703,
+     "EOSSTT": "DISCONTINUED",
+     "DCSREAS": "WITHDRAWAL BY SUBJECT",
+     "SAFFL": "Y",
+     "ITTFL": "Y",
+     "AGE": 72.0,
+     "BMIBL": 21.1,
+     "HEIGHTBL": 162.6,
+     "WEIGHTBL": 55.8,
+     "TRTDURD": 22.0,
+     "CUMDOSE": 1188.0,
+     "TRTSDT": "2013-05-13",
+     "TRTEDT": "2013-06-03"
+    }
+   ]
+  },
+  "get_dataset_info_dataset_info_get": {
+   "tool": "get_dataset_info_dataset_info_get",
+   "args": {},
+   "output": {
+    "columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "SITEID",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE",
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "num_rows": 36,
+    "num_features": 19,
+    "column_types": {
+     "STUDYID": "str",
+     "USUBJID": "str",
+     "ARM": "str",
+     "SEX": "str",
+     "RACE": "str",
+     "AGEGR1": "str",
+     "SITEID": "int64",
+     "EOSSTT": "str",
+     "DCSREAS": "str",
+     "SAFFL": "str",
+     "ITTFL": "str",
+     "AGE": "float64",
+     "BMIBL": "float64",
+     "HEIGHTBL": "float64",
+     "WEIGHTBL": "float64",
+     "TRTDURD": "float64",
+     "CUMDOSE": "float64",
+     "TRTSDT": "str",
+     "TRTEDT": "str"
+    },
+    "numeric_columns": [
+     "SITEID",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE"
+    ],
+    "categorical_columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "source_file_size_bytes": 5321
+   }
+  },
+  "get_dataset_metadata_dataset_metadata_get": {
+   "tool": "get_dataset_metadata_dataset_metadata_get",
+   "args": {},
+   "output": {
+    "available": false,
+    "message": "No embedded metadata for this file type. CDISC Dataset-JSON (.json, .ndjson, .dsjc) and SAS files (.xpt, .sas7bdat) carry dataset- and variable-level metadata; CSV and Parquet do not."
+   }
+  },
+  "get_expression_samples_table_expression_samples_get": {
+   "tool": "get_expression_samples_table_expression_samples_get",
+   "args": {},
+   "output": {
+    "numeric_samples": [
+     {
+      "column": "SITEID",
+      "min": 701.0,
+      "max": 718.0,
+      "sample": 709.5
+     },
+     {
+      "column": "AGE",
+      "min": 57.0,
+      "max": 87.0,
+      "sample": 78.0
+     },
+     {
+      "column": "BMIBL",
+      "min": 18.8,
+      "max": 32.3,
+      "sample": 24.15
+     }
+    ],
+    "categorical_samples": [
+     {
+      "column": "STUDYID",
+      "values": [
+       "CDISCPILOT01"
+      ]
+     },
+     {
+      "column": "USUBJID",
+      "values": [
+       "01-701-1130",
+       "01-701-1148",
+       "01-701-1188"
+      ]
+     },
+     {
+      "column": "ARM",
+      "values": [
+       "Placebo",
+       "Xanomeline High Dose",
+       "Xanomeline Low Dose"
+      ]
+     }
+    ],
+    "flag_columns": [
+     "SAFFL",
+     "ITTFL"
+    ],
+    "date_columns": [
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "all_columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "SITEID",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE",
+     "TRTSDT",
+     "TRTEDT"
+    ]
+   }
+  },
+  "get_feature_boxplot_feature_boxplot__feature__get": {
+   "tool": "get_feature_boxplot_feature_boxplot__feature__get",
+   "args": {
+    "feature": "BMIBL"
+   },
+   "output": {
+    "feature": "BMIBL",
+    "min": 18.8,
+    "q1": 21.825,
+    "median": 24.15,
+    "q3": 27.200000000000003,
+    "max": 32.3,
+    "outliers": []
+   }
+  },
+  "get_feature_comparison_feature_comparison_get": {
+   "tool": "get_feature_comparison_feature_comparison_get",
+   "args": {
+    "feature1": "HEIGHTBL",
+    "feature2": "WEIGHTBL"
+   },
+   "output": {
+    "feature1": "HEIGHTBL",
+    "feature2": "WEIGHTBL",
+    "filter_applied": null,
+    "data": [
+     {
+      "HEIGHTBL": 169.7,
+      "WEIGHTBL": 79.4
+     },
+     {
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 87.1
+     },
+     {
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 101.2
+     },
+     {
+      "HEIGHTBL": 144.8,
+      "WEIGHTBL": 49.9
+     },
+     {
+      "HEIGHTBL": 162.6,
+      "WEIGHTBL": 55.8
+     },
+     {
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 80.3
+     },
+     {
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 68.5
+     },
+     {
+      "HEIGHTBL": 173.0,
+      "WEIGHTBL": 78.5
+     }
+    ]
+   }
+  },
+  "get_feature_histogram_feature_histogram__feature__get": {
+   "tool": "get_feature_histogram_feature_histogram__feature__get",
+   "args": {
+    "feature": "AGE",
+    "bins": 8
+   },
+   "output": {
+    "counts": [
+     2,
+     0,
+     4,
+     3,
+     7,
+     6,
+     7,
+     7
+    ],
+    "bins": [
+     57.0,
+     60.75,
+     64.5,
+     68.25,
+     72.0,
+     75.75,
+     79.5,
+     83.25,
+     87.0
+    ],
+    "feature": "AGE"
+   }
+  },
+  "get_feature_stats_feature_stats_get": {
+   "tool": "get_feature_stats_feature_stats_get",
+   "args": {
+    "features": [
+     "AGE",
+     "BMIBL"
+    ]
+   },
+   "output": [
+    {
+     "feature": "AGE",
+     "mean": 76.13888888888889,
+     "median": 78.0,
+     "std": 7.623845215704203,
+     "min": 57.0,
+     "max": 87.0,
+     "missing_values": 0,
+     "unique_values": 20
+    },
+    {
+     "feature": "BMIBL",
+     "mean": 24.66111111111111,
+     "median": 24.15,
+     "std": 3.7354118363711364,
+     "min": 18.8,
+     "max": 32.3,
+     "missing_values": 0,
+     "unique_values": 33
+    }
+   ]
+  },
+  "get_group_analysis_feature_group_analysis_get": {
+   "tool": "get_group_analysis_feature_group_analysis_get",
+   "args": {
+    "feature": "AGE",
+    "group_by": "ARM"
+   },
+   "output": {
+    "feature": "AGE",
+    "grouped_by": "ARM",
+    "analysis": {
+     "Placebo": {
+      "count": 12,
+      "mean": 76.5,
+      "median": 75.5,
+      "std": 7.786935445755515,
+      "min": 66.0,
+      "max": 87.0
+     },
+     "Xanomeline High Dose": {
+      "count": 12,
+      "mean": 75.25,
+      "median": 78.5,
+      "std": 7.4848331492911235,
+      "min": 57.0,
+      "max": 84.0
+     },
+     "Xanomeline Low Dose": {
+      "count": 12,
+      "mean": 76.66666666666667,
+      "median": 79.5,
+      "std": 8.18350151033755,
+      "min": 60.0,
+      "max": 87.0
+     }
+    }
+   }
+  },
+  "get_histogram_data_chart_histogram_post": {
+   "tool": "get_histogram_data_chart_histogram_post",
+   "args": {
+    "column": "AGE",
+    "bins": 6
+   },
+   "output": {
+    "chart_data": [
+     {
+      "bin_start": 57.0,
+      "bin_end": 62.0,
+      "count": 2
+     },
+     {
+      "bin_start": 62.0,
+      "bin_end": 67.0,
+      "count": 1
+     },
+     {
+      "bin_start": 67.0,
+      "bin_end": 72.0,
+      "count": 6
+     },
+     {
+      "bin_start": 72.0,
+      "bin_end": 77.0,
+      "count": 7
+     },
+     {
+      "bin_start": 77.0,
+      "bin_end": 82.0,
+      "count": 8
+     },
+     {
+      "bin_start": 82.0,
+      "bin_end": 87.0,
+      "count": 12
+     }
+    ],
+    "column": "AGE",
+    "chart_type": "histogram",
+    "is_numeric": true,
+    "total_count": 36,
+    "stats": {
+     "mean": 76.13888888888889,
+     "median": 78.0,
+     "std": 7.623845215704203,
+     "min": 57.0,
+     "max": 87.0
+    }
+   }
+  },
+  "get_table_data_table_data_post": {
+   "tool": "get_table_data_table_data_post",
+   "args": {
+    "page": 1,
+    "page_size": 10
+   },
+   "output": {
+    "data": [
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1130",
+      "ARM": "Placebo",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 701,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 84.0,
+      "BMIBL": 27.6,
+      "HEIGHTBL": 169.7,
+      "WEIGHTBL": 79.4,
+      "TRTDURD": 183.0,
+      "CUMDOSE": 0.0,
+      "TRTSDT": "2014-02-15",
+      "TRTEDT": "2014-08-16"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1148",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "<65",
+      "SITEID": 701,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 57.0,
+      "BMIBL": 28.3,
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 87.1,
+      "TRTDURD": 182.0,
+      "CUMDOSE": 14040.0,
+      "TRTSDT": "2013-08-23",
+      "TRTEDT": "2014-02-20"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-701-1188",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 701,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 71.0,
+      "BMIBL": 32.0,
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 101.2,
+      "TRTDURD": 38.0,
+      "CUMDOSE": 2052.0,
+      "TRTSDT": "2013-02-15",
+      "TRTEDT": "2013-03-24"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1210",
+      "ARM": "Placebo",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "COMPLETED",
+      "DCSREAS": null,
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 72.0,
+      "BMIBL": 23.8,
+      "HEIGHTBL": 144.8,
+      "WEIGHTBL": 49.9,
+      "TRTDURD": 175.0,
+      "CUMDOSE": 0.0,
+      "TRTSDT": "2013-03-16",
+      "TRTEDT": "2013-09-06"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1279",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "F",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "WITHDRAWAL BY SUBJECT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 72.0,
+      "BMIBL": 21.1,
+      "HEIGHTBL": 162.6,
+      "WEIGHTBL": 55.8,
+      "TRTDURD": 22.0,
+      "CUMDOSE": 1188.0,
+      "TRTSDT": "2013-05-13",
+      "TRTEDT": "2013-06-03"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-703-1403",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 703,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 67.0,
+      "BMIBL": 25.4,
+      "HEIGHTBL": 177.8,
+      "WEIGHTBL": 80.3,
+      "TRTDURD": 2.0,
+      "CUMDOSE": 108.0,
+      "TRTSDT": "2012-12-12",
+      "TRTEDT": "2012-12-13"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-704-1325",
+      "ARM": "Xanomeline Low Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": ">80",
+      "SITEID": 704,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "PROTOCOL VIOLATION",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 81.0,
+      "BMIBL": 22.3,
+      "HEIGHTBL": 175.3,
+      "WEIGHTBL": 68.5,
+      "TRTDURD": 73.0,
+      "CUMDOSE": 3942.0,
+      "TRTSDT": "2014-04-23",
+      "TRTEDT": "2014-07-04"
+     },
+     {
+      "STUDYID": "CDISCPILOT01",
+      "USUBJID": "01-704-1332",
+      "ARM": "Xanomeline High Dose",
+      "SEX": "M",
+      "RACE": "WHITE",
+      "AGEGR1": "65-80",
+      "SITEID": 704,
+      "EOSSTT": "DISCONTINUED",
+      "DCSREAS": "ADVERSE EVENT",
+      "SAFFL": "Y",
+      "ITTFL": "Y",
+      "AGE": 80.0,
+      "BMIBL": 26.2,
+      "HEIGHTBL": 173.0,
+      "WEIGHTBL": 78.5,
+      "TRTDURD": 68.0,
+      "CUMDOSE": 5103.0,
+      "TRTSDT": "2013-12-09",
+      "TRTEDT": "2014-02-14"
+     }
+    ],
+    "page": 1,
+    "page_size": 10,
+    "total_rows": 36,
+    "total_pages": 4,
+    "filtered_rows": 36,
+    "unfiltered_rows": 36
+   }
+  },
+  "get_table_summary_table_summary_post": {
+   "tool": "get_table_summary_table_summary_post",
+   "args": {
+    "page": 1,
+    "page_size": 10
+   },
+   "output": {
+    "total_rows": 36,
+    "unfiltered_rows": 36,
+    "columns": [
+     "STUDYID",
+     "USUBJID",
+     "ARM",
+     "SEX",
+     "RACE",
+     "AGEGR1",
+     "SITEID",
+     "EOSSTT",
+     "DCSREAS",
+     "SAFFL",
+     "ITTFL",
+     "AGE",
+     "BMIBL",
+     "HEIGHTBL",
+     "WEIGHTBL",
+     "TRTDURD",
+     "CUMDOSE",
+     "TRTSDT",
+     "TRTEDT"
+    ],
+    "missing_values": {
+     "total_missing_cells": 12,
+     "total_cells": 684,
+     "missing_percentage": 1.75,
+     "by_column": {
+      "STUDYID": 0,
+      "USUBJID": 0,
+      "ARM": 0,
+      "SEX": 0,
+      "RACE": 0,
+      "AGEGR1": 0,
+      "SITEID": 0,
+      "EOSSTT": 0,
+      "DCSREAS": 12,
+      "SAFFL": 0,
+      "ITTFL": 0,
+      "AGE": 0,
+      "BMIBL": 0,
+      "HEIGHTBL": 0,
+      "WEIGHTBL": 0,
+      "TRTDURD": 0,
+      "CUMDOSE": 0,
+      "TRTSDT": 0,
+      "TRTEDT": 0
+     },
+     "columns_with_most_missing": [
+      [
+       "DCSREAS",
+       12
+      ],
+      [
+       "STUDYID",
+       0
+      ],
+      [
+       "USUBJID",
+       0
+      ],
+      [
+       "ARM",
+       0
+      ],
+      [
+       "SEX",
+       0
+      ],
+      [
+       "RACE",
+       0
+      ],
+      [
+       "AGEGR1",
+       0
+      ],
+      [
+       "SITEID",
+       0
+      ],
+      [
+       "EOSSTT",
+       0
+      ],
+      [
+       "SAFFL",
+       0
+      ]
+     ]
+    }
+   }
+  },
+  "get_target_correlation_correlation_target_get": {
+   "tool": "get_target_correlation_correlation_target_get",
+   "args": {
+    "target": "AGE"
+   },
+   "output": {
+    "SITEID": 0.4250430679377248,
+    "BMIBL": -0.07765895221169583,
+    "HEIGHTBL": -0.1240648851475521,
+    "WEIGHTBL": -0.16399844395132565,
+    "TRTDURD": -0.13373467926904384,
+    "CUMDOSE": -0.2587468553209891
+   }
+  },
+  "get_time_series_data_chart_time_series_post": {
+   "tool": "get_time_series_data_chart_time_series_post",
+   "args": {
+    "date_column": "TRTSDT",
+    "value_column": "AGE",
+    "aggregation": "mean"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "x": "2012-07-15T12:43:12",
+      "y": 87.0
+     },
+     {
+      "x": "2012-07-28T14:09:36",
+      "y": 70.0
+     },
+     {
+      "x": "2012-09-18T19:55:12",
+      "y": 67.0
+     },
+     {
+      "x": "2012-11-23T03:07:12",
+      "y": 74.0
+     },
+     {
+      "x": "2012-12-06T04:33:36",
+      "y": 69.5
+     },
+     {
+      "x": "2012-12-19T06:00:00",
+      "y": 82.0
+     },
+     {
+      "x": "2013-01-01T07:26:24",
+      "y": 82.0
+     },
+     {
+      "x": "2013-01-27T10:19:12",
+      "y": 83.5
+     }
+    ],
+    "chart_type": "time_series",
+    "date_column": "TRTSDT",
+    "value_column": "AGE",
+    "aggregation": "mean"
+   }
+  },
+  "get_value_counts_feature_value_counts__feature__get": {
+   "tool": "get_value_counts_feature_value_counts__feature__get",
+   "args": {
+    "feature": "RACE",
+    "limit": 5
+   },
+   "output": {
+    "feature": "RACE",
+    "value_counts": {
+     "WHITE": 29,
+     "BLACK OR AFRICAN AMERICAN": 7
+    },
+    "total_unique": 2,
+    "showing_top": 2
+   }
+  },
+  "get_xy_chart_data_chart_xy_data_post": {
+   "tool": "get_xy_chart_data_chart_xy_data_post",
+   "args": {
+    "x_column": "HEIGHTBL",
+    "y_column": "WEIGHTBL"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "x": 169.7,
+      "y": 79.4
+     },
+     {
+      "x": 175.3,
+      "y": 87.1
+     },
+     {
+      "x": 177.8,
+      "y": 101.2
+     },
+     {
+      "x": 144.8,
+      "y": 49.9
+     },
+     {
+      "x": 162.6,
+      "y": 55.8
+     },
+     {
+      "x": 177.8,
+      "y": 80.3
+     },
+     {
+      "x": 175.3,
+      "y": 68.5
+     },
+     {
+      "x": 173.0,
+      "y": 78.5
+     }
+    ],
+    "chart_type": "scatter",
+    "x_column": "HEIGHTBL",
+    "y_column": "WEIGHTBL",
+    "sampled": false,
+    "total_points": 36
+   }
+  },
+  "variant__bar_mean": {
+   "tool": "get_bar_chart_data_chart_bar_aggregation_post",
+   "args": {
+    "category_column": "AGEGR1",
+    "aggregation": "mean:WEIGHTBL"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "label": "<65",
+      "value": 81.19999999999999
+     },
+     {
+      "label": ">80",
+      "value": 66.3076923076923
+     },
+     {
+      "label": "65-80",
+      "value": 65.69047619047619
+     }
+    ],
+    "category_column": "AGEGR1",
+    "aggregation": "mean:WEIGHTBL",
+    "total_categories": 3
+   }
+  },
+  "variant__boxplot_with_outliers": {
+   "tool": "get_feature_boxplot_feature_boxplot__feature__get",
+   "args": {
+    "feature": "WEIGHTBL"
+   },
+   "output": {
+    "feature": "WEIGHTBL",
+    "min": 45.8,
+    "q1": 54.4,
+    "median": 66.9,
+    "q3": 77.15,
+    "max": 101.2,
+    "outliers": []
+   }
+  },
+  "variant__histogram_categorical": {
+   "tool": "get_histogram_data_chart_histogram_post",
+   "args": {
+    "column": "RACE"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "label": "WHITE",
+      "count": 29
+     },
+     {
+      "label": "BLACK OR AFRICAN AMERICAN",
+      "count": 7
+     }
+    ],
+    "column": "RACE",
+    "chart_type": "categorical_histogram",
+    "is_numeric": false,
+    "total_count": 36,
+    "unique_count": 2
+   }
+  },
+  "variant__value_counts_arm": {
+   "tool": "get_value_counts_feature_value_counts__feature__get",
+   "args": {
+    "feature": "EOSSTT"
+   },
+   "output": {
+    "feature": "EOSSTT",
+    "value_counts": {
+     "DISCONTINUED": 24,
+     "COMPLETED": 12
+    },
+    "total_unique": 2,
+    "showing_top": 2
+   }
+  },
+  "variant__xy_bucketed_numeric_x": {
+   "tool": "get_xy_chart_data_chart_xy_data_post",
+   "args": {
+    "x_column": "AGE",
+    "y_column": "WEIGHTBL",
+    "aggregation": "mean"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "x": 57.3,
+      "y": 87.1
+     },
+     {
+      "x": 60.3,
+      "y": 75.3
+     },
+     {
+      "x": 66.3,
+      "y": 54.0
+     },
+     {
+      "x": 66.9,
+      "y": 67.0
+     },
+     {
+      "x": 69.3,
+      "y": 49.0
+     },
+     {
+      "x": 69.9,
+      "y": 69.2
+     },
+     {
+      "x": 71.1,
+      "y": 101.2
+     },
+     {
+      "x": 72.3,
+      "y": 61.125
+     }
+    ],
+    "chart_type": "area",
+    "x_column": "AGE",
+    "y_column": "WEIGHTBL",
+    "aggregation": "mean"
+   }
+  },
+  "variant__xy_categorical_x": {
+   "tool": "get_xy_chart_data_chart_xy_data_post",
+   "args": {
+    "x_column": "ARM",
+    "y_column": "AGE",
+    "aggregation": "mean"
+   },
+   "output": {
+    "chart_data": [
+     {
+      "x": "Placebo",
+      "y": 76.5
+     },
+     {
+      "x": "Xanomeline High Dose",
+      "y": 75.25
+     },
+     {
+      "x": "Xanomeline Low Dose",
+      "y": 76.66666666666667
+     }
+    ],
+    "chart_type": "area",
+    "x_column": "ARM",
+    "y_column": "AGE",
+    "aggregation": "mean"
+   }
+  }
+ }
+}
