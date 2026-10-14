@@ -77,7 +77,8 @@ app can reach it, and the app creates the file with sensible defaults when it st
 supported; the app finds where Domino mounted the dataset (`/mnt/data/<project>` or `/domino/datasets/local/<project>`).
 
 To keep the settings somewhere else, set `CHAT_TOOL_POLICY_DATASET` to another dataset's name or `CHAT_TOOL_POLICY_PATH` to a
-full file path.
+full file path. If no dataset is mounted and neither is set, the app still runs: the chat assistant uses the built-in defaults
+and the settings page explains that changes can't be saved until a location is available.
 
 **Do not add extension users as collaborators on the extension project.** Anyone with access to the project can edit the
 settings file directly, and Owners and Contributors of the project are the administrators of the settings page. Users of the

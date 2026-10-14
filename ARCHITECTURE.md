@@ -85,8 +85,11 @@ can run it but its output is hidden from the model and shown to the user in a re
   Flask; only the chat agent uses `/mcp`. Maintenance and loading routes are tagged `internal` and are not MCP tools.
 - **Errors never leak data.** A failed user-only call shows the user the full error but tells the model only what the
   server marked `model_safe_detail` (`mcp_server/errors.py`), else a generic message.
-- **Fail closed.** An unreadable policy file means no data tools; an unverifiable admin is denied; an unmounted
-  settings dataset blocks saving rather than writing to ephemeral disk.
+- **Fail closed on bad settings, not on missing storage.** A policy file that was read and is corrupt or invalid means
+  no data tools, because it holds an admin's choices. A file that can't be reached (no dataset mounted, a broken or
+  unreadable mount) uses the last policy that process read from that path, else the built-in defaults, so storage
+  trouble never takes the assistant's tools away. An unverifiable admin is denied, and an unmounted settings dataset
+  blocks saving rather than writing to ephemeral disk. `CHAT_TOOL_POLICY_PATH` overrides the location.
 - **Storage** is a JSON file in the project's default dataset (network storage mounted into every replica; found for
   both Git-based and DFS projects, seeded with defaults at app start), written atomically with an optimistic revision
   check. Each chat request costs one `stat()`.

@@ -7,10 +7,14 @@ file in the working directory. See `backend.config.get_chat_tool_policy_path`.
 
 Failure semantics (deterministic):
 
-- file missing                         -> built-in defaults
-- file corrupt / fails validation      -> `PolicyInvalid` (callers fail closed)
-- read error after a successful load   -> last known good policy, WARNING
-- dataset not mounted / not writable   -> reads use defaults; saves are refused
+- file missing (incl. dataset not mounted) -> built-in defaults
+- file can't be reached (broken mount,     -> last known good policy if this process
+  no permission, path not a folder, ...)      read one, else built-in defaults; WARNING
+- file corrupt / fails validation          -> `PolicyInvalid` (callers fail closed)
+- dataset not mounted / not writable       -> saves are refused, and `status()` says why
+
+So a missing or flaky dataset never takes the assistant's tools away; only a file
+that was read and found invalid does, because it holds settings an admin chose.
 """
 import json
 import logging
@@ -30,6 +34,8 @@ logger = logging.getLogger(__name__)
 
 CHANGE_LOG_LIMIT = 50
 DEFAULT_MODE_CHANGE_KEY = "(default for new tools)"
+# Appended to `status()` errors for a policy file that can't be reached.
+FALLBACK_NOTE = "Until then, the chat assistant uses the last settings it read, or the built-in defaults."
 
 
 class ToolMode(str, Enum):
@@ -74,7 +80,7 @@ def default_policy() -> ChatToolPolicy:
 
 
 class PolicyInvalid(Exception):
-    """The policy file exists but can't be trusted. Callers must fail closed."""
+    """The policy file was read but its content can't be trusted. Callers must fail closed."""
 
 
 class PolicyConflict(Exception):
@@ -123,6 +129,8 @@ class ChatToolPolicyStore:
         self._cache_key: Optional[Tuple[str, int, int]] = None
         self._cached: Optional[ChatToolPolicy] = None
         self._last_good: Optional[ChatToolPolicy] = None
+        self._last_good_path: Optional[str] = None
+        self._unreachable_logged: Optional[str] = None
 
     # ----- paths / status -----
 
@@ -131,11 +139,22 @@ class ChatToolPolicyStore:
 
     def status(self) -> StoreStatus:
         path = self.path()
+        try:
+            return self._status(path)
+        except OSError as exc:  # e.g. a broken network mount
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=f"The policy file location can't be reached: {exc}. {FALLBACK_NOTE}",
+            )
+
+    def _status(self, path: Path) -> StoreStatus:
+        override = config.get_chat_tool_policy_path_override()
         parent = path.parent
         # The policy folder is created on first write, so only its parent has to exist.
         folder_creatable = not parent.is_dir() and parent.parent.is_dir()
         if not parent.is_dir() and not folder_creatable:
-            if config.get_domino_run_id() and not os.environ.get("CHAT_TOOL_POLICY_PATH"):
+            if config.get_domino_run_id() and not override:
                 dataset = config.get_chat_tool_policy_dataset()
                 error = (
                     f"The dataset '{dataset}' that holds the chat tool settings is not mounted "
@@ -144,9 +163,25 @@ class ChatToolPolicyStore:
                     "or CHAT_TOOL_POLICY_PATH at another location. Changes can't be saved until then."
                 )
             else:
-                error = f"The directory for the policy file does not exist: {parent}"
-            return StoreStatus(durable=False, path=str(path), error=error)
+                error = f"The directory for the policy file does not exist: {parent}."
+            return StoreStatus(durable=False, path=str(path), error=f"{error} {FALLBACK_NOTE}")
+        if path.is_dir():
+            setting = "CHAT_TOOL_POLICY_PATH" if override else "The policy file path"
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=(
+                    f"{setting} points at a folder, not a file: {path}. Use a file path such as "
+                    f"{path / config.CHAT_TOOL_POLICY_FILE_NAME}. {FALLBACK_NOTE}"
+                ),
+            )
         writable_dir = parent.parent if folder_creatable else parent
+        if path.exists() and not os.access(path, os.R_OK):
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=f"The policy file can't be read (permission denied): {path}. {FALLBACK_NOTE}",
+            )
         if path.exists():
             writable = os.access(path, os.W_OK) and os.access(parent, os.W_OK)
         else:
@@ -164,8 +199,9 @@ class ChatToolPolicyStore:
     def load(self) -> ChatToolPolicy:
         """Return the current policy (a copy the caller may keep for one request).
 
-        Raises `PolicyInvalid` when the file is corrupt, fails validation, or
-        can't be read and there is no last known good policy.
+        Raises `PolicyInvalid` only when the file was read and is corrupt or fails
+        validation. A file that can't be reached gives the last known good policy,
+        else the built-in defaults.
         """
         path = self.path()
         try:
@@ -175,7 +211,7 @@ class ChatToolPolicyStore:
             self._cached = None
             return default_policy()
         except OSError as exc:
-            return self._last_good_or_raise(path, exc)
+            return self._last_good_or_defaults(path, exc)
 
         key = (str(path), stat.st_mtime_ns, stat.st_size)
         with self._lock:
@@ -187,26 +223,36 @@ class ChatToolPolicyStore:
         except FileNotFoundError:
             return default_policy()
         except OSError as exc:
-            return self._last_good_or_raise(path, exc)
+            return self._last_good_or_defaults(path, exc)
 
         with self._lock:
-            self._cache_key, self._cached, self._last_good = key, policy, policy
+            self._cache_key, self._cached = key, policy
+            self._last_good, self._last_good_path = policy, str(path)
+            self._unreachable_logged = None
         return policy.model_copy(deep=True)
 
     def _parse(self, path: Path) -> ChatToolPolicy:
-        raw = path.read_text(encoding="utf-8")
+        """Read and validate the file. I/O errors (OSError) propagate to the caller."""
         try:
-            return ChatToolPolicy.model_validate(json.loads(raw))
-        except (ValueError, ValidationError) as exc:  # JSONDecodeError is a ValueError
+            return ChatToolPolicy.model_validate(json.loads(path.read_text(encoding="utf-8")))
+        except (ValueError, ValidationError) as exc:  # JSONDecodeError and UnicodeDecodeError are ValueErrors
             logger.error("Chat tool policy file %s is invalid: %s", path, exc)
             raise PolicyInvalid(f"The chat tool policy file {path} is invalid: {exc}") from exc
 
-    def _last_good_or_raise(self, path: Path, exc: OSError) -> ChatToolPolicy:
-        if self._last_good is not None:
-            logger.warning("Could not read chat tool policy %s (%s); using last known good policy", path, exc)
-            return self._last_good.model_copy(deep=True)
-        logger.error("Could not read chat tool policy %s: %s", path, exc)
-        raise PolicyInvalid(f"The chat tool policy file {path} could not be read: {exc}") from exc
+    def _last_good_or_defaults(self, path: Path, exc: OSError) -> ChatToolPolicy:
+        """The file can't be reached (broken or missing mount, no permission, a path
+        component that isn't a folder). Keep the app working: use the policy this process
+        last read, else the built-in defaults. Logged once per distinct error, not on
+        every chat request."""
+        last_good = self._last_good if self._last_good_path == str(path) else None
+        fallback = "last known good policy" if last_good is not None else "built-in defaults"
+        message = f"Could not read chat tool policy {path} ({exc}); using the {fallback}"
+        if self._unreachable_logged != message:
+            logger.warning(message)
+            self._unreachable_logged = message
+        if last_good is not None:
+            return last_good.model_copy(deep=True)
+        return default_policy()
 
     # ----- seeding -----
 
@@ -317,6 +363,7 @@ class ChatToolPolicyStore:
         stat = self.path().stat()
         self._cache_key = (str(self.path()), stat.st_mtime_ns, stat.st_size)
         self._cached = self._last_good = saved
+        self._last_good_path = str(self.path())
         return saved.model_copy(deep=True)
 
     @staticmethod
@@ -362,7 +409,7 @@ def seed_default_policy() -> bool:
     Skipped in plain local development (no Domino run and no explicit path), so running the
     app or tests locally doesn't drop files into the working directory. Never raises.
     """
-    if not (config.get_domino_run_id() or os.environ.get("CHAT_TOOL_POLICY_PATH")):
+    if not (config.get_domino_run_id() or config.get_chat_tool_policy_path_override()):
         return False
     try:
         return get_policy_store().seed_if_missing()

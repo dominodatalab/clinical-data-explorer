@@ -228,12 +228,14 @@ The policy is enforced on the server (the model is never offered an Off tool, an
 
 **Who is an admin:** the Owner or a Contributor of the project the app runs in, checked server-side through the Domino API with the visiting user's own token. If the check can't be completed, access is denied.
 
-**Where the settings live:** one file, `.clinical-data-explorer/chat_tool_policy.json`, in the extension project's *default dataset* (the one Domino creates for every project, named after the project; Git-based and DFS projects are both detected). The app creates it with defaults when it starts, so there is nothing to set up, and users of the extension need no access to the project. Each app replica reads it on every chat request, so a save reaches all replicas. Locally, it is `./.chat_tool_policy.json`. If the file is unreadable the assistant runs with no data tools (and says so) rather than guessing.
+**Where the settings live:** one file, `.clinical-data-explorer/chat_tool_policy.json`, in the extension project's *default dataset* (the one Domino creates for every project, named after the project; Git-based and DFS projects are both detected). The app creates it with defaults when it starts, so there is nothing to set up, and users of the extension need no access to the project. Each app replica reads it on every chat request, so a save reaches all replicas. Locally, it is `./.chat_tool_policy.json`. Set `CHAT_TOOL_POLICY_PATH` to keep it anywhere else.
+
+**If the settings can't be reached:** when no dataset is mounted (and no `CHAT_TOOL_POLICY_PATH` is set), or the mount is broken or not readable, the assistant keeps working with the last settings it read, or the built-in defaults (every tool On except `get_dataset_data`). The settings page says why and refuses to save until the location is fixed. Only a settings file that was read and found corrupt or invalid takes the assistant's data tools away (and it says so), because that file holds choices an admin made.
 
 | Variable | Description |
 |----------|-------------|
 | `CHAT_TOOL_POLICY_DATASET` | Name of the Domino Dataset holding the policy file (default: the project's default dataset, i.e. the project name) |
-| `CHAT_TOOL_POLICY_PATH` | Full path of the policy file; overrides the dataset lookup |
+| `CHAT_TOOL_POLICY_PATH` | Optional. Full path of the policy file (`~` is expanded); overrides the dataset lookup. Blank counts as unset |
 | `CHAT_TOOL_ADMIN_USERNAMES` | Comma-separated usernames that are also admins. Use for local development (set it to the mock user's `userName`, with `DEV_MODE=dev`) and as a break-glass option |
 | `CHAT_USER_ONLY_RESULT_MAX_BYTES` | Cap on one Hidden-from-AI result kept in chat history (default: `262144`, or 256 KB); larger results are truncated |
 

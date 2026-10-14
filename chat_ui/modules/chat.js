@@ -379,9 +379,12 @@ export function displayToolResult(result) {
             : result.content;
         const output = renderToolOutput(content, { renderChart: renderChartSpec });
         body.appendChild(output);
+        const hasChart = !!output.querySelector('.tool-output-chart');
+        // A chart has no intrinsic width, so without this the card shrinks to its header.
+        if (hasChart) card.classList.add('tool-result-wide');
         if (result.truncated) {
             const size = formatBytes(result.size_bytes);
-            const charted = output.querySelector('.tool-output-chart') ? ' Charts are drawn from that part only.' : '';
+            const charted = hasChart ? ' Charts are drawn from that part only.' : '';
             body.appendChild(textElement(
                 'div',
                 'tool-output-note',

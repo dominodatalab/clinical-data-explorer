@@ -1,6 +1,9 @@
+import errno
 import json
+import logging
 import os
 import threading
+from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
@@ -173,10 +176,70 @@ def test_read_error_after_good_load_uses_last_known_good(store, monkeypatch, cap
     assert "last known good" in caplog.text
 
 
-def test_read_error_without_last_known_good_fails_closed(store, monkeypatch):
-    monkeypatch.setattr(
-        type(store.path()), "stat", lambda self, **kw: (_ for _ in ()).throw(PermissionError("denied"))
-    )
+def _raise_on_stat(monkeypatch, error):
+    monkeypatch.setattr(Path, "stat", lambda self, **kw: (_ for _ in ()).throw(error))
+
+
+@pytest.mark.parametrize("error", [
+    PermissionError(errno.EACCES, "Permission denied"),
+    OSError(errno.ENOTCONN, "Transport endpoint is not connected"),  # a broken network mount
+    OSError(errno.ESTALE, "Stale file handle"),
+    OSError(errno.EIO, "Input/output error"),
+])
+def test_unreachable_file_without_last_known_good_uses_defaults(store, monkeypatch, caplog, error):
+    _raise_on_stat(monkeypatch, error)
+
+    with caplog.at_level("WARNING"):
+        assert store.load() == default_policy()
+
+    assert "built-in defaults" in caplog.text
+
+
+def test_unreachable_file_is_logged_once_not_on_every_request(store, monkeypatch, caplog):
+    _raise_on_stat(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
+
+    with caplog.at_level("WARNING"):
+        for _ in range(5):
+            store.load()
+
+    assert len([r for r in caplog.records if r.levelno == logging.WARNING]) == 1
+
+
+def test_last_known_good_is_only_used_for_the_same_file(tmp_path, monkeypatch):
+    paths = iter([tmp_path / "a.json", tmp_path / "b.json"])
+    current = {"path": next(paths)}
+    store = ChatToolPolicyStore(lambda: str(current["path"]))
+    store.save(_policy(a="disabled"), 0, "alice")
+    store.load()
+
+    current["path"] = next(paths)  # e.g. CHAT_TOOL_POLICY_PATH changed
+    _raise_on_stat(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
+
+    assert store.load() == default_policy()
+
+
+def test_path_through_a_file_uses_defaults(tmp_path):
+    (tmp_path / "dataset").write_text("not a folder")
+    store = ChatToolPolicyStore(lambda: str(tmp_path / "dataset" / ".clinical-data-explorer" / "chat_tool_policy.json"))
+
+    assert store.load() == default_policy()
+    assert store.status().durable is False
+
+
+def test_path_that_is_a_folder_uses_defaults_and_refuses_saves(tmp_path):
+    store = ChatToolPolicyStore(lambda: str(tmp_path))
+
+    assert store.load() == default_policy()
+    status = store.status()
+    assert status.durable is False
+    assert "folder, not a file" in status.error
+    assert str(tmp_path / "chat_tool_policy.json") in status.error
+    with pytest.raises(PolicyStoreUnavailable):
+        store.save(default_policy(), 0, "alice")
+
+
+def test_file_that_is_not_utf8_fails_closed(store, tmp_path):
+    (tmp_path / "chat_tool_policy.json").write_bytes(b"\xff\xfe{")
 
     with pytest.raises(PolicyInvalid):
         store.load()
@@ -250,6 +313,30 @@ def test_status_durable_when_directory_writable(store):
     assert store.status().error is None
 
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root ignores file permissions")
+def test_status_not_durable_when_the_file_is_unreadable(store, tmp_path):
+    store.save(default_policy(), 0, "alice")
+    (tmp_path / "chat_tool_policy.json").chmod(0o200)
+    try:
+        status = store.status()
+        assert status.durable is False
+        assert "can't be read" in status.error
+    finally:
+        (tmp_path / "chat_tool_policy.json").chmod(0o600)
+
+
+def test_status_never_raises_on_a_broken_mount(store, monkeypatch):
+    def broken(*args, **kwargs):
+        raise OSError(errno.ENOTCONN, "Transport endpoint is not connected")
+    monkeypatch.setattr(ChatToolPolicyStore, "_status", broken)
+
+    status = store.status()
+
+    assert status.durable is False
+    assert "can't be reached" in status.error
+    assert "built-in defaults" in status.error
+
+
 def test_status_not_durable_when_directory_missing(tmp_path):
     store = ChatToolPolicyStore(lambda: str(tmp_path / "missing" / "deeper" / "chat_tool_policy.json"))
 
@@ -289,6 +376,30 @@ def test_explicit_path_wins(monkeypatch, tmp_path):
     monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", str(tmp_path / "x.json"))
 
     assert config.get_chat_tool_policy_path() == str(tmp_path / "x.json")
+
+
+def test_explicit_path_wins_over_a_mounted_dataset(monkeypatch, tmp_path):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    (git_root / "My-Project").mkdir()
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", str(tmp_path / "elsewhere" / "settings.json"))
+
+    assert config.get_chat_tool_policy_path() == str(tmp_path / "elsewhere" / "settings.json")
+
+
+def test_explicit_path_is_trimmed_and_expands_home(monkeypatch, tmp_path):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", "  ~/settings/chat_tool_policy.json  ")
+
+    assert config.get_chat_tool_policy_path() == str(tmp_path / "settings" / "chat_tool_policy.json")
+
+
+@pytest.mark.parametrize("blank", ["", "   ", "\t"])
+def test_blank_explicit_path_counts_as_unset(monkeypatch, tmp_path, blank):
+    git_root, _ = _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", blank)
+
+    assert config.get_chat_tool_policy_path_override() is None
+    assert config.get_chat_tool_policy_path() == _policy_file(git_root / "My-Project")
 
 
 def test_local_dev_uses_gitignored_local_file():
@@ -453,6 +564,31 @@ def test_seed_skips_when_the_dataset_is_not_mounted(monkeypatch, tmp_path):
 
     assert store.seed_if_missing() is False
     assert not (git_root / "My-Project").exists()
+
+
+def test_no_dataset_and_no_override_on_domino_runs_on_defaults(monkeypatch, tmp_path):
+    """The graceful case: nothing mounted at all and no override still gives the built-in defaults."""
+    from backend.chat_tools import policy as policy_module
+
+    _roots(monkeypatch, tmp_path)
+    monkeypatch.setenv("DOMINO_DATASETS_DIR", str(tmp_path / "not-there"))
+    store = ChatToolPolicyStore()
+
+    assert policy_module.seed_default_policy() is False
+    assert store.load() == default_policy()
+    status = store.status()
+    assert status.durable is False
+    assert "not mounted" in status.error and "built-in defaults" in status.error
+
+
+def test_seed_default_policy_hook_ignores_a_blank_override_in_local_dev(monkeypatch, tmp_path):
+    from backend.chat_tools import policy as policy_module
+
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("CHAT_TOOL_POLICY_PATH", "   ")
+
+    assert policy_module.seed_default_policy() is False
+    assert list(tmp_path.iterdir()) == []
 
 
 def test_seed_default_policy_hook_is_skipped_in_plain_local_dev(monkeypatch, tmp_path):

@@ -176,19 +176,30 @@ def get_chat_tool_policy_dataset_dir() -> str:
     return candidates[0]
 
 
+def get_chat_tool_policy_path_override():
+    """CHAT_TOOL_POLICY_PATH with `~` expanded, or None when it is unset or blank.
+
+    A blank value counts as unset, so it can't turn into a file named after
+    whitespace in the working directory."""
+    raw = (os.environ.get("CHAT_TOOL_POLICY_PATH") or "").strip()
+    return os.path.expanduser(raw) if raw else None
+
+
 def get_chat_tool_policy_path() -> str:
     """Resolve where the chat tool policy file lives. First match wins:
 
-    1. CHAT_TOOL_POLICY_PATH: an explicit full path to the file.
+    1. CHAT_TOOL_POLICY_PATH: an explicit full path to the file (an optional override;
+       blank counts as unset).
     2. Local dev (no DOMINO_RUN_ID): ./.chat_tool_policy.json
     3. On Domino: `.clinical-data-explorer/chat_tool_policy.json` inside the project's
        default dataset (or CHAT_TOOL_POLICY_DATASET), wherever Domino mounted it.
 
     The file is seeded with defaults at app start (see `seed_default_policy`), so the
     owner never has to create anything. If the dataset isn't mounted, the store
-    reports that instead of silently writing to ephemeral local disk.
+    reports that instead of silently writing to ephemeral local disk, and the chat
+    uses the built-in defaults (see `backend.chat_tools.policy`).
     """
-    explicit = os.environ.get("CHAT_TOOL_POLICY_PATH")
+    explicit = get_chat_tool_policy_path_override()
     if explicit:
         return explicit
     if not get_domino_run_id():

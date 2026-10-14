@@ -827,3 +827,46 @@ def test_missing_policy_file_uses_built_in_defaults(wired_agent):
 
     # No file: defaults apply (only get_dataset_data is off, and it isn't in this stub catalog).
     assert sorted(model.tool_names[0]) == ["fails", "head", "mean_age"]
+
+
+@pytest.fixture
+def fresh_policy_store(monkeypatch):
+    """A new process-wide store, so no policy read by an earlier test is "last known good"."""
+    from backend.chat_tools import policy as policy_module
+
+    monkeypatch.setattr(policy_module, "_store", None)
+
+
+def test_no_dataset_and_no_override_on_domino_keeps_the_default_tools(
+    wired_agent, fresh_policy_store, tmp_path, monkeypatch,
+):
+    """Nothing mounted and no CHAT_TOOL_POLICY_PATH: the chat keeps working on the built-in defaults."""
+    from backend import config as backend_config
+
+    monkeypatch.delenv("CHAT_TOOL_POLICY_PATH")
+    monkeypatch.delenv("DOMINO_DATASETS_DIR", raising=False)
+    monkeypatch.setenv("DOMINO_RUN_ID", "run")
+    monkeypatch.setenv("DOMINO_PROJECT_NAME", "My-Project")
+    monkeypatch.setattr(backend_config, "GIT_DATASETS_ROOT", str(tmp_path / "mnt_data"))
+    monkeypatch.setattr(backend_config, "DFS_DATASETS_ROOT", str(tmp_path / "domino_datasets_local"))
+    model = wired_agent([])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-no-dataset"))
+
+    assert sorted(model.tool_names[0]) == ["fails", "head", "mean_age"]
+    assert "notice" not in response
+
+
+def test_broken_settings_mount_keeps_the_default_tools(wired_agent, fresh_policy_store, monkeypatch):
+    import errno
+    from pathlib import Path
+
+    def broken(self, **kwargs):
+        raise OSError(errno.ENOTCONN, "Transport endpoint is not connected")
+    monkeypatch.setattr(Path, "stat", broken)
+    model = wired_agent([])
+
+    response = asyncio.run(chat_agent.get_agent_response("go", session_id="s-broken-mount"))
+
+    assert sorted(model.tool_names[0]) == ["fails", "head", "mean_age"]
+    assert "notice" not in response

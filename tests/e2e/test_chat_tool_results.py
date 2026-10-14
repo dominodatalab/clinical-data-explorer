@@ -266,6 +266,25 @@ def test_chartable_output_is_drawn_as_a_chart_first_with_the_table_one_click_awa
     expect(card.get_by_role("button", name="Table")).to_have_attribute("aria-pressed", "true")
 
 
+def test_chart_card_fills_the_row_like_an_agent_chart(page, chat_ui_static_url):
+    card_data = _card("get_feature_comparison_feature_comparison_get")
+    _open_chat(page, chat_ui_static_url, {
+        "chat/history": ok({"messages": []}),
+        "chat": ok({"response": "Displayed above.", "charts": [], "user_only_results": [card_data]}),
+    })
+
+    _send(page, "compare height and weight")
+
+    card = page.locator('[data-testid="tool-result-card"]')
+    expect(card.locator(".highcharts-container")).to_be_visible(timeout=5_000)
+    card_width = card.evaluate("el => el.getBoundingClientRect().width")
+    row_width = page.locator("#chat-box").evaluate("el => el.clientWidth")
+    chart_width = card.locator(".tool-output-chart").evaluate("el => el.getBoundingClientRect().width")
+    # Capped at 92% of the row by max-width; the old shrink-to-fit card was a fraction of that.
+    assert card_width > row_width * 0.8, (card_width, row_width)
+    assert chart_width > row_width * 0.7, (chart_width, row_width)
+
+
 def test_chart_labels_show_data_as_written_and_never_as_markup(page, chat_ui_static_url):
     labels = ["<65", "<b>bold</b>", "<img src=x onerror=\"window.__xss=true\">", "A & B"]
     card_data = {
