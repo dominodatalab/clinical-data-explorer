@@ -63,6 +63,22 @@ def get_domino_api_host():
     return None
 
 
+def get_domino_webvfs_host():
+    """
+    Get the in-cluster WebVFS host (DOMINO_WEBVFS_HOST, e.g. http://127.0.0.1:8763), or None.
+
+    It serves `/webvfs/...` for any app regardless of how the app was reached, unlike the
+    external URL, which is derived from the request's host and 404s on `/webvfs` when the
+    app is served through the `apps.` ingress.
+    """
+    host = (config.get_domino_webvfs_host() or '').strip()
+    if not host:
+        return None
+    if not host.startswith('http'):
+        host = f'http://{host}'
+    return host.rstrip('/')
+
+
 def get_domino_external_url():
     """
     Get the externally-reachable Domino base URL (scheme + host).
