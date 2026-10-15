@@ -7,14 +7,15 @@ file in the working directory. See `backend.config.get_chat_tool_policy_path`.
 
 Failure semantics (deterministic):
 
-- file missing (incl. dataset not mounted) -> built-in defaults
-- file can't be reached (broken mount,     -> last known good policy if this process
-  no permission, path not a folder, ...)      read one, else built-in defaults; WARNING
+- file missing, or can't be reached        -> last known good policy if this process
+  (dataset not mounted, broken mount,         read one, else the built-in defaults
+  no permission, path not a folder, ...)      (restrictive: see DEFAULT_DISABLED_TOOLS)
 - file corrupt / fails validation          -> `PolicyInvalid` (callers fail closed)
 - dataset not mounted / not writable       -> saves are refused, and `status()` says why
 
-So a missing or flaky dataset never takes the assistant's tools away; only a file
-that was read and found invalid does, because it holds settings an admin chose.
+So a missing or flaky dataset never loosens a policy this process has read, and never
+takes the assistant's safe tools away; only a file that was read and found invalid does,
+because it holds settings an admin chose.
 """
 import json
 import logging
@@ -70,12 +71,29 @@ class ChatToolPolicy(BaseModel):
         return entry.mode if entry is not None else self.default_mode
 
 
+# Tools that can hand the model individual records or values. Off in the built-in
+# defaults, which are what a new install is seeded with and what the app falls back to
+# when the settings file can't be reached, so an outage never exposes more than a
+# first install does. Everything else returns aggregates and stays On.
+DEFAULT_DISABLED_TOOLS = (
+    "get_dataset_data_dataset_data_get",  # the whole DataFrame
+    "get_dataset_head_dataset_head_get",  # first rows
+    "get_table_data_table_data_post",  # a page of rows
+    "expression_filter_table_expression_filter_post",  # matching rows
+    "get_expression_samples_table_expression_samples_get",  # sample values per column
+    "get_column_values_table_column_values__column__get",  # every distinct value (IDs included)
+    "get_feature_comparison_feature_comparison_get",  # raw (x, y) pairs
+    "get_xy_chart_data_chart_xy_data_post",  # raw scatter points unless an aggregation is given
+    "get_feature_boxplot_feature_boxplot__feature__get",  # lists the outlier values
+)
+
+
 def default_policy() -> ChatToolPolicy:
-    """Built-in defaults: everything On except `get_dataset_data`, which returns
-    the whole DataFrame (token blow-up and full raw-data exposure)."""
+    """Built-in defaults: everything On except the tools in `DEFAULT_DISABLED_TOOLS`,
+    which can return raw rows or individual data points."""
     return ChatToolPolicy(
         default_mode=ToolMode.ENABLED,
-        tools={"get_dataset_data_dataset_data_get": ToolPolicyEntry(mode=ToolMode.DISABLED)},
+        tools={name: ToolPolicyEntry(mode=ToolMode.DISABLED) for name in DEFAULT_DISABLED_TOOLS},
     )
 
 
@@ -206,12 +224,8 @@ class ChatToolPolicyStore:
         path = self.path()
         try:
             stat = path.stat()
-        except FileNotFoundError:
-            self._cache_key = None
-            self._cached = None
-            return default_policy()
         except OSError as exc:
-            return self._last_good_or_defaults(path, exc)
+            return self._unreachable(path, exc)
 
         key = (str(path), stat.st_mtime_ns, stat.st_size)
         with self._lock:
@@ -220,10 +234,8 @@ class ChatToolPolicyStore:
 
         try:
             policy = self._parse(path)
-        except FileNotFoundError:
-            return default_policy()
         except OSError as exc:
-            return self._last_good_or_defaults(path, exc)
+            return self._unreachable(path, exc)
 
         with self._lock:
             self._cache_key, self._cached = key, policy
@@ -238,6 +250,20 @@ class ChatToolPolicyStore:
         except (ValueError, ValidationError) as exc:  # JSONDecodeError and UnicodeDecodeError are ValueErrors
             logger.error("Chat tool policy file %s is invalid: %s", path, exc)
             raise PolicyInvalid(f"The chat tool policy file {path} is invalid: {exc}") from exc
+
+    def _unreachable(self, path: Path, exc: OSError) -> ChatToolPolicy:
+        """The file can't be statted or read. A missing file is normal before the app has
+        seeded one, so with nothing to fall back on it's silent. But once this process has
+        read the policy, a missing file is treated like any other unreachable one: a lost
+        mount often shows up as "not found", and must not loosen a stricter policy."""
+        if isinstance(exc, FileNotFoundError):
+            with self._lock:
+                self._cache_key = None
+                self._cached = None
+                has_last_good = self._last_good is not None and self._last_good_path == str(path)
+            if not has_last_good:
+                return default_policy()
+        return self._last_good_or_defaults(path, exc)
 
     def _last_good_or_defaults(self, path: Path, exc: OSError) -> ChatToolPolicy:
         """The file can't be reached (broken or missing mount, no permission, a path

@@ -87,8 +87,12 @@ can run it but its output is hidden from the model and shown to the user in a re
   server marked `model_safe_detail` (`mcp_server/errors.py`), else a generic message.
 - **Fail closed on bad settings, not on missing storage.** A policy file that was read and is corrupt or invalid means
   no data tools, because it holds an admin's choices. A file that can't be reached (no dataset mounted, a broken or
-  unreadable mount) uses the last policy that process read from that path, else the built-in defaults, so storage
-  trouble never takes the assistant's tools away. An unverifiable admin is denied, and an unmounted settings dataset
+  unreadable mount, a file that vanishes) uses the last policy that process read from that path, else the built-in
+  defaults, so storage trouble never loosens a policy the process has seen and never takes the assistant's safe tools
+  away. The built-in defaults are restrictive (`DEFAULT_DISABLED_TOOLS`: every tool that can return raw rows or
+  individual data points is Off), so a cold-starting replica behind a broken mount exposes no more than a first
+  install. The fallback agents that run without MCP tools apply the same history redaction (an invalid file redacts
+  every earlier tool output). An unverifiable admin is denied, and an unmounted settings dataset
   blocks saving rather than writing to ephemeral disk. `CHAT_TOOL_POLICY_PATH` overrides the location.
 - **Storage** is a JSON file in the project's default dataset (network storage mounted into every replica; found for
   both Git-based and DFS projects, seeded with defaults at app start), written atomically with an optimistic revision

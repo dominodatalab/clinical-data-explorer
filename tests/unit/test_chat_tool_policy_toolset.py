@@ -352,6 +352,21 @@ def test_history_processor_redacts_outputs_of_tools_now_disabled():
     assert processed[2].parts[0].content == DISABLED_REDACTION.format(tool="mean_age")
 
 
+def test_history_processor_leaves_the_models_own_replies_alone():
+    """The policy governs tool output. What the model itself wrote (replies and tool-call
+    arguments) is free text we can't reliably scrub, so it passes through unchanged. A
+    summary written while a tool was On therefore outlives the tool being restricted."""
+    history = _history()
+    history[3] = ModelResponse(parts=[TextPart(f"The mean is {SECRET}")])
+    original = list(history)
+
+    processed = make_policy_history_processor(_policy(mean_age="disabled"))(history)
+
+    assert processed[1] is original[1]
+    assert processed[3] is original[3]
+    assert str(SECRET) not in repr(processed[2])  # the tool output itself is still redacted
+
+
 def test_history_processor_redacts_old_errors_of_restricted_tools():
     processed = make_policy_history_processor(_policy(mean_age="user_only"))(_history(retry=True))
 

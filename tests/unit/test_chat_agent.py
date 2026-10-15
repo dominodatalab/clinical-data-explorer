@@ -475,7 +475,7 @@ def test_get_agent_response_falls_back_when_mcp_context_fails(monkeypatch):
 
     monkeypatch.setattr(chat_agent, "is_chat_configured", lambda: True)
     monkeypatch.setattr(chat_agent, "_create_agent_for_session", lambda session_id, authorization_header=None: mcp_agent)
-    monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda: fallback_agent)
+    monkeypatch.setattr(chat_agent, "_create_agent_without_mcp", lambda policy: fallback_agent)
 
     response = asyncio.run(
         chat_agent.get_agent_response("hello", session_id="session-1")
@@ -572,6 +572,7 @@ from pydantic_ai.toolsets import FunctionToolset  # noqa: E402
 
 from backend.chat_tools.policy import get_policy_store  # noqa: E402
 from backend.chat_tools.toolset import (  # noqa: E402
+    DISABLED_REDACTION,
     HIDDEN_RESULT_METADATA_KEY,
     USER_ONLY_PLACEHOLDER,
 )
@@ -809,6 +810,39 @@ def test_invalid_policy_runs_without_mcp_and_returns_a_notice(wired_agent, tmp_p
     assert model.tool_names == [[]]  # the model was offered no tools at all
     assert response["notice"] == chat_agent.POLICY_UNAVAILABLE_NOTICE
     assert response["user_only_results"] == []
+
+
+def test_invalid_policy_redacts_every_earlier_tool_output_from_the_model(wired_agent, tmp_path):
+    first = wired_agent([("mean_age", {})])
+    asyncio.run(chat_agent.get_agent_response("first", session_id="s-invalid-history"))
+    assert '"mean"' in first.serialized()  # On: the model saw the output
+
+    (tmp_path / "chat_tool_policy.json").write_text("{corrupt")
+    second = wired_agent([])
+    asyncio.run(chat_agent.get_agent_response("second", session_id="s-invalid-history"))
+
+    assert '"mean"' not in second.serialized()
+    assert DISABLED_REDACTION.format(tool="mean_age") in second.serialized()
+
+
+def test_mcp_failure_fallback_still_redacts_outputs_of_restricted_tools(wired_agent, tmp_path, monkeypatch):
+    first = wired_agent([("mean_age", {})])
+    asyncio.run(chat_agent.get_agent_response("first", session_id="s-mcp-down"))
+    assert '"mean"' in first.serialized()
+
+    _write_policy(tmp_path, {"mean_age": "user_only"})
+    second = wired_agent([])
+
+    class Unreachable(FunctionToolset):
+        async def __aenter__(self):
+            raise RuntimeError("mcp unavailable")
+
+    monkeypatch.setattr(chat_agent, "MCPServerSSE", lambda url, headers: Unreachable())
+    asyncio.run(chat_agent.get_agent_response("second", session_id="s-mcp-down"))
+
+    assert second.requests, "the fallback agent should have answered"
+    assert '"mean"' not in second.serialized()
+    assert USER_ONLY_PLACEHOLDER.format(tool="mean_age") in second.serialized()
 
 
 def test_valid_policy_has_no_notice(wired_agent, tmp_path):

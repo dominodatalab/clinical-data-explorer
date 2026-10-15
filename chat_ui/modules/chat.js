@@ -206,14 +206,12 @@ function sendMessage() {
         body: JSON.stringify({ message: messageText }),
     })
     .then(data => {
-        console.log('Received data from server:', data);
         // Hidden-from-AI results are shown first: the tools ran before the agent replied.
         (data.user_only_results || []).forEach(displayToolResult);
         if (data.notice) {
             displayMessage(data.notice, 'system');
         }
         if (data.response) {
-            console.log('Charts received:', data.charts);
             displayMessage(data.response, 'agent', data.charts);
         }
     })

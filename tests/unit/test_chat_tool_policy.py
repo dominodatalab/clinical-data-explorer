@@ -19,6 +19,7 @@ from backend.chat_tools.policy import (
     PolicyStoreUnavailable,
     ToolMode,
     ToolPolicyEntry,
+    DEFAULT_DISABLED_TOOLS,
     default_policy,
 )
 
@@ -68,13 +69,62 @@ def test_invalid_mode_is_a_validation_error():
         ChatToolPolicy.model_validate({"default_mode": "maybe"})
 
 
-def test_built_in_defaults_disable_only_whole_dataset_tool():
+def test_built_in_defaults_disable_the_tools_that_can_return_individual_records():
     policy = default_policy()
 
     assert policy.default_mode is ToolMode.ENABLED
-    assert policy.mode_for(DATASET_TOOL) is ToolMode.DISABLED
-    assert policy.mode_for("get_dataset_info_dataset_info_get") is ToolMode.ENABLED
+    assert set(DEFAULT_DISABLED_TOOLS) == {name for name, entry in policy.tools.items() if entry.mode is ToolMode.DISABLED}
+    for name in (
+        DATASET_TOOL,
+        "get_dataset_head_dataset_head_get",
+        "get_table_data_table_data_post",
+        "expression_filter_table_expression_filter_post",
+        "get_feature_comparison_feature_comparison_get",
+        "get_xy_chart_data_chart_xy_data_post",
+    ):
+        assert policy.mode_for(name) is ToolMode.DISABLED, name
+    for name in (
+        "get_dataset_info_dataset_info_get",
+        "get_histogram_data_chart_histogram_post",
+        "get_feature_stats_feature_stats_get",
+    ):
+        assert policy.mode_for(name) is ToolMode.ENABLED, name
     assert default_policy() is not default_policy()
+
+
+def _fixture_outputs():
+    path = Path(__file__).resolve().parents[1] / "fixtures" / "tool_outputs.json"
+    return {
+        name: entry["output"]
+        for name, entry in json.loads(path.read_text())["outputs"].items()
+        if not name.startswith("variant__")
+    }
+
+
+def test_default_denied_tools_are_real_tools():
+    assert set(DEFAULT_DISABLED_TOOLS) <= set(_fixture_outputs()), "a tool was renamed: update DEFAULT_DISABLED_TOOLS"
+
+
+def _has_row_records(value):
+    """A list of records with several text fields (rows of the dataset) anywhere in a tool's output."""
+    if isinstance(value, list):
+        return any(
+            isinstance(item, dict) and sum(isinstance(v, str) for v in item.values()) >= 3 for item in value
+        ) or any(_has_row_records(i) for i in value)
+    if isinstance(value, dict):
+        return any(_has_row_records(v) for v in value.values())
+    return False
+
+
+def test_no_tool_that_returns_dataset_rows_is_on_by_default():
+    policy = default_policy()
+
+    leaking = [
+        name for name, output in _fixture_outputs().items()
+        if _has_row_records(output) and policy.mode_for(name) is not ToolMode.DISABLED
+    ]
+
+    assert leaking == [], f"returns rows of the dataset but is On by default: {leaking}"
 
 
 # ----- store: load -----
@@ -195,6 +245,30 @@ def test_unreachable_file_without_last_known_good_uses_defaults(store, monkeypat
     assert "built-in defaults" in caplog.text
 
 
+def test_file_that_vanishes_after_being_read_keeps_the_last_known_good_policy(tmp_path, caplog):
+    """A lost mount often looks like "not found"; it must not loosen a stricter policy."""
+    path = tmp_path / "chat_tool_policy.json"
+    store = ChatToolPolicyStore(lambda: str(path))
+    store.save(_policy(secret_tool="disabled"), 0, "alice")
+    strict = store.load()
+    assert strict.mode_for("secret_tool") is ToolMode.DISABLED
+
+    path.unlink()
+
+    with caplog.at_level("WARNING"):
+        assert store.load() == strict
+    assert "last known good policy" in caplog.text
+
+
+def test_missing_file_with_nothing_read_yet_uses_the_restrictive_defaults_quietly(store, caplog):
+    with caplog.at_level("WARNING"):
+        policy = store.load()
+
+    assert policy == default_policy()
+    assert policy.mode_for(DATASET_TOOL) is ToolMode.DISABLED
+    assert caplog.text == ""
+
+
 def test_unreachable_file_is_logged_once_not_on_every_request(store, monkeypatch, caplog):
     _raise_on_stat(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
 
@@ -252,7 +326,7 @@ def test_reset_restores_defaults_and_checks_revision(store):
         store.reset(0, "bob")
 
     reset = store.reset(1, "bob")
-    assert reset.tools.keys() == {DATASET_TOOL}
+    assert reset.tools.keys() == set(DEFAULT_DISABLED_TOOLS)
     assert reset.revision == 2
 
 
@@ -263,7 +337,10 @@ def test_change_log_records_old_and_new_modes(store):
     saved = store.save(_policy(default=ToolMode.DISABLED, a="enabled"), 1, "bob")
 
     assert [entry.by for entry in saved.change_log] == ["alice", "bob"]
-    assert saved.change_log[0].changes == {"a": ["enabled", "user_only"], DATASET_TOOL: ["disabled", "enabled"]}
+    assert saved.change_log[0].changes == {
+        "a": ["enabled", "user_only"],
+        **{name: ["disabled", "enabled"] for name in DEFAULT_DISABLED_TOOLS},
+    }
     assert saved.change_log[1].changes[DEFAULT_MODE_CHANGE_KEY] == ["enabled", "disabled"]
     assert saved.change_log[1].changes["a"] == ["user_only", "enabled"]
 
@@ -529,7 +606,7 @@ def test_seed_creates_the_default_file_without_the_owner_doing_anything(monkeypa
 
     seeded = json.loads((git_root / "My-Project" / ".clinical-data-explorer" / "chat_tool_policy.json").read_text())
     assert seeded["revision"] == 0
-    assert seeded["tools"] == {DATASET_TOOL: {"mode": "disabled", "note": None}}
+    assert seeded["tools"] == {name: {"mode": "disabled", "note": None} for name in DEFAULT_DISABLED_TOOLS}
     assert store.load().mode_for(DATASET_TOOL) is ToolMode.DISABLED
     # a seeded file behaves like "never saved": the first save still expects revision 0
     assert store.save(_policy(a="disabled"), 0, "alice").revision == 1

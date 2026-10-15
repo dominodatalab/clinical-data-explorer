@@ -7,7 +7,7 @@ import backend.chat_tools.admin_auth as admin_auth
 import backend.routes.chat_tools_admin as admin_routes
 from backend.app import create_app
 from backend.chat_tools.catalog import CatalogTool
-from backend.chat_tools.policy import PolicyStoreUnavailable
+from backend.chat_tools.policy import DEFAULT_DISABLED_TOOLS, PolicyStoreUnavailable
 
 FORBIDDEN = "Chat tool settings are restricted to editors of the extension's project"
 DATASET_TOOL = "get_dataset_data_dataset_data_get"
@@ -290,7 +290,8 @@ def test_catalog_lists_tools_with_modes_and_defaults(client, catalog_tools):
     assert by_name[DATASET_TOOL]["is_default"] is False
     assert body["policy"]["revision"] == 0
     assert body["policy_error"] is None and body["catalog_error"] is None
-    assert body["stale"] == []
+    # the other default-denied tools aren't in this stub catalog
+    assert {entry["name"] for entry in body["stale"]} == set(DEFAULT_DISABLED_TOOLS) - {DATASET_TOOL}
     assert body["store"]["durable"] is True
     assert "CDISC" in body["sample"]["label"]
 

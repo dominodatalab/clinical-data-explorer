@@ -20,7 +20,7 @@ import requests
 
 import config as chat_agent_config
 from backend import config as backend_config
-from backend.chat_tools.policy import PolicyInvalid, get_policy_store
+from backend.chat_tools.policy import ChatToolPolicy, PolicyInvalid, ToolMode, get_policy_store
 from backend.chat_tools.toolset import (
     HIDDEN_RESULT_METADATA_KEY,
     ChatToolPolicyToolset,
@@ -348,7 +348,8 @@ def _create_agent_for_session(session_id: str, authorization_header: str = None)
     except PolicyInvalid as exc:
         # Fail closed: an unreadable policy must never turn into "everything allowed".
         logger.error(f"Chat tool policy is invalid; running without data tools: {exc}")
-        agent = _create_agent_without_mcp()
+        # No policy to apply to the cached history, so treat every earlier tool output as restricted.
+        agent = _create_agent_without_mcp(_deny_all_policy())
         if agent is not None:
             agent.policy_notice = POLICY_UNAVAILABLE_NOTICE
         return agent
@@ -382,21 +383,35 @@ def _create_agent_for_session(session_id: str, authorization_header: str = None)
         model_settings=ModelSettings(max_tokens=LLM_MAX_OUTPUT_TOKENS),
     )
     agent.policy_toolset = policy_toolset
+    agent.policy = policy
     return agent
 
 
-def _create_agent_without_mcp() -> Agent | None:
-    """Create an agent without MCP tools for degraded chat responses."""
+def _deny_all_policy() -> ChatToolPolicy:
+    """Redacts every earlier tool output: for when there is no policy to apply."""
+    return ChatToolPolicy(default_mode=ToolMode.DISABLED)
+
+
+def _create_agent_without_mcp(policy: ChatToolPolicy) -> Agent | None:
+    """Create an agent without MCP tools for degraded chat responses.
+
+    It has no tools, but the cached history can still hold outputs of tools an admin has
+    since restricted, so the same history processor runs here: `policy` is the snapshot
+    those outputs are redacted against.
+    """
     llm_model = _get_llm_model()
     if llm_model is None:
         return None
 
-    return Agent(
+    agent = Agent(
         llm_model,
         system_prompt=SYSTEM_PROMPT,
+        history_processors=[make_policy_history_processor(policy)],
         retries=5,
         model_settings=ModelSettings(max_tokens=LLM_MAX_OUTPUT_TOKENS),
     )
+    agent.policy = policy
+    return agent
 
 
 def _extract_response_payload(response_text: str) -> dict:
@@ -574,7 +589,7 @@ async def get_agent_response(message: str, session_id: str = 'default', authoriz
         except Exception as mcp_error:
             logger.warning(f"MCP server connection failed: {mcp_error}")
             logger.info("Falling back to agent without MCP servers...")
-            fallback_agent = _create_agent_without_mcp()
+            fallback_agent = _create_agent_without_mcp(getattr(current_agent, 'policy', None) or _deny_all_policy())
             if fallback_agent is None:
                 raise RuntimeError(NOT_CONFIGURED_ERROR)
             result = await fallback_agent.run(message, message_history=message_history)

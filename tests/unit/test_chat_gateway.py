@@ -279,7 +279,7 @@ def test_agents_carry_the_max_output_token_cap(monkeypatch):
     )
 
     chat_agent._create_agent_for_session("user-1")
-    chat_agent._create_agent_without_mcp()
+    chat_agent._create_agent_without_mcp(chat_agent._deny_all_policy())
 
     assert [kwargs["model_settings"]["max_tokens"] for kwargs in captured] == [
         chat_agent.LLM_MAX_OUTPUT_TOKENS,
