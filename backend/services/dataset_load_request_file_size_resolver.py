@@ -1,20 +1,25 @@
 """Resolve source file sizes for dataset-load memory admission."""
 
+import logging
 import os
 from typing import TYPE_CHECKING
 
+import requests
 from werkzeug.exceptions import NotFound
 
 import backend.services.httpclient as httpclient
 from backend.auth import (
     get_domino_api_host,
     get_domino_external_url,
+    get_domino_webvfs_host,
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
 
 if TYPE_CHECKING:
     from backend.services.dataset_load_request_queue import DatasetLoadRequest
+
+logger = logging.getLogger(__name__)
 
 
 def resolve_dataset_load_request_file_size(load_request: "DatasetLoadRequest") -> int:
@@ -78,19 +83,47 @@ def _get_netapp_volume_file_size(
     return file_size
 
 
+def _webvfs_base_urls(external_url=None) -> list[str]:
+    """Hosts that may serve `/webvfs/...`, most reliable first, without duplicates.
+
+    The in-cluster WebVFS host works wherever the app runs. The external URL is derived
+    from the request's host, which is only right when the app is reached on the main
+    Domino domain: the `apps.` ingress answers `/webvfs` with an nginx 404. It stays as a
+    fallback for platforms that don't set DOMINO_WEBVFS_HOST.
+    """
+    candidates = [get_domino_webvfs_host(), external_url or get_domino_external_url()]
+    return list(dict.fromkeys(url for url in candidates if url))
+
+
+def _is_wrong_host(exc: Exception) -> bool:
+    """A 404 (route not served there) or a connection failure: try the next host."""
+    if isinstance(exc, httpclient.HTTPClientError):
+        return exc.status_code == 404
+    return isinstance(exc, requests.exceptions.ConnectionError | requests.exceptions.Timeout)
+
+
 def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
-    external_url = external_url or get_domino_external_url()
-    if not external_url:
+    base_urls = _webvfs_base_urls(external_url)
+    if not base_urls:
         raise RuntimeError('Domino external URL not configured')
 
-    return httpclient.get(
-        f"{external_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
-        params={'path': file_path},
-        headers={
-            'accept': 'application/json',
-            'Authorization': f'Bearer {token}',
-        },
-    )
+    for index, base_url in enumerate(base_urls):
+        try:
+            return httpclient.get(
+                f"{base_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
+                params={'path': file_path},
+                headers={
+                    'accept': 'application/json',
+                    'Authorization': f'Bearer {token}',
+                },
+            )
+        except Exception as exc:
+            if index == len(base_urls) - 1 or not _is_wrong_host(exc):
+                raise
+            logger.warning(
+                "WebVFS metadata request to %s failed (%s); trying %s",
+                base_url, type(exc).__name__, base_urls[index + 1],
+            )
 
 
 def _resolve_project_dataset_id(dataset_display_name: str, project_id: str, token=None) -> str:
