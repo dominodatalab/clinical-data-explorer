@@ -25,7 +25,7 @@ import threading
 from datetime import datetime, timezone
 from enum import Enum
 from pathlib import Path
-from typing import Callable, Dict, List, Literal, Optional, Tuple
+from typing import Callable, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, ValidationError
 
@@ -133,8 +133,9 @@ def _diff_modes(old: ChatToolPolicy, new: ChatToolPolicy) -> Dict[str, List[str]
 class ChatToolPolicyStore:
     """Reads and writes the policy file.
 
-    `load()` costs one `stat()` per call (the parsed policy is cached by path,
-    mtime and size), so it is cheap enough to run on every chat request.
+    `load()` reads and parses the file on every call, so a save on any replica is
+    seen on the next chat request. The only copy kept in memory is the last policy
+    this process read, and it is used only when the file can't be reached.
 
     `save()` is guarded by a `threading.Lock` plus an optimistic `revision`
     check. Replicas don't share a lock, but admin edits are rare and a lost
@@ -144,8 +145,6 @@ class ChatToolPolicyStore:
     def __init__(self, path_provider: Optional[Callable[[], str]] = None):
         self._path_provider = path_provider or config.get_chat_tool_policy_path
         self._lock = threading.Lock()
-        self._cache_key: Optional[Tuple[str, int, int]] = None
-        self._cached: Optional[ChatToolPolicy] = None
         self._last_good: Optional[ChatToolPolicy] = None
         self._last_good_path: Optional[str] = None
         self._unreachable_logged: Optional[str] = None
@@ -215,7 +214,7 @@ class ChatToolPolicyStore:
     # ----- reading -----
 
     def load(self) -> ChatToolPolicy:
-        """Return the current policy (a copy the caller may keep for one request).
+        """Return the policy as it is on disk right now.
 
         Raises `PolicyInvalid` only when the file was read and is corrupt or fails
         validation. A file that can't be reached gives the last known good policy,
@@ -223,25 +222,14 @@ class ChatToolPolicyStore:
         """
         path = self.path()
         try:
-            stat = path.stat()
-        except OSError as exc:
-            return self._unreachable(path, exc)
-
-        key = (str(path), stat.st_mtime_ns, stat.st_size)
-        with self._lock:
-            if self._cache_key == key and self._cached is not None:
-                return self._cached.model_copy(deep=True)
-
-        try:
             policy = self._parse(path)
         except OSError as exc:
             return self._unreachable(path, exc)
 
         with self._lock:
-            self._cache_key, self._cached = key, policy
-            self._last_good, self._last_good_path = policy, str(path)
+            self._last_good, self._last_good_path = policy.model_copy(deep=True), str(path)
             self._unreachable_logged = None
-        return policy.model_copy(deep=True)
+        return policy
 
     def _parse(self, path: Path) -> ChatToolPolicy:
         """Read and validate the file. I/O errors (OSError) propagate to the caller."""
@@ -252,14 +240,12 @@ class ChatToolPolicyStore:
             raise PolicyInvalid(f"The chat tool policy file {path} is invalid: {exc}") from exc
 
     def _unreachable(self, path: Path, exc: OSError) -> ChatToolPolicy:
-        """The file can't be statted or read. A missing file is normal before the app has
+        """The file can't be read. A missing file is normal before the app has
         seeded one, so with nothing to fall back on it's silent. But once this process has
         read the policy, a missing file is treated like any other unreachable one: a lost
         mount often shows up as "not found", and must not loosen a stricter policy."""
         if isinstance(exc, FileNotFoundError):
             with self._lock:
-                self._cache_key = None
-                self._cached = None
                 has_last_good = self._last_good is not None and self._last_good_path == str(path)
             if not has_last_good:
                 return default_policy()
@@ -386,9 +372,7 @@ class ChatToolPolicyStore:
             change_log=change_log[-CHANGE_LOG_LIMIT:],
         )
         self._atomic_write(self.path(), saved)
-        stat = self.path().stat()
-        self._cache_key = (str(self.path()), stat.st_mtime_ns, stat.st_size)
-        self._cached = self._last_good = saved
+        self._last_good = saved
         self._last_good_path = str(self.path())
         return saved.model_copy(deep=True)
 

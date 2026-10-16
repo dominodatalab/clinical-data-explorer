@@ -208,13 +208,7 @@ curl -X POST "$DOMINO_LLM_GATEWAY_URL/v1/chat/completions" \
 
 #### Chat tool access settings
 
-Editors of the extension's project can control which data tools the chat assistant may use, from an admin page. Admins see a **Chat tool settings** link at the bottom of the Chat tab. The page is at `/admin/chat-tools` on the app's own URL:
-
-`https://apps.<your-domino>/apps-internal/<app-id>/admin/chat-tools`
-
-Use the app's `url` from the Domino Apps API (or the link in the Chat tab), **not** the `https://<your-domino>/apps/<vanity-url>/…` address: Domino's vanity route only serves the app root, so any sub-path 404s there.
-
-The page lists every data tool the assistant can reach, read live from the MCP server (so new tools appear automatically). For each tool you can read its description and parameters, **try it** against a built-in clinical sample (never your own data), and choose one of three modes:
+Admins (the Owner or a Contributor of the extension's project) control which data tools the chat assistant may use. Admins see a **Chat tool settings** link at the bottom of the Chat tab, which opens the settings page (`/admin/chat-tools` on the app's own URL). For each tool, the page shows its description and parameters, lets you **try it** against a bundled clinical sample (so previewing never exposes study data or replaces the dataset you have open), and sets one of three modes:
 
 | Mode | Assistant can call it? | Assistant sees the output? | User sees the output? |
 |------|------------------------|----------------------------|-----------------------|
@@ -222,17 +216,33 @@ The page lists every data tool the assistant can reach, read live from the MCP s
 | **Hidden from AI** | Yes | **No**, it only learns that the tool ran | **Yes**, in a tagged result card in the chat |
 | **Off** | No, the tool is never offered to the model | n/a | n/a |
 
-**How Hidden-from-AI results look:** the result card lays the output out by its shape, the same way on the settings page's **try it** preview. Rows become a table; counts and settings that come with them (page, total rows, the filter expression) become a summary line above it; per-group or per-column statistics become one table; lists of names become chips. Output that has a natural chart is drawn as one first, with a **Table** button to see the numbers: histograms, box plots, correlation heatmaps, scatter and line plots, and bar charts of counts or aggregates. When a result was too large to keep in full, the card says so, and any chart is drawn from the part that was kept.
+Hidden-from-AI results appear in the chat as a card, laid out by the shape of the data (a table, or a chart with a **Table** button):
 
-The policy is enforced on the server (the model is never offered an Off tool, and Hidden-from-AI output never reaches it), not by asking the model to behave. Changes apply to each user's next message, including the earlier *tool outputs* in an ongoing conversation: the model no longer sees them. What the assistant itself wrote earlier (its replies) is not rewritten, so a summary it gave while a tool was On stays in the conversation after you restrict that tool. Tools added later use the page's **Default for new tools** setting (initially On). The Table and Explore tabs (including filtering) are unaffected: they use the REST endpoints, not these tools.
+![Chat showing two Hidden from AI result cards: a histogram and a table](docs_assets/09-chat-hidden-from-ai.png)
 
-**Built-in defaults:** every tool is On except the ones that can return raw rows or individual data points, which are Off: `get_dataset_data`, `get_dataset_head`, `get_table_data`, `expression_filter`, `get_expression_samples`, `get_column_values`, `get_feature_comparison`, `get_xy_chart_data` and `get_feature_boxplot` (it lists outlier values). Aggregate tools (statistics, histogram bins, value counts, correlations, grouped and bucketed charts) stay On. These defaults are what a new install is seeded with, what **Reset** restores, and what the assistant uses if the settings file can't be reached (below). An existing settings file is never changed by an upgrade. Turn a tool On, or set it to Hidden from AI so users can see it without the model doing so, on the settings page.
+The policy is enforced on the server, not by asking the model to behave. Changes apply to each user's next message, including the earlier *tool outputs* in an ongoing conversation. The assistant's own earlier replies are not rewritten, so a summary it gave while a tool was On stays in the conversation after you restrict that tool.
 
-**Who is an admin:** the Owner or a Contributor of the project the app runs in, checked server-side through the Domino API with the visiting user's own token. If the check can't be completed, access is denied. Don't add extension users as collaborators on the extension project: anyone with access to the project can edit the settings file directly. Users of the extension need no access to the project or its dataset; only the app, running as its owner, reads and writes the file.
+**Defaults:** tools that can return raw rows or individual data points are Off, and aggregate tools (statistics, histograms, counts, correlations) are On. These are what a new install is seeded with, what **Reset** restores, and what the assistant uses if the settings can't be read and it has no earlier copy. An existing settings file is never changed by an upgrade.
 
-**Where the settings live:** one file, `.clinical-data-explorer/chat_tool_policy.json`, in the extension project's *default dataset* (the one Domino creates for every project, named after the project). The app looks for the dataset where Domino mounts it for Git-based projects (`/mnt/data/<project>`) and for DFS projects (`/domino/datasets/local/<project>`), and creates the file with the built-in defaults when it starts. The dataset is shared storage mounted into every replica and each replica checks the file on every chat request, so a save is picked up on the next message (this relies on your Domino's dataset mount showing writes promptly). Locally, it is `./.chat_tool_policy.json`. Set `CHAT_TOOL_POLICY_PATH` to keep it anywhere else, such as a mounted NetApp volume.
+**Renamed and new tools:** a setting is matched to a tool by its name. A tool that is added or renamed in a release is treated as new and uses the page's **Default for new tools** (initially On), and a setting whose tool no longer exists is listed as **Stale** and can be removed. After an upgrade, look for tools marked "New, using default"; set the default for new tools to Off if you want to approve each one.
 
-**If the settings can't be reached:** when no dataset is mounted (and no `CHAT_TOOL_POLICY_PATH` is set), or the mount is broken, or the file disappears, the assistant keeps working with the last settings this app process read, or, if it hasn't read any yet (for example a replica that just started), the built-in defaults above. The settings page says why and refuses to save until the location is fixed. Only a settings file that was read and found corrupt or invalid takes the assistant's data tools away (and it says so, and hides every earlier tool output from the model), because that file holds choices an admin made.
+**Where the settings live:** one file, `.clinical-data-explorer/chat_tool_policy.json`, in the extension project's default dataset. The app creates it with the defaults when it starts, and reads it on every chat request. Locally it is `./.chat_tool_policy.json`. Set `CHAT_TOOL_POLICY_PATH` to keep it somewhere else.
+
+**File format:** the settings page is the intended way to edit the file, but it is plain JSON:
+
+```json
+{
+  "schema_version": 1,
+  "default_mode": "enabled",
+  "tools": {
+    "<tool name>": { "mode": "user_only", "note": "optional, up to 500 characters" }
+  }
+}
+```
+
+`mode` is `enabled`, `user_only` (Hidden from AI) or `disabled`. `default_mode` applies to every tool not listed. The app also writes `revision`, `updated_at`, `updated_by` and `change_log`; leave those alone. If the file isn't valid JSON or doesn't match this shape, the assistant has no data tools and no earlier tool output reaches the model. The settings page shows what is wrong and offers **Reset to defaults**.
+
+**If the settings can't be reached** (for example the dataset isn't mounted), the assistant falls back to the last settings it read, or to the defaults, and the settings page says why and won't save until it is fixed.
 
 | Variable | Description |
 |----------|-------------|
@@ -349,7 +359,7 @@ The chart plots the aggregated Y values for each group on the X axis, making it 
 
 When configured with an LLM provider, the Chat tab enables natural language queries about your data. The AI assistant can answer questions about your dataset structure, compute statistics, and generate visualizations directly in the conversation.
 
-If the app administrator has set a tool to **Hidden from AI**, its result appears in the chat as a dashed card tagged "Hidden from AI": only you can see it, and the assistant is told only that the tool ran.
+An AI visibility policy file, managed by the app's admins, controls which data tools the assistant can use and what it can see. See [Chat tool access settings](#chat-tool-access-settings).
 
 ### Example: Asking About Your Data
 

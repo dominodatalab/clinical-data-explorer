@@ -72,40 +72,63 @@ that belongs to a user.
 
 ### Chat Tool Policy
 
-Which MCP data tools the chat agent may use is an app-wide policy (`backend/chat_tools/`), edited on an admin page
-by Owners and Contributors of the extension's project. Each tool is `enabled`, `disabled` or `user_only` (the agent
-can run it but its output is hidden from the model and shown to the user in a result card).
+Admins control which MCP data tools the chat agent may use, and whether it may see what they return. Each tool is
+set to one of three modes: **On**, **Hidden from AI** (the agent can run the tool, but only the user sees the
+output, in a result card) or **Off**. The policy is app-wide, stored in a file, edited on an admin page, and enforced
+on the server between the chat agent and the MCP server, not by instructing the model.
 
-- **Enforcement lives in one place.** `chat_agent.py` wraps the MCP toolset in `ChatToolPolicyToolset`
-  (a pydantic-ai `WrapperToolset`): `get_tools` drops disabled tools, `call_tool` swaps a user-only result for a fixed
-  placeholder and keeps the real one in `ToolReturn.metadata` (model adapters serialize only `content`), and a history
-  processor redacts earlier outputs of tools that are now restricted. One policy snapshot is taken per chat request.
-  The system prompt only *explains* the policy; it is not what enforces it.
-- **The REST path is untouched.** The Table, Explore and Filter views call the MCP server's REST routes through
-  Flask; only the chat agent uses `/mcp`. Maintenance and loading routes are tagged `internal` and are not MCP tools.
-- **Errors never leak data.** A failed user-only call shows the user the full error but tells the model only what the
-  server marked `model_safe_detail` (`mcp_server/errors.py`), else a generic message.
-- **Fail closed on bad settings, not on missing storage.** A policy file that was read and is corrupt or invalid means
-  no data tools, because it holds an admin's choices. A file that can't be reached (no dataset mounted, a broken or
-  unreadable mount, a file that vanishes) uses the last policy that process read from that path, else the built-in
-  defaults, so storage trouble never loosens a policy the process has seen and never takes the assistant's safe tools
-  away. The built-in defaults are restrictive (`DEFAULT_DISABLED_TOOLS`: every tool that can return raw rows or
-  individual data points is Off), so a cold-starting replica behind a broken mount exposes no more than a first
-  install. The fallback agents that run without MCP tools apply the same history redaction (an invalid file redacts
-  every earlier tool output). An unverifiable admin is denied, and an unmounted settings dataset
-  blocks saving rather than writing to ephemeral disk. `CHAT_TOOL_POLICY_PATH` overrides the location.
-- **Storage** is a JSON file in the project's default dataset (network storage mounted into every replica; found for
-  both Git-based and DFS projects, seeded with defaults at app start), written atomically with an optimistic revision
-  check. Each chat request costs one `stat()`.
-- **Previews** run in a sandbox MCP session (`X-Chat-Tool-Preview`) on a bundled sample, so they never replace the
-  admin's own dataset.
-- **Result cards are laid out by data shape, not by tool.** `chat_ui/modules/tool-output.js` turns any output into a
-  plan (tables, summary fields, chips, and a chart where the fields match a known shape such as `bin_start/bin_end/count`
-  or `min/q1/median/q3/max`), so new tools are handled without a per-tool renderer; a `chart_type` field in the output
-  can settle an ambiguous case. The chat and the admin preview share it, and charts go through
-  `chart-renderers.js`'s `renderChartSpec`. Values are inserted as text, and chart strings are HTML-escaped because
-  Highcharts reads markup in labels. `tests/fixtures/tool_outputs.json` holds every tool's real output so a change to
-  a route's response shape shows up as a layout change in the JS tests.
+```mermaid
+flowchart LR
+    Admin["Admin page"] -->|"edit, try a tool"| Backend["Flask backend"]
+    Backend -->|"read, write"| File[("Policy file<br/>project's default dataset")]
+    Backend -->|"list tools, preview"| MCP["MCP server"]
+    User["Chat UI"] -->|"message"| Backend
+    Backend --> Agent["Chat agent"]
+    Agent --> Enforce["Policy enforcement"]
+    Enforce -->|"allowed calls"| MCP
+    File -.->|"read per request"| Enforce
+    Enforce -->|"model sees: results of On tools only"| Agent
+    Enforce -->|"results of Hidden tools"| User
+```
+
+Components:
+
+- **Policy file.** One JSON file in the extension project's default dataset, which is network storage mounted into
+  every replica. The app creates it with defaults at start. Saves are atomic, and a revision check rejects a save made
+  from an out-of-date page. The location can be overridden (see the README).
+- **Admin page and API.** Lists the tools live from the MCP server, so new tools appear without a change here. Access is
+  limited to the Owner and Contributors of the extension's project, checked with the visiting user's own token; if the
+  check can't be completed, access is denied. Saving is refused while the file's location is unusable.
+- **Preview.** "Try it" runs a tool in a separate sandbox session on a small bundled sample, so previewing neither
+  exposes study data nor replaces the dataset the admin has open.
+- **Enforcement.** Each chat request reads the policy once and uses that snapshot for the whole request. Off tools are not
+  offered to the model. The output of a Hidden tool is replaced with a fixed placeholder for the model, and the real
+  output travels separately to the user. Earlier tool outputs in the conversation are redacted from what the model
+  sees whenever their tool is now restricted, so a policy change covers the whole conversation. The model's own earlier
+  replies are not rewritten, because free text can't reliably be traced back to a tool.
+- **Errors never leak data.** When a Hidden tool fails, the user sees the full error but the model gets only a generic
+  message, unless the MCP server has marked the detail as safe to share.
+- **Result cards.** The chat UI lays a Hidden result out by the shape of the data (rows become a table, known statistical
+  shapes become a chart) rather than per tool, so new tools display without new UI code. The chat and the admin preview
+  share this.
+- **Scope.** The Table and Explore tabs use the MCP server's REST routes directly and are not governed by the policy.
+  Maintenance and loading routes are not exposed to the agent as tools at all.
+
+How tools are identified. A policy entry is matched to a tool by the tool's name, which comes from its route. Renaming
+a route therefore makes it a new tool: it takes the policy's default for new tools, and the old entry shows up as stale
+on the admin page. The admin page marks both cases, and a test records the full list of tool names so a rename is
+noticed in review.
+
+Failure behavior, which is where to look when the assistant has fewer tools than expected:
+
+| Situation | What the agent gets |
+|-----------|---------------------|
+| File can't be reached (dataset not mounted, broken mount, file missing) | The last policy this process read; if none, the built-in defaults, which turn Off every tool that can return raw rows or individual data points. The admin page explains why and refuses to save. |
+| File was read but is invalid JSON or the wrong shape | No data tools, and no earlier tool output reaches the model. An admin fixes the file or resets it to the defaults on the admin page. |
+| MCP connection fails | The agent runs without tools, and earlier tool outputs are still redacted by the same rule. |
+
+The last policy read is the only copy kept in memory and is used only when the file can't be reached. The file is
+read on every request, so a save on one replica applies on every replica's next message.
 
 ### Dataset Loads Are Queued
 

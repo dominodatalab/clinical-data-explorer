@@ -158,7 +158,7 @@ def test_save_with_stale_revision_conflicts(store):
     assert store.load().mode_for("a") is ToolMode.DISABLED
 
 
-def test_load_cache_reloads_when_file_changes(store, tmp_path):
+def test_load_sees_another_replicas_save(store, tmp_path):
     store.save(_policy(a="disabled"), 0, "alice")
     assert store.load().mode_for("a") is ToolMode.DISABLED
 
@@ -170,17 +170,24 @@ def test_load_cache_reloads_when_file_changes(store, tmp_path):
     assert store.load().revision == 2
 
 
-def test_load_uses_cache_when_file_unchanged(store, monkeypatch):
-    store.save(_policy(a="disabled"), 0, "alice")
-    store.load()
-    reads = []
-    original = ChatToolPolicyStore._parse
-    monkeypatch.setattr(ChatToolPolicyStore, "_parse", lambda self, path: reads.append(path) or original(self, path))
+def test_load_reads_the_file_every_time(store, tmp_path):
+    """Nothing in memory can mask a change on disk, even one that keeps the file's size
+    and modification time (coarse timestamps on a network mount)."""
+    store.save(_policy(a="disabled", b="user_only"), 0, "alice")
+    assert store.load().mode_for("a") is ToolMode.DISABLED
+    path = tmp_path / "chat_tool_policy.json"
+    before = path.stat()
 
-    store.load()
-    store.load()
+    # Swap the two modes in place: same size, same mtime.
+    data = json.loads(path.read_text())
+    data["tools"]["a"]["mode"], data["tools"]["b"]["mode"] = "user_only", "disabled"
+    path.write_text(json.dumps(data, indent=2))
+    assert path.stat().st_size == before.st_size
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
 
-    assert reads == []
+    policy = store.load()
+    assert policy.mode_for("a") is ToolMode.USER_ONLY
+    assert policy.mode_for("b") is ToolMode.DISABLED
 
 
 def test_load_returns_independent_copies(store):
@@ -217,7 +224,7 @@ def test_read_error_after_good_load_uses_last_known_good(store, monkeypatch, cap
     store.save(_policy(a="disabled"), 0, "alice")
     good = store.load()
     monkeypatch.setattr(
-        type(store.path()), "stat", lambda self, **kw: (_ for _ in ()).throw(PermissionError("nfs hiccup"))
+        type(store.path()), "read_text", lambda self, **kw: (_ for _ in ()).throw(PermissionError("nfs hiccup"))
     )
 
     with caplog.at_level("WARNING"):
@@ -226,8 +233,8 @@ def test_read_error_after_good_load_uses_last_known_good(store, monkeypatch, cap
     assert "last known good" in caplog.text
 
 
-def _raise_on_stat(monkeypatch, error):
-    monkeypatch.setattr(Path, "stat", lambda self, **kw: (_ for _ in ()).throw(error))
+def _raise_on_read(monkeypatch, error):
+    monkeypatch.setattr(Path, "read_text", lambda self, **kw: (_ for _ in ()).throw(error))
 
 
 @pytest.mark.parametrize("error", [
@@ -237,7 +244,7 @@ def _raise_on_stat(monkeypatch, error):
     OSError(errno.EIO, "Input/output error"),
 ])
 def test_unreachable_file_without_last_known_good_uses_defaults(store, monkeypatch, caplog, error):
-    _raise_on_stat(monkeypatch, error)
+    _raise_on_read(monkeypatch, error)
 
     with caplog.at_level("WARNING"):
         assert store.load() == default_policy()
@@ -270,7 +277,7 @@ def test_missing_file_with_nothing_read_yet_uses_the_restrictive_defaults_quietl
 
 
 def test_unreachable_file_is_logged_once_not_on_every_request(store, monkeypatch, caplog):
-    _raise_on_stat(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
+    _raise_on_read(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
 
     with caplog.at_level("WARNING"):
         for _ in range(5):
@@ -287,7 +294,7 @@ def test_last_known_good_is_only_used_for_the_same_file(tmp_path, monkeypatch):
     store.load()
 
     current["path"] = next(paths)  # e.g. CHAT_TOOL_POLICY_PATH changed
-    _raise_on_stat(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
+    _raise_on_read(monkeypatch, OSError(errno.ENOTCONN, "Transport endpoint is not connected"))
 
     assert store.load() == default_policy()
 
