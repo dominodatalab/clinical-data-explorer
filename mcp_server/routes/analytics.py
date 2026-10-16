@@ -18,7 +18,8 @@ from typing import Dict, List, Optional
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
+from mcp_server.errors import ToolError
 
 from mcp_server.session import get_current_df
 from mcp_server.types import FeatureStats
@@ -36,7 +37,7 @@ async def get_feature_stats(features: Optional[List[str]] = Query(None)):
     else:
         for feature in features:
             if feature not in df.columns:
-                raise HTTPException(status_code=404, detail=f"Feature '{feature}' not found")
+                raise ToolError.safe(status_code=404, detail=f"Feature '{feature}' not found")
     
     stats = []
     for feature in features:
@@ -68,7 +69,7 @@ async def get_correlation_matrix():
     numeric_df = df.select_dtypes(include=[np.number])
     
     if numeric_df.empty:
-        raise HTTPException(status_code=400, detail="No numeric columns found in the dataset")
+        raise ToolError.safe(status_code=400, detail="No numeric columns found in the dataset")
     
     return numeric_df.corr().to_dict()
 
@@ -78,14 +79,14 @@ async def get_target_correlation(target: str = Query(..., description="Target va
     df = get_current_df()
     
     if target not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Target variable '{target}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Target variable '{target}' not found")
     
     if not pd.api.types.is_numeric_dtype(df[target]):
-        raise HTTPException(status_code=400, detail=f"Target variable '{target}' must be numeric")
+        raise ToolError.safe(status_code=400, detail=f"Target variable '{target}' must be numeric")
     
     numeric_df = df.select_dtypes(include=[np.number])
     if target not in numeric_df.columns:
-        raise HTTPException(status_code=400, detail=f"Target variable '{target}' is not numeric")
+        raise ToolError.safe(status_code=400, detail=f"Target variable '{target}' is not numeric")
     
     correlations = numeric_df.corr()[target].drop(target).to_dict()
     return {k: float(v) for k, v in correlations.items()}
@@ -96,10 +97,10 @@ async def get_feature_histogram(feature: str, bins: int = Query(10, description=
     df = get_current_df()
     
     if feature not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Feature '{feature}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Feature '{feature}' not found")
     
     if not pd.api.types.is_numeric_dtype(df[feature]):
-        raise HTTPException(status_code=400, detail=f"Feature '{feature}' is not numeric")
+        raise ToolError.safe(status_code=400, detail=f"Feature '{feature}' is not numeric")
     
     hist, bin_edges = np.histogram(df[feature].dropna(), bins=bins)
     return {
@@ -114,10 +115,10 @@ async def get_feature_boxplot(feature: str):
     df = get_current_df()
     
     if feature not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Feature '{feature}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Feature '{feature}' not found")
     
     if not pd.api.types.is_numeric_dtype(df[feature]):
-        raise HTTPException(status_code=400, detail=f"Feature '{feature}' is not numeric")
+        raise ToolError.safe(status_code=400, detail=f"Feature '{feature}' is not numeric")
     
     q1 = float(df[feature].quantile(0.25))
     q3 = float(df[feature].quantile(0.75))
@@ -161,12 +162,12 @@ async def get_feature_comparison(
             missing.append(feature1)
         if feature2 not in df.columns:
             missing.append(feature2)
-        raise HTTPException(status_code=404, detail=f"Features not found: {', '.join(missing)}")
+        raise ToolError.safe(status_code=404, detail=f"Features not found: {', '.join(missing)}")
     
     # Apply filtering if filter parameters are provided
     if filter_column and filter_value:
         if filter_column not in df.columns:
-            raise HTTPException(status_code=404, detail=f"Filter column '{filter_column}' not found")
+            raise ToolError.safe(status_code=404, detail=f"Filter column '{filter_column}' not found")
         
         try:
             # Try to convert filter_value to appropriate type based on column
@@ -179,7 +180,7 @@ async def get_feature_comparison(
                 
             filtered_df = df[df[filter_column] == filter_value_converted]
         except ValueError:
-            raise HTTPException(status_code=400, detail=f"Cannot convert filter value '{filter_value}' to the appropriate type for column '{filter_column}'")
+            raise ToolError.safe(status_code=400, detail=f"Cannot convert filter value '{filter_value}' to the appropriate type for column '{filter_column}'")
     else:
         filtered_df = df
     
@@ -206,10 +207,10 @@ async def get_group_analysis(feature: str, group_by: str = Query(..., descriptio
             missing.append(feature)
         if group_by not in df.columns:
             missing.append(group_by)
-        raise HTTPException(status_code=404, detail=f"Features not found: {', '.join(missing)}")
+        raise ToolError.safe(status_code=404, detail=f"Features not found: {', '.join(missing)}")
     
     if not pd.api.types.is_numeric_dtype(df[feature]):
-        raise HTTPException(status_code=400, detail=f"Feature '{feature}' must be numeric")
+        raise ToolError.safe(status_code=400, detail=f"Feature '{feature}' must be numeric")
     
     result = {}
     for group, group_df in df.groupby(group_by):
@@ -234,7 +235,7 @@ async def get_value_counts(feature: str, limit: int = Query(50, description="Max
     df = get_current_df()
     
     if feature not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Feature '{feature}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Feature '{feature}' not found")
     
     value_counts = df[feature].value_counts().head(limit).to_dict()
     

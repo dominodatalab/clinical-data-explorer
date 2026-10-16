@@ -1,9 +1,10 @@
 // Shared API helpers for the Data Explorer frontend.
 //
 // Owns API-related frontend helpers:
-//   1. `getBaseUrl()` — derive the root path the page was served from so
-//      relative API calls work both locally (`/`) and behind a Domino-style
-//      reverse proxy (`/<workspace-prefix>/<deployment-id>/`).
+//   1. `getBaseUrl(suffixToStrip?)` — derive the root path the page was served
+//      from so relative API calls work both locally (`/`) and behind a
+//      Domino-style reverse proxy (`/<workspace-prefix>/<deployment-id>/`).
+//      Pages served from a sub-path (the admin page) pass that sub-path to strip.
 //   2. `apiUrl(endpoint)` — prefix a relative endpoint with that base URL.
 //   3. `fetchWithStatusCheck(input, init)` — shared response-level wrapper
 //      around `fetch()` that returns the original Response, refreshes the UI
@@ -17,8 +18,17 @@
 // `BASE_URL` is computed once at module load so every module shares the same
 // API prefix.
 
-export function getBaseUrl() {
+// `suffixToStrip` is for pages served from a sub-path of the app (the admin page at
+// `<app>/admin/chat-tools`): API calls are relative to the app root, not to the page.
+export function getBaseUrl(suffixToStrip) {
     let path = window.location.pathname;
+    if (suffixToStrip) {
+        const suffix = `/${String(suffixToStrip).replace(/^\/+|\/+$/g, '')}`;
+        const trimmed = path.replace(/\/+$/, '');
+        if (trimmed.endsWith(suffix)) {
+            path = trimmed.slice(0, trimmed.length - suffix.length);
+        }
+    }
     if (!path.endsWith('/')) {
         path += '/';
     }

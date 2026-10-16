@@ -13,6 +13,7 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
+from types import SimpleNamespace
 from flask import Flask
 
 import backend.routes.chat as chat_routes
@@ -272,10 +273,13 @@ def test_agents_carry_the_max_output_token_cap(monkeypatch):
 
     monkeypatch.setattr(chat_agent, "MCPServerSSE", lambda url, headers: object())
     monkeypatch.setattr(chat_agent, "_get_llm_model", lambda: object())
-    monkeypatch.setattr(chat_agent, "Agent", lambda *args, **kwargs: captured.append(kwargs))
+    # The session agent gets extra attributes assigned, so the fake must accept them.
+    monkeypatch.setattr(
+        chat_agent, "Agent", lambda *args, **kwargs: captured.append(kwargs) or SimpleNamespace()
+    )
 
     chat_agent._create_agent_for_session("user-1")
-    chat_agent._create_agent_without_mcp()
+    chat_agent._create_agent_without_mcp(chat_agent._deny_all_policy())
 
     assert [kwargs["model_settings"]["max_tokens"] for kwargs in captured] == [
         chat_agent.LLM_MAX_OUTPUT_TOKENS,
@@ -313,6 +317,42 @@ def test_chat_route_sets_and_resets_the_passthrough_token(monkeypatch):
     assert response.status_code == 200
     assert seen == ["visitor-jwt"]
     assert chat_agent._passthrough_token_var.get() is None
+
+
+def test_chat_route_returns_hidden_tool_results_and_notice(monkeypatch):
+    monkeypatch.setattr(chat_routes, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_routes, "get_passthrough_token", lambda: "visitor-jwt")
+    monkeypatch.setattr(chat_routes, "get_session_id", lambda: "user-1")
+    card = {"tool_call_id": "c1", "tool_name": "get_dataset_head", "content": [{"a": 1}]}
+
+    async def fake_agent_response(message, session_id=None, authorization_header=None):
+        return {"text": "hi", "charts": [], "user_only_results": [card], "notice": "heads up"}
+
+    monkeypatch.setattr(chat_routes, "get_agent_response", fake_agent_response)
+
+    response = _chat_app().test_client().post("/chat", json={"message": "hello"})
+
+    assert response.get_json() == {
+        "response": "hi",
+        "charts": [],
+        "user_only_results": [card],
+        "notice": "heads up",
+    }
+
+
+def test_chat_route_omits_notice_and_defaults_results_when_absent(monkeypatch):
+    monkeypatch.setattr(chat_routes, "is_chat_configured", lambda: True)
+    monkeypatch.setattr(chat_routes, "get_passthrough_token", lambda: "visitor-jwt")
+    monkeypatch.setattr(chat_routes, "get_session_id", lambda: "user-1")
+
+    async def fake_agent_response(message, session_id=None, authorization_header=None):
+        return {"text": "hi", "charts": []}
+
+    monkeypatch.setattr(chat_routes, "get_agent_response", fake_agent_response)
+
+    response = _chat_app().test_client().post("/chat", json={"message": "hello"})
+
+    assert response.get_json() == {"response": "hi", "charts": [], "user_only_results": []}
 
 
 def test_chat_route_resets_the_passthrough_token_after_a_failure(monkeypatch):

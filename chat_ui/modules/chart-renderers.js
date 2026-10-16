@@ -1,15 +1,18 @@
 // Highcharts type-specific renderers used by the chat tab to embed
-// agent-replied charts (modules/chat.js dispatches to these from its
-// `renderChart` function).
+// agent-replied charts, and by the shared tool output renderer
+// (modules/tool-output.js) to chart hidden-from-AI results in the chat and
+// on the chat tool settings page.
 //
-// Each function takes (containerId, title, data) and constructs a
-// Highcharts chart in the matching DOM element. The `data` shape is
-// the per-type payload the agent's `[CHART_DATA]` block emits — see
-// `backend/prompts/chat_system_prompt.md` for the contract.
+// Each function takes (container, title, data), where container is a DOM
+// element or its id, and constructs a Highcharts chart in it. The `data`
+// shape is the per-type payload the agent's `[CHART_DATA]` block emits —
+// see `backend/prompts/chat_system_prompt.md` for the contract.
 //
 // Eight renderers, all named exports:
 //   - renderBarChart, renderScatterChart, renderLineChart, renderPieChart,
 //     renderHistogram, renderBoxplot, renderHeatmap, renderGroupedBarChart
+// plus `renderChartSpec(container, { type, title, data })`, which picks the
+// renderer for `type` and shows an error in the container if it fails.
 //
 // These functions intentionally remain separate from the explore-tab's
 // own renderers in `modules/explore-charts.js`. Despite the plan's §4
@@ -27,6 +30,59 @@
 //
 // No state-, api-, or DOM-helper imports — each renderer is a pure
 // Highcharts.chart() invocation against its container.
+
+const RENDERERS = {
+    bar: renderBarChart,
+    scatter: renderScatterChart,
+    line: renderLineChart,
+    pie: renderPieChart,
+    histogram: renderHistogram,
+    boxplot: renderBoxplot,
+    heatmap: renderHeatmap,
+    grouped_bar: renderGroupedBarChart,
+};
+
+function renderChartError(container, message) {
+    const target = typeof container === 'string' ? document.getElementById(container) : container;
+    if (!target) return;
+
+    const errorElement = document.createElement('p');
+    errorElement.classList.add('error');
+    errorElement.textContent = message;
+    target.replaceChildren(errorElement);
+}
+
+export function renderChartSpec(container, chartSpec) {
+    const { type, title, data } = chartSpec || {};
+
+    if (!type) {
+        console.error('Chart type is missing:', chartSpec);
+        renderChartError(container, 'Invalid chart: missing type');
+        return;
+    }
+    if (!data) {
+        console.error('Chart data is missing:', chartSpec);
+        renderChartError(container, 'Invalid chart: missing data');
+        return;
+    }
+    const render = Object.hasOwn(RENDERERS, type) ? RENDERERS[type] : null;
+    if (!render) {
+        console.error('Unknown chart type:', type);
+        renderChartError(container, 'Unknown chart type: ' + String(type));
+        return;
+    }
+    if (typeof Highcharts === 'undefined') {
+        renderChartError(container, 'Charts are unavailable. Use the Table view.');
+        return;
+    }
+    try {
+        render(container, title, data);
+    } catch (error) {
+        console.error('Error rendering chart:', error);
+        console.error('Chart spec was:', chartSpec);
+        renderChartError(container, 'Error rendering chart: ' + String(error.message));
+    }
+}
 
 export function renderBarChart(containerId, title, data) {
     Highcharts.chart(containerId, {

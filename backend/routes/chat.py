@@ -85,12 +85,18 @@ def chat():
             session_id=get_session_id(),
             authorization_header=f'Bearer {token}' if token else None,
         ))
-        # agent_response is now a dict with 'text' and 'charts' keys
+        # agent_response has 'text' and 'charts', plus 'user_only_results' (results of
+        # tools hidden from the model, shown to the user as cards) and an optional
+        # 'notice' (e.g. the data tools are unavailable).
         logger.info("Successfully got agent response")
-        return jsonify({
+        payload = {
             'response': agent_response['text'],
-            'charts': agent_response.get('charts', [])
-        })
+            'charts': agent_response.get('charts', []),
+            'user_only_results': agent_response.get('user_only_results', []),
+        }
+        if agent_response.get('notice'):
+            payload['notice'] = agent_response['notice']
+        return jsonify(payload)
     except RuntimeError as e:
         # Chat not configured error
         logger.warning(f"Chat not configured: {str(e)}")

@@ -19,6 +19,7 @@ import sys
 from backend import config
 from backend.routes.charts import bp as charts_bp
 from backend.routes.chat import bp as chat_bp
+from backend.routes.chat_tools_admin import bp as chat_tools_admin_bp
 from backend.routes.data import bp as data_bp
 from backend.routes.datasets import bp as datasets_bp
 from backend.routes.governance import bp as governance_bp
@@ -30,6 +31,7 @@ logger = logging.getLogger(__name__)
 # Where each formerly-inline route now lives:
 #
 #   /chat, /chat/status, /chat/clear              -> backend/routes/chat.py
+#   /admin/chat-tools, /admin/api/chat-tools*     -> backend/routes/chat_tools_admin.py
 #   /governance/*                                 -> backend/routes/governance.py
 #   /chart/*                                      -> backend/routes/charts.py
 #   /datasets, /snapshots/*, /snapshot/*/files,
@@ -91,6 +93,7 @@ def create_app():
     _register_static_routes(app)
     app.register_blueprint(charts_bp)
     app.register_blueprint(chat_bp)
+    app.register_blueprint(chat_tools_admin_bp)
     app.register_blueprint(data_bp)
     app.register_blueprint(datasets_bp)
     app.register_blueprint(governance_bp)

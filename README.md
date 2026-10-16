@@ -206,6 +206,51 @@ curl -X POST "$DOMINO_LLM_GATEWAY_URL/v1/chat/completions" \
 > Note: LLM configuration is read once per process. Changing these variables
 > requires restarting the app.
 
+#### Chat tool access settings
+
+Admins (the Owner or a Contributor of the extension's project) control which data tools the chat assistant may use. Admins see a **Chat tool settings** link at the bottom of the Chat tab, which opens the settings page (`/admin/chat-tools` on the app's own URL). For each tool, the page shows its description and parameters, lets you **try it** against a bundled clinical sample (so previewing never exposes study data or replaces the dataset you have open), and sets one of three modes:
+
+| Mode | Assistant can call it? | Assistant sees the output? | User sees the output? |
+|------|------------------------|----------------------------|-----------------------|
+| **On** | Yes | Yes | No (the assistant summarizes it) |
+| **Hidden from AI** | Yes | **No**, it only learns that the tool ran | **Yes**, in a tagged result card in the chat |
+| **Off** | No, the tool is never offered to the model | n/a | n/a |
+
+Hidden-from-AI results appear in the chat as a card, laid out by the shape of the data (a table, or a chart with a **Table** button):
+
+![Chat showing two Hidden from AI result cards: a histogram and a table](docs_assets/09-chat-hidden-from-ai.png)
+
+The policy is enforced on the server, not by asking the model to behave. Changes apply to each user's next message, including the earlier *tool outputs* in an ongoing conversation. The assistant's own earlier replies are not rewritten, so a summary it gave while a tool was On stays in the conversation after you restrict that tool.
+
+**Defaults:** tools that can return raw rows or individual data points are Off, and aggregate tools (statistics, histograms, counts, correlations) are On. These are what a new install is seeded with, what **Reset** restores, and what the assistant uses if the settings can't be read and it has no earlier copy. An existing settings file is never changed by an upgrade.
+
+**Renamed and new tools:** a setting is matched to a tool by its name. A tool that is added or renamed in a release is treated as new and uses the page's **Default for new tools** (initially On), and a setting whose tool no longer exists is listed as **Stale** and can be removed. After an upgrade, look for tools marked "New, using default"; set the default for new tools to Off if you want to approve each one.
+
+**Where the settings live:** one file, `.clinical-data-explorer/chat_tool_policy.json`, in the extension project's default dataset. The app creates it with the defaults when it starts, and reads it on every chat request. Locally it is `./.chat_tool_policy.json`. Set `CHAT_TOOL_POLICY_PATH` to keep it somewhere else.
+
+**File format:** the settings page is the intended way to edit the file, but it is plain JSON:
+
+```json
+{
+  "schema_version": 1,
+  "default_mode": "enabled",
+  "tools": {
+    "<tool name>": { "mode": "user_only", "note": "optional, up to 500 characters" }
+  }
+}
+```
+
+`mode` is `enabled`, `user_only` (Hidden from AI) or `disabled`. `default_mode` applies to every tool not listed. The app also writes `revision`, `updated_at`, `updated_by` and `change_log`; leave those alone. If the file isn't valid JSON or doesn't match this shape, the assistant has no data tools and no earlier tool output reaches the model. The settings page shows what is wrong and offers **Reset to defaults**.
+
+**If the settings can't be reached** (for example the dataset isn't mounted), the assistant falls back to the last settings it read, or to the defaults, and the settings page says why and won't save until it is fixed.
+
+| Variable | Description |
+|----------|-------------|
+| `CHAT_TOOL_POLICY_DATASET` | Name of the Domino Dataset holding the policy file (default: the project's default dataset, i.e. the project name) |
+| `CHAT_TOOL_POLICY_PATH` | Optional. Full path of the policy file (`~` is expanded); overrides the dataset lookup, for example a path on a NetApp volume mounted into the app. Blank counts as unset |
+| `CHAT_TOOL_ADMIN_USERNAMES` | Comma-separated usernames that are also admins. Use for local development (set it to the mock user's `userName`, with `DEV_MODE=dev`) and as a break-glass option |
+| `CHAT_USER_ONLY_RESULT_MAX_BYTES` | Cap on one Hidden-from-AI result kept in chat history (default: `262144`, or 256 KB); larger results are truncated |
+
 #### Logging
 
 | Variable | Description |
@@ -313,6 +358,8 @@ The chart plots the aggregated Y values for each group on the X axis, making it 
 ## Use the Chat Feature
 
 When configured with an LLM provider, the Chat tab enables natural language queries about your data. The AI assistant can answer questions about your dataset structure, compute statistics, and generate visualizations directly in the conversation.
+
+An AI visibility policy file, managed by the app's admins, controls which data tools the assistant can use and what it can see. See [Chat tool access settings](#chat-tool-access-settings).
 
 ### Example: Asking About Your Data
 

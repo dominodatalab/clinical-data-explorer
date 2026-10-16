@@ -28,7 +28,7 @@
     "visibility": "authenticated",
     "enableDeepLinking": true,
     "discoverable": true,
-    "mountDatasets": false,
+    "mountDatasets": true,
     "mountNetAppVolumes": false,
     "externalVolumeMounts": [],
     "hardwareTierIdSuggestion": "medium-k8s",

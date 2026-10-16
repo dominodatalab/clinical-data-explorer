@@ -18,7 +18,8 @@ import logging
 from typing import Optional
 
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Query
+from mcp_server.errors import ToolError
 
 from mcp_server.session import get_current_df
 from mcp_server.services.expressions import apply_expression_filter
@@ -98,7 +99,7 @@ async def get_column_values(
     df = get_current_df()
     
     if column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Column '{column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Column '{column}' not found")
     
     # Parse and apply regular filters if provided
     if filters:
@@ -189,7 +190,7 @@ async def get_column_stats(
     df = get_current_df()
     
     if column not in df.columns:
-        raise HTTPException(status_code=404, detail=f"Column '{column}' not found")
+        raise ToolError.safe(status_code=404, detail=f"Column '{column}' not found")
     
     # Parse filters from JSON string if provided
     filter_list = []

@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chat tool settings</title>
+    <link rel="stylesheet" href="../styles/variables.css">
+    <link rel="stylesheet" href="../styles/tool-output.css">
+    <link rel="stylesheet" href="chat-tools.css">
+    <!-- Charts in tool output previews, same as the chat's result cards (vendored locally) -->
+    <script src="../vendor/highcharts/highcharts.js"></script>
+    <script src="../vendor/highcharts/highcharts-more.js"></script>
+    <script src="../vendor/highcharts/heatmap.js"></script>
+    <!-- Markdown rendering for tool descriptions (vendored locally) -->
+    <script src="../vendor/markdown/marked.min.js"></script>
+    <script src="../vendor/markdown/purify.min.js"></script>
+</head>
+<body>
+    <header class="admin-header">
+        <h1>Chat tool settings</h1>
+        <p class="admin-intro">
+            Choose which data tools the chat assistant can use. Changes apply to each user's next chat message.
+            This page is only visible to editors of the extension's project.
+        </p>
+    </header>
+
+    <div id="banners" class="banners" data-testid="banners"></div>
+
+    <main class="admin-layout" id="admin-layout" hidden>
+        <section class="tool-list-pane" aria-label="Tools">
+            <div class="default-mode-row">
+                <label for="default-mode-select">Default for new tools</label>
+                <select id="default-mode-select" data-testid="default-mode-select"></select>
+            </div>
+            <input type="search" id="tool-search" data-testid="tool-search" placeholder="Search tools" aria-label="Search tools" autocomplete="off">
+            <div id="filter-chips" class="filter-chips" role="group" aria-label="Filter tools"></div>
+            <ul id="tool-list" class="tool-list" data-testid="tool-list"></ul>
+            <p id="empty-list" class="muted" hidden>No tools match.</p>
+            <section id="stale-section" class="stale-section" hidden>
+                <h2>Stale entries</h2>
+                <p class="muted">These settings refer to tools that no longer exist, usually because a tool was renamed. A renamed tool is listed above as new and uses the default for new tools, so check its mode. Remove these entries once you have.</p>
+                <ul id="stale-list" class="stale-list"></ul>
+            </section>
+        </section>
+
+        <section class="detail-pane" id="detail-pane" data-testid="detail-panel" aria-live="polite"></section>
+    </main>
+
+    <div id="unsaved-bar" class="unsaved-bar" data-testid="unsaved-bar" role="region" aria-label="Unsaved changes" hidden>
+        <details class="unsaved-details">
+            <summary id="unsaved-count" data-testid="unsaved-count">Unsaved changes (0)</summary>
+            <ul id="unsaved-list" class="unsaved-list"></ul>
+        </details>
+        <div class="unsaved-actions">
+            <button type="button" id="discard-button" class="btn-secondary" data-testid="discard-button">Discard</button>
+            <button type="button" id="save-button" class="btn-primary" data-testid="save-button">Save</button>
+        </div>
+    </div>
+
+    <script type="module" src="chat-tools.js"></script>
+</body>
+</html>

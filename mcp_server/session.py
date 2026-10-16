@@ -35,7 +35,13 @@ from starlette.middleware.base import BaseHTTPMiddleware
 
 from mcp_server import dataframe_cache
 from mcp_server.auth import set_auth_header
-from mcp_server.config import SESSION_MAX_AGE, SESSION_MAX_COUNT
+from mcp_server.config import (
+    PREVIEW_HEADER,
+    PREVIEW_SESSION_SUFFIX,
+    SESSION_MAX_AGE,
+    SESSION_MAX_COUNT,
+)
+from mcp_server.errors import ToolError
 from mcp_server.services.data_loading import extract_dataset_metadata, load_dataset
 from mcp_server.services.httpclient import get_current_user
 
@@ -90,13 +96,24 @@ def _get_session_id():
     return user_id
 
 class SessionMiddleware(BaseHTTPMiddleware):
-    """Extract X-Session-Id header and set it in contextvars for the request."""
+    """Resolve the caller's session ID and set it in contextvars for the request.
+
+    Requests carrying `X-Chat-Tool-Preview: 1` get a separate sandbox session."""
     async def dispatch(self, request: Request, call_next):
         set_auth_header(request.headers)
         try:
             session_id = _get_session_id()
         except HTTPException as exc:
             return JSONResponse({"detail": exc.detail}, status_code=exc.status_code)
+        # A tool call made over `/mcp` runs as an internal request spawned from the
+        # long-lived MCP connection request, so it inherits that request's session id
+        # (suffix included) through the contextvar. Strip it and apply this request's
+        # own header, so the suffix is never doubled or carried over.
+        session_id = session_id.removesuffix(PREVIEW_SESSION_SUFFIX)
+        if request.headers.get(PREVIEW_HEADER) == "1":
+            # The namespace is still derived from the caller's verified identity,
+            # so a spoofed header can only ever reach the caller's own sandbox.
+            session_id = f"{session_id}{PREVIEW_SESSION_SUFFIX}"
         _current_user_id.set(session_id)
 
         request.state.session_eviction_result = _evict_stale_sessions()
@@ -277,7 +294,7 @@ def get_current_metadata() -> dict:
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+        raise ToolError.safe(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
     if session.metadata is not None:
         return session.metadata
     # Fallback for sessions loaded before metadata capture existed: extract
@@ -290,7 +307,7 @@ def get_current_df() -> pd.DataFrame:
     session_id = _current_user_id.get()
     session = _get_sessions().get(session_id)
     if session is None:
-        raise HTTPException(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
+        raise ToolError.safe(status_code=400, detail="No dataset loaded. Please load a dataset first using /dataset/load")
 
     df_cache = get_cache()
     df = df_cache.get(session.file_snapshot_path)
