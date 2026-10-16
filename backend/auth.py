@@ -79,15 +79,23 @@ def get_domino_external_url():
       3. VSCODE_PROXY_URI env var (set in Domino workspaces/IDE sessions)
     """
     override = config.get_domino_external_url()
+    print("OVERRIDE")
+    print(override)
     if override:
         return override.rstrip('/')
 
     # Try request headers first — works for deployed Apps and Extensions
     try:
         from flask import has_request_context
+        print("DO WE HAVE REQUEST CONTEXT")
         if has_request_context():
+            print("YES")
             fwd_host = request.headers.get('X-Forwarded-Host') or request.headers.get('Host')
             fwd_proto = request.headers.get('X-Forwarded-Proto', 'https')
+            print("fwd_host")
+            print(fwd_host)
+            print("fwd_proto")
+            print(fwd_proto)
             if fwd_host and 'domino-platform' not in fwd_host and 'localhost' not in fwd_host:
                 # Use first host in a comma-separated list (proxies sometimes chain)
                 fwd_host = fwd_host.split(',')[0].strip()
@@ -97,6 +105,8 @@ def get_domino_external_url():
 
     # Workspace/IDE fallback
     proxy_uri = config.get_vscode_proxy_uri()
+    print("PROXY URI")
+    print(proxy_uri)
     if proxy_uri:
         try:
             from urllib.parse import urlparse
@@ -106,4 +116,5 @@ def get_domino_external_url():
         except Exception as e:
             logger.warning(f"Could not parse VSCODE_PROXY_URI: {e}")
 
+    print("NO URL")
     return None

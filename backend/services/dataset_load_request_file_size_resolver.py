@@ -79,7 +79,23 @@ def _get_netapp_volume_file_size(
 
 
 def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
+    print("get_netapp_volume_file_metadata")
+    print("supplied external_url")
+    print(external_url)
+
     external_url = external_url or get_domino_external_url()
+    print("get_netapp_volume_file_metadata external_url")
+    print(external_url)
+
+    print("volume_id")
+    print(volume_id)
+
+    print("file_path")
+    print(file_path)
+
+    print("token")
+    print(token)
+
     if not external_url:
         raise RuntimeError('Domino external URL not configured')
 
