@@ -133,9 +133,9 @@ def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monk
 
 def test_get_netapp_volume_file_metadata_does_not_use_request_host(monkeypatch):
     calls = []
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "https://webvfs.domino.example")
     monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
     monkeypatch.setattr(
         resolver.httpclient,
         "get",
@@ -155,7 +155,7 @@ def test_get_netapp_volume_file_metadata_does_not_use_request_host(monkeypatch):
 
     assert calls == [
         (
-            "https://domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
+            "https://webvfs.domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
             {
                 "params": {"path": "reports/adsl.csv"},
                 "headers": {
@@ -168,9 +168,26 @@ def test_get_netapp_volume_file_metadata_does_not_use_request_host(monkeypatch):
 
 
 def test_get_netapp_volume_file_metadata_requires_an_explicit_webvfs_host(monkeypatch):
+    calls = []
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
     monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
     monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
+    monkeypatch.setattr(
+        resolver.httpclient,
+        "get",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
 
-    with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
-        resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")
+    from flask import Flask
+
+    with Flask(__name__).test_request_context(
+        headers={
+            "Host": "apps.domino.example",
+            "X-Forwarded-Host": "apps.domino.example",
+            "X-Forwarded-Proto": "https",
+        }
+    ):
+        with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
+            resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")
+
+    assert calls == []
