@@ -21,34 +21,20 @@ def test_get_webvfs_base_url_uses_domino_webvfs_host(monkeypatch, host, expected
     assert get_webvfs_base_url() == expected
 
 
-def test_get_webvfs_base_url_uses_legacy_external_url_fallback(monkeypatch):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example/")
-
-    assert get_webvfs_base_url() == "https://domino.example"
-
-
-def test_get_webvfs_base_url_prefers_domino_webvfs_host(monkeypatch):
+def test_get_webvfs_base_url_ignores_domino_external_url(monkeypatch):
     monkeypatch.setenv("DOMINO_WEBVFS_HOST", "http://127.0.0.1:8763")
     monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
 
     assert get_webvfs_base_url() == "http://127.0.0.1:8763"
 
 
-def test_get_webvfs_base_url_ignores_a_blank_domino_webvfs_host(monkeypatch):
-    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "   ")
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
-
-    assert get_webvfs_base_url() == "https://domino.example"
-
-
 @pytest.mark.parametrize("host", [None, "", "   "])
-def test_get_webvfs_base_url_requires_an_explicit_host(monkeypatch, host):
+def test_get_webvfs_base_url_does_not_fall_back_to_domino_external_url(monkeypatch, host):
     if host is None:
         monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
     else:
         monkeypatch.setenv("DOMINO_WEBVFS_HOST", host)
-    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
 
     with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
         get_webvfs_base_url()

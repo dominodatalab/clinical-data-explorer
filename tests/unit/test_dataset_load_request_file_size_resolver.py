@@ -167,10 +167,10 @@ def test_get_netapp_volume_file_metadata_does_not_use_request_host(monkeypatch):
     ]
 
 
-def test_get_netapp_volume_file_metadata_requires_an_explicit_webvfs_host(monkeypatch):
+def test_get_netapp_volume_file_metadata_does_not_fall_back_to_external_url(monkeypatch):
     calls = []
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
     monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
     monkeypatch.setattr(
         resolver.httpclient,
