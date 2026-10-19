@@ -107,12 +107,15 @@ Configure the following environment variables in your Domino project settings:
 
 #### Domino WebVFS routing
 
-The NetApp file-size check uses a WebVFS-specific base URL. It does not use
+RemoteFS volume/snapshot registry calls and NetApp file-metadata requests use a
+WebVFS-specific base URL. They do not use
 `DOMINO_API_HOST` or the hostname that forwarded the incoming App request.
+NetApp file listing and download continue through the `domino_data` datasource
+clients and their service-specific routing.
 
 | Variable | Compatibility behavior |
 |----------|------------------------|
-| `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On older releases, set it manually to the execution data plane endpoint that serves `/webvfs`. CDE appends `/webvfs`; do not include that suffix in the value. |
+| `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On older releases, set it manually to the execution data plane domain that serves `/webvfs`. CDE appends `/webvfs/remotefs/v1`; do not include an API path in the value. |
 | `DOMINO_EXTERNAL_URL` | Existing CDE-defined manual override used only by Governance. Domino does not inject it, and WebVFS does not use it. Do not set it to an App-specific ingress hostname. |
 
 On a release that does not inject `DOMINO_WEBVFS_HOST`, set that variable

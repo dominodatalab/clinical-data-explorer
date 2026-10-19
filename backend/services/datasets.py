@@ -30,13 +30,11 @@ from flask import jsonify
 from werkzeug.exceptions import (
     Forbidden,
     HTTPException,
-    InternalServerError,
     NotFound,
     Unauthorized,
 )
 from werkzeug.wrappers import Response
 
-from backend import config
 from backend.auth import (
     get_domino_api_host,
     get_passthrough_token,
@@ -44,6 +42,7 @@ from backend.auth import (
 )
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.download_file_metadata_cache import get_file_cache
+from backend.services.webvfs import get_webvfs_base_url
 import backend.services.httpclient as httpclient
 from backend.session import get_session_id, mcp_post
 from backend.types import SourceType
@@ -95,23 +94,9 @@ def find_data_files_fallback():
     return data_files
 
 
-def _get_remotefs_host():
-    remotefs_host = config.get_domino_remote_file_system_hostport()
-    if not remotefs_host:
-        return None
-    if not remotefs_host.startswith('http'):
-        remotefs_host = f'http://{remotefs_host}'
-    return remotefs_host
-
-
 def _fetch_remotefs_volumes(token, params):
-    remotefs_host = _get_remotefs_host()
-    if not remotefs_host:
-        logger.debug("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT not set, skipping NetApp volume discovery")
-        return []
-
     response = requests.get(
-        f'{remotefs_host}/remotefs/v1/volumes',
+        f'{get_webvfs_base_url()}/webvfs/remotefs/v1/volumes',
         params=params,
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
@@ -126,12 +111,8 @@ def _fetch_remotefs_volumes(token, params):
 
 
 def _fetch_remotefs_volume(volume_id, token):
-    remotefs_host = _get_remotefs_host()
-    if not remotefs_host:
-        raise InternalServerError("RemoteFS host is not configured")
-
     response = requests.get(
-        f'{remotefs_host}/remotefs/v1/volumes/{volume_id}',
+        f'{get_webvfs_base_url()}/webvfs/remotefs/v1/volumes/{volume_id}',
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
     )
@@ -144,12 +125,8 @@ def _fetch_remotefs_volume(volume_id, token):
 
 
 def _fetch_remotefs_snapshot(snapshot_id, token):
-    remotefs_host = _get_remotefs_host()
-    if not remotefs_host:
-        raise InternalServerError("RemoteFS host is not configured")
-
     response = requests.get(
-        f'{remotefs_host}/remotefs/v1/snapshots/{snapshot_id}',
+        f'{get_webvfs_base_url()}/webvfs/remotefs/v1/snapshots/{snapshot_id}',
         headers={'Authorization': f'Bearer {token}'},
         timeout=30,
     )
@@ -159,6 +136,19 @@ def _fetch_remotefs_snapshot(snapshot_id, token):
         _raise_remotefs_http_exception(response, f'NetApp snapshot "{snapshot_id}"')
 
     return response.json()
+
+
+def _fetch_remotefs_snapshots_for_volume(volume_unique_name, token):
+    from domino_data.netapp_volumes import RemoteFSClient
+
+    client = RemoteFSClient(
+        token_file=None,
+        token_url=None,
+        token=token,
+        base_url=f'{get_webvfs_base_url()}/webvfs/remotefs/v1',
+    )
+    volume = client.get_volume_by_unique_name(volume_unique_name)
+    return client.list_snapshots(volume.id) or []
 
 
 def _raise_remotefs_http_exception(response, resource_name):
@@ -710,19 +700,16 @@ def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: 
     return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
 
 
-def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, snapshot_version, token=None):
+def _resolve_netapp_snapshot_version(snapshot_id: str | None, snapshot_version, token=None):
     if snapshot_version not in (None, ''):
         return snapshot_version
     if not snapshot_id or snapshot_id == 'latest':
         return None
 
-    from domino_data.netapp_volumes import NetAppVolumeClient
-    vol_client = NetAppVolumeClient(token=token)
-    snapshots = vol_client.list_snapshots(volume_unique_name=volume_key) or []
-    for snap in snapshots:
-        if getattr(snap, 'id', None) == snapshot_id:
-            return getattr(snap, 'version', None)
-    return None
+    try:
+        return _netapp_snapshot_version(token, snapshot_id)
+    except NotFound:
+        return None
 
 
 def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
@@ -732,7 +719,6 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
     if load_request.source_type == 'netapp' and load_request.volume_key:
         _, file_path = _split_display_name_path(load_request.dataset)
         snapshot_version = _resolve_netapp_snapshot_version(
-            load_request.volume_key,
             load_request.snapshot_id,
             load_request.snapshot_version,
             token=token,
@@ -1013,15 +999,11 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
 
         # The SDK pins reads by version (int), but the netapp deeplink URL
         # carries only a snapshot UUID. When we have an id but no version
-        # (e.g. the user landed via a netAppVolumeFileContext URL), look up
-        # the version from the volume's snapshot list.
+        # (e.g. the user landed via a netAppVolumeFileContext URL), resolve
+        # the corresponding snapshot record.
         if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
             try:
-                snaps = vol_client.list_snapshots(volume_unique_name=volume_key) or []
-                for s in snaps:
-                    if s.id == snapshot_id:
-                        snapshot_version = s.version
-                        break
+                snapshot_version = _netapp_snapshot_version(token, snapshot_id)
             except Exception as e:
                 logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
 
@@ -1192,13 +1174,11 @@ def _list_dataset_snapshots(dataset_id, token):
 
 
 def _list_netapp_snapshots(volume_unique_name, token):
-    """List snapshots for a NetApp volume using the domino_data SDK.
+    """List snapshots for a NetApp volume through the WebVFS endpoint.
     Includes a synthetic 'latest' entry for the current (non-snapshot) state.
     """
     try:
-        from domino_data.netapp_volumes import NetAppVolumeClient
-        vol_client = NetAppVolumeClient(token=token)
-        raw_snapshots = vol_client.list_snapshots(volume_unique_name=volume_unique_name)
+        raw_snapshots = _fetch_remotefs_snapshots_for_volume(volume_unique_name, token)
 
         snapshots = []
         max_version = -1

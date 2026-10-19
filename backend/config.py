@@ -121,10 +121,6 @@ def get_domino_run_id():
     return os.environ.get("DOMINO_RUN_ID")
 
 
-def get_domino_remote_file_system_hostport():
-    return os.environ.get("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT")
-
-
 def get_vscode_proxy_uri():
     return os.environ.get("VSCODE_PROXY_URI")
 
@@ -148,7 +144,6 @@ DOMINO_API_HOST = get_domino_api_host()
 DOMINO_EXTERNAL_URL = get_domino_external_url()
 DOMINO_PROJECT_ID = get_domino_project_id()
 DOMINO_RUN_ID = get_domino_run_id()
-DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT = get_domino_remote_file_system_hostport()
 VSCODE_PROXY_URI = get_vscode_proxy_uri()
 
 DATA_FILE_SIZE_LIMIT = int(os.environ.get("DATA_FILE_SIZE_LIMIT_B", 500 * ONE_MB))

@@ -313,9 +313,9 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
     services = _load_datasets_service(monkeypatch)
 
     monkeypatch.setattr(
-        services.config,
-        "get_domino_remote_file_system_hostport",
-        lambda: "remotefs.example",
+        services,
+        "get_webvfs_base_url",
+        lambda: "https://webvfs.example",
     )
 
     api_calls = []
@@ -366,7 +366,7 @@ def test_discover_netapp_files_for_volume_resolves_global_volume_id(monkeypatch)
     ]
     assert api_calls == [
         (
-            "http://remotefs.example/remotefs/v1/volumes/nv-1",
+            "https://webvfs.example/webvfs/remotefs/v1/volumes/nv-1",
             None,
             {"Authorization": "Bearer test-token"},
             30,
@@ -385,9 +385,9 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
     services = _load_datasets_service(monkeypatch)
 
     monkeypatch.setattr(
-        services.config,
-        "get_domino_remote_file_system_hostport",
-        lambda: "remotefs.example",
+        services,
+        "get_webvfs_base_url",
+        lambda: "https://webvfs.example",
     )
 
     api_calls = []
@@ -440,13 +440,13 @@ def test_discover_netapp_files_for_volume_uses_snapshot_id(monkeypatch):
     ]
     assert api_calls == [
         (
-            "http://remotefs.example/remotefs/v1/volumes/nv-1",
+            "https://webvfs.example/webvfs/remotefs/v1/volumes/nv-1",
             None,
             {"Authorization": "Bearer test-token"},
             30,
         ),
         (
-            "http://remotefs.example/remotefs/v1/snapshots/snap-2",
+            "https://webvfs.example/webvfs/remotefs/v1/snapshots/snap-2",
             None,
             {"Authorization": "Bearer test-token"},
             30,
@@ -465,9 +465,9 @@ def test_fetch_remotefs_volumes_raises_http_exception_on_api_error(monkeypatch):
     services = _load_datasets_service(monkeypatch)
 
     monkeypatch.setattr(
-        services.config,
-        "get_domino_remote_file_system_hostport",
-        lambda: "remotefs.example",
+        services,
+        "get_webvfs_base_url",
+        lambda: "https://webvfs.example",
     )
     monkeypatch.setattr(
         services.requests,
@@ -480,13 +480,119 @@ def test_fetch_remotefs_volumes_raises_http_exception_on_api_error(monkeypatch):
     assert excinfo.value.code == 500
 
 
+def test_remotefs_requests_only_use_webvfs_endpoint(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "https://webvfs.example/")
+    monkeypatch.setenv("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT", "http://remotefs.example")
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+    monkeypatch.setenv("DOMINO_API_HOST", "http://nucleus-frontend.domino-platform")
+
+    api_calls = []
+
+    def fake_requests_get(url, params=None, headers=None, timeout=None):
+        api_calls.append((url, params, headers, timeout))
+        if url.endswith("/volumes"):
+            return _FakeResponse(200, {"data": []})
+        if url.endswith("/volumes/nv-1"):
+            return _FakeResponse(200, {"id": "nv-1"})
+        return _FakeResponse(200, {"id": "snap-1", "version": 1})
+
+    monkeypatch.setattr(services.requests, "get", fake_requests_get)
+
+    assert services._fetch_remotefs_volumes("test-token", {"status": "Active"}) == []
+    assert services._fetch_remotefs_volume("nv-1", "test-token") == {"id": "nv-1"}
+    assert services._fetch_remotefs_snapshot("snap-1", "test-token") == {
+        "id": "snap-1",
+        "version": 1,
+    }
+    assert api_calls == [
+        (
+            "https://webvfs.example/webvfs/remotefs/v1/volumes",
+            {"status": "Active"},
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://webvfs.example/webvfs/remotefs/v1/volumes/nv-1",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+        (
+            "https://webvfs.example/webvfs/remotefs/v1/snapshots/snap-1",
+            None,
+            {"Authorization": "Bearer test-token"},
+            30,
+        ),
+    ]
+
+
+def test_remotefs_requests_do_not_fall_back_when_webvfs_host_is_missing(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    monkeypatch.setenv("DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT", "http://remotefs.example")
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+    api_calls = []
+    monkeypatch.setattr(services.requests, "get", lambda *args, **kwargs: api_calls.append((args, kwargs)))
+
+    with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
+        services._fetch_remotefs_volumes("test-token", {"status": "Active"})
+
+    assert api_calls == []
+
+
+def test_remotefs_snapshot_client_uses_webvfs_api_base(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "https://webvfs.example/")
+    captured = {}
+    expected_snapshots = [types.SimpleNamespace(id="snap-1", version=1)]
+
+    class FakeRemoteFSClient:
+        def __init__(self, *, token_file, token_url, token, base_url):
+            captured["client"] = {
+                "token_file": token_file,
+                "token_url": token_url,
+                "token": token,
+                "base_url": base_url,
+            }
+
+        def get_volume_by_unique_name(self, unique_name):
+            captured["volume_unique_name"] = unique_name
+            return types.SimpleNamespace(id="nv-1")
+
+        def list_snapshots(self, volume_id):
+            captured["snapshot_volume_id"] = volume_id
+            return expected_snapshots
+
+    domino_data_netapp_module = types.ModuleType("domino_data.netapp_volumes")
+    domino_data_netapp_module.RemoteFSClient = FakeRemoteFSClient
+    monkeypatch.setitem(sys.modules, "domino_data.netapp_volumes", domino_data_netapp_module)
+
+    snapshots = services._fetch_remotefs_snapshots_for_volume("vol-unique-name", "test-token")
+
+    assert snapshots == expected_snapshots
+    assert captured == {
+        "client": {
+            "token_file": None,
+            "token_url": None,
+            "token": "test-token",
+            "base_url": "https://webvfs.example/webvfs/remotefs/v1",
+        },
+        "volume_unique_name": "vol-unique-name",
+        "snapshot_volume_id": "nv-1",
+    }
+
+
 def test_discover_netapp_files_for_volume_raises_when_volume_is_missing(monkeypatch):
     services = _load_datasets_service(monkeypatch)
 
     monkeypatch.setattr(
-        services.config,
-        "get_domino_remote_file_system_hostport",
-        lambda: "remotefs.example",
+        services,
+        "get_webvfs_base_url",
+        lambda: "https://webvfs.example",
     )
     monkeypatch.setattr(
         services.requests,
@@ -1022,9 +1128,7 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     monkeypatch,
     tmp_path,
 ):
-    """When the netapp deeplink URL provides a snapshot UUID but no version,
-    load_netapp_volume_file resolves the version via list_snapshots so the SDK
-    can pin reads to that snapshot."""
+    """A deeplink snapshot UUID is resolved so the SDK can pin the read."""
     services = _load_datasets_service(monkeypatch)
     app = Flask(__name__)
 
@@ -1039,14 +1143,12 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
         {"diabetes_dataset.csv": b"A,B\n1,2\n"},
     )
 
-    # Set up the snapshot UUID -> version mapping the resolver will look up.
-    from domino_data.netapp_volumes import NetAppVolumeClient as FakeClient
-    FakeClient.snapshots_by_volume = {
-        "vol-123": [
-            types.SimpleNamespace(id="snap-uuid-aaa", version=4),
-            types.SimpleNamespace(id="snap-uuid-bbb", version=9),
-        ]
-    }
+    snapshot_lookups = []
+    monkeypatch.setattr(
+        services,
+        "_netapp_snapshot_version",
+        lambda token, snapshot_id: snapshot_lookups.append((token, snapshot_id)) or 9,
+    )
 
     def fake_mcp_post(path, params, session_id=None):
         assert path == "/dataset/load"
@@ -1068,6 +1170,6 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     body = response.get_json()
     # SDK pin happened with the resolved version (9) — captured via volume.update().
     assert netapp_client["updated_snapshot_versions"] == ["9"]
-    assert netapp_client.get("list_snapshots_calls") == ["vol-123"]
+    assert snapshot_lookups == [("test-token", "snap-uuid-bbb")]
     assert body["snapshotVersion"] == 9
     assert body["snapshotId"] == "snap-uuid-bbb"
