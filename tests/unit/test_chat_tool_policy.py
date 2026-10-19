@@ -42,9 +42,8 @@ def clean_env(monkeypatch):
 
 
 def _policy(default=ToolMode.ENABLED, **modes):
-    return ChatToolPolicy(
-        default_mode=default,
-        tools={name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()},
+    return ChatToolPolicy.build(
+        default, {name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()}
     )
 
 
@@ -204,6 +203,72 @@ def test_corrupt_file_fails_closed(store, tmp_path, content):
     (tmp_path / "chat_tool_policy.json").write_text(content)
 
     with pytest.raises(PolicyInvalid):
+        store.load()
+
+
+COMPLETE_FILE = {
+    "schema_version": 1,
+    "revision": 3,
+    "default_mode": "disabled",
+    "tools": {"a": {"mode": "user_only"}},
+    "updated_at": None,
+    "updated_by": None,
+    "change_log": [],
+}
+
+
+def test_a_complete_file_is_accepted(store, tmp_path):
+    (tmp_path / "chat_tool_policy.json").write_text(json.dumps(COMPLETE_FILE))
+
+    policy = store.load()
+
+    assert policy.revision == 3
+    assert policy.mode_for("a") is ToolMode.USER_ONLY
+    assert policy.mode_for("other") is ToolMode.DISABLED
+
+
+@pytest.mark.parametrize("field", [name for name in COMPLETE_FILE])
+def test_a_file_missing_any_field_is_invalid_rather_than_filled_with_a_default(store, tmp_path, field):
+    """A missing `default_mode` must not quietly become "enabled"."""
+    data = {name: value for name, value in COMPLETE_FILE.items() if name != field}
+    (tmp_path / "chat_tool_policy.json").write_text(json.dumps(data))
+
+    with pytest.raises(PolicyInvalid, match=f"{field}: Field required"):
+        store.load()
+
+
+def test_malformed_json_says_where(store, tmp_path):
+    (tmp_path / "chat_tool_policy.json").write_text('{\n  "schema_version": 1\n  "revision": 0\n}')
+
+    with pytest.raises(PolicyInvalid, match=r"isn't valid JSON: Expecting ',' delimiter at line 3, column 3"):
+        store.load()
+
+
+def test_wrong_shape_names_each_field_without_pydantic_noise(store, tmp_path):
+    data = {**COMPLETE_FILE, "default_mode": "sometimes", "tools": {"a": {"mode": "maybe"}}}
+    (tmp_path / "chat_tool_policy.json").write_text(json.dumps(data))
+
+    with pytest.raises(PolicyInvalid) as error:
+        store.load()
+
+    message = str(error.value)
+    assert "doesn't follow the expected format" in message
+    assert "default_mode: Input should be 'enabled', 'disabled' or 'user_only'" in message
+    assert "tools.a.mode: Input should be" in message
+    assert "pydantic.dev" not in message and "input_value" not in message
+
+
+def test_a_file_that_is_not_an_object_is_invalid(store, tmp_path):
+    (tmp_path / "chat_tool_policy.json").write_text("[]")
+
+    with pytest.raises(PolicyInvalid, match="doesn't follow the expected format"):
+        store.load()
+
+
+def test_a_file_that_is_not_text_is_invalid(store, tmp_path):
+    (tmp_path / "chat_tool_policy.json").write_bytes(b"\xff\xfe\x00")
+
+    with pytest.raises(PolicyInvalid, match="isn't valid UTF-8 text"):
         store.load()
 
 

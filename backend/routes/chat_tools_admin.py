@@ -158,7 +158,7 @@ def save_policy():
     actor = g.chat_tool_admin["username"]
     try:
         saved = get_policy_store().save(
-            ChatToolPolicy(default_mode=update.default_mode, tools=update.tools),
+            ChatToolPolicy.build(update.default_mode, update.tools),
             update.expected_revision,
             actor,
         )

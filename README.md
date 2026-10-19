@@ -233,14 +233,20 @@ The policy is enforced on the server, not by asking the model to behave. Changes
 ```json
 {
   "schema_version": 1,
+  "revision": 0,
   "default_mode": "enabled",
   "tools": {
     "<tool name>": { "mode": "user_only", "note": "optional, up to 500 characters" }
-  }
+  },
+  "updated_at": null,
+  "updated_by": null,
+  "change_log": []
 }
 ```
 
-`mode` is `enabled`, `user_only` (Hidden from AI) or `disabled`. `default_mode` applies to every tool not listed. The app also writes `revision`, `updated_at`, `updated_by` and `change_log`; leave those alone. If the file isn't valid JSON or doesn't match this shape, the assistant has no data tools and no earlier tool output reaches the model. The settings page shows what is wrong and offers **Reset to defaults**.
+`mode` is `enabled`, `user_only` (Hidden from AI) or `disabled`. `default_mode` applies to every tool not listed. Every field is required (only a tool's `note` is optional, and `updated_at` and `updated_by` may be `null`), so that a missing field is an error, never a silent default. The app maintains `revision`, `updated_at`, `updated_by` and `change_log` when you save from the settings page; if you edit the file by hand, leave them as they are.
+
+If the file isn't valid JSON, or doesn't match this format, the assistant has no data tools and no earlier tool output reaches the model. The settings page says what is wrong: for malformed JSON, the line and column; otherwise, each field that is missing or has a bad value. Fix the file and reload the page, or use **Reset to defaults**.
 
 **If the settings can't be reached** (for example the dataset isn't mounted), the assistant falls back to the last settings it read, or to the defaults, and the settings page says why and won't save until it is fixed.
 

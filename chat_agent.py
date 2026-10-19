@@ -389,7 +389,7 @@ def _create_agent_for_session(session_id: str, authorization_header: str = None)
 
 def _deny_all_policy() -> ChatToolPolicy:
     """Redacts every earlier tool output: for when there is no policy to apply."""
-    return ChatToolPolicy(default_mode=ToolMode.DISABLED)
+    return ChatToolPolicy.build(ToolMode.DISABLED)
 
 
 def _create_agent_without_mcp(policy: ChatToolPolicy) -> Agent | None:

@@ -151,7 +151,7 @@ function renderBanners() {
         root.appendChild(banner_);
     }
     if (server.policy_error) {
-        const node = banner('error', `The saved settings are unreadable, so the chat assistant has no data tools until they are fixed. ${server.policy_error}`, {
+        const node = banner('error', `The saved settings are unreadable, so the chat assistant has no data tools until they are fixed. ${server.policy_error} Fix the file and reload this page, or reset it to the built-in defaults.`, {
             label: 'Reset to defaults',
             testid: 'reset-button',
             run: resetToDefaults,

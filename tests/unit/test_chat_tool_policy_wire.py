@@ -28,7 +28,9 @@ def anyio_backend():
 
 
 def _policy(**modes):
-    return ChatToolPolicy(tools={name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()})
+    return ChatToolPolicy.build(
+        ToolMode.ENABLED, {name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()}
+    )
 
 
 def _completion(message):

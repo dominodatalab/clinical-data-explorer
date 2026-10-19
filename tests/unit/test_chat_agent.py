@@ -582,8 +582,13 @@ SECRET = 42.42
 
 def _write_policy(tmp_path, tools, default_mode="enabled"):
     (tmp_path / "chat_tool_policy.json").write_text(json.dumps({
+        "schema_version": 1,
+        "revision": 1,
         "default_mode": default_mode,
         "tools": {name: {"mode": mode} for name, mode in tools.items()},
+        "updated_at": None,
+        "updated_by": None,
+        "change_log": [],
     }))
 
 

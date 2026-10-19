@@ -52,19 +52,38 @@ class ToolPolicyEntry(BaseModel):
 
 class PolicyChange(BaseModel):
     at: datetime
-    by: Optional[str] = None
+    by: Optional[str]
     # tool name -> [old mode, new mode]
-    changes: Dict[str, List[str]] = Field(default_factory=dict)
+    changes: Dict[str, List[str]]
 
 
 class ChatToolPolicy(BaseModel):
-    schema_version: Literal[1] = 1
-    revision: int = 0
-    default_mode: ToolMode = ToolMode.ENABLED
-    tools: Dict[str, ToolPolicyEntry] = Field(default_factory=dict)
-    updated_at: Optional[datetime] = None
-    updated_by: Optional[str] = None
-    change_log: List[PolicyChange] = Field(default_factory=list)
+    """Every field is required (a null is allowed where noted), so a policy file can't
+    silently pick up a permissive default: a missing `default_mode` would otherwise mean
+    "enabled". Code that builds a policy uses `build`."""
+
+    schema_version: Literal[1]
+    revision: int
+    default_mode: ToolMode
+    tools: Dict[str, ToolPolicyEntry]
+    updated_at: Optional[datetime]
+    updated_by: Optional[str]
+    change_log: List[PolicyChange]
+
+    @classmethod
+    def build(
+        cls, default_mode: ToolMode, tools: Optional[Dict[str, ToolPolicyEntry]] = None, revision: int = 0
+    ) -> "ChatToolPolicy":
+        """A policy with no save history."""
+        return cls(
+            schema_version=1,
+            revision=revision,
+            default_mode=default_mode,
+            tools=tools or {},
+            updated_at=None,
+            updated_by=None,
+            change_log=[],
+        )
 
     def mode_for(self, tool_name: str) -> ToolMode:
         entry = self.tools.get(tool_name)
@@ -91,9 +110,9 @@ DEFAULT_DISABLED_TOOLS = (
 def default_policy() -> ChatToolPolicy:
     """Built-in defaults: everything On except the tools in `DEFAULT_DISABLED_TOOLS`,
     which can return raw rows or individual data points."""
-    return ChatToolPolicy(
-        default_mode=ToolMode.ENABLED,
-        tools={name: ToolPolicyEntry(mode=ToolMode.DISABLED) for name in DEFAULT_DISABLED_TOOLS},
+    return ChatToolPolicy.build(
+        ToolMode.ENABLED,
+        {name: ToolPolicyEntry(mode=ToolMode.DISABLED) for name in DEFAULT_DISABLED_TOOLS},
     )
 
 
@@ -117,6 +136,17 @@ class StoreStatus(BaseModel):
 
 def _now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _describe_errors(exc: ValidationError, limit: int = 5) -> str:
+    """One line per problem, like "default_mode: Field required", worst-first as pydantic reports them."""
+    problems = [
+        f"{'.'.join(str(part) for part in error['loc']) or 'the file'}: {error['msg']}"
+        for error in exc.errors(include_url=False, include_input=False)
+    ]
+    if len(problems) > limit:
+        problems = problems[:limit] + [f"and {len(problems) - limit} more"]
+    return "; ".join(problems)
 
 
 def _diff_modes(old: ChatToolPolicy, new: ChatToolPolicy) -> Dict[str, List[str]]:
@@ -232,12 +262,30 @@ class ChatToolPolicyStore:
         return policy
 
     def _parse(self, path: Path) -> ChatToolPolicy:
-        """Read and validate the file. I/O errors (OSError) propagate to the caller."""
+        """Read and validate the file. I/O errors (OSError) propagate to the caller.
+
+        `PolicyInvalid` says what is wrong in terms an admin editing the file by hand can act on:
+        where the JSON is malformed, or which fields don't follow the expected format.
+        """
         try:
-            return ChatToolPolicy.model_validate(json.loads(path.read_text(encoding="utf-8")))
-        except (ValueError, ValidationError) as exc:  # JSONDecodeError and UnicodeDecodeError are ValueErrors
-            logger.error("Chat tool policy file %s is invalid: %s", path, exc)
-            raise PolicyInvalid(f"The chat tool policy file {path} is invalid: {exc}") from exc
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise PolicyInvalid("it isn't valid UTF-8 text") from exc
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise PolicyInvalid(
+                    f"it isn't valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}"
+                ) from exc
+            try:
+                return ChatToolPolicy.model_validate(data)
+            except ValidationError as exc:
+                raise PolicyInvalid(f"it doesn't follow the expected format: {_describe_errors(exc)}") from exc
+        except PolicyInvalid as reason:
+            message = f"The chat tool policy file {path} is invalid: {reason}."
+            logger.error(message)
+            raise PolicyInvalid(message) from reason.__cause__
 
     def _unreachable(self, path: Path, exc: OSError) -> ChatToolPolicy:
         """The file can't be read. A missing file is normal before the app has
@@ -334,7 +382,9 @@ class ChatToolPolicyStore:
             try:
                 current = self._read_current_locked()
             except PolicyInvalid:
-                current = ChatToolPolicy(revision=self._last_good.revision if self._last_good else 0)
+                current = ChatToolPolicy.build(
+                    ToolMode.ENABLED, revision=self._last_good.revision if self._last_good else 0
+                )
             else:
                 if expected_revision is not None and current.revision != expected_revision:
                     raise PolicyConflict(
@@ -364,6 +414,7 @@ class ChatToolPolicyStore:
         if changes:
             change_log.append(PolicyChange(at=now, by=actor, changes=changes))
         saved = ChatToolPolicy(
+            schema_version=1,
             revision=current.revision + 1,
             default_mode=new_policy.default_mode,
             tools=new_policy.tools,

@@ -48,9 +48,8 @@ def anyio_backend():
 
 
 def _policy(default="enabled", **modes):
-    return ChatToolPolicy(
-        default_mode=ToolMode(default),
-        tools={name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()},
+    return ChatToolPolicy.build(
+        ToolMode(default), {name: ToolPolicyEntry(mode=ToolMode(mode)) for name, mode in modes.items()}
     )
 
 

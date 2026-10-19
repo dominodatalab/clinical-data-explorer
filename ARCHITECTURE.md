@@ -82,13 +82,14 @@ flowchart LR
     Admin["Admin page"] -->|"edit, try a tool"| Backend["Flask backend"]
     Backend -->|"read, write"| File[("Policy file<br/>project's default dataset")]
     Backend -->|"list tools, preview"| MCP["MCP server"]
-    User["Chat UI"] -->|"message"| Backend
-    Backend --> Agent["Chat agent"]
-    Agent --> Enforce["Policy enforcement"]
+    User["Chat UI"] -->|"chat message"| Backend
+    Backend -->|"runs the chat request"| Agent["Chat agent"]
+    Agent -->|"tool calls"| Enforce["Policy enforcement"]
     Enforce -->|"allowed calls"| MCP
     File -.->|"read per request"| Enforce
-    Enforce -->|"model sees: results of On tools only"| Agent
-    Enforce -->|"results of Hidden tools"| User
+    Enforce -->|"On results only"| Agent
+    Agent -->|"reply, plus Hidden results set aside by enforcement"| Backend
+    Backend -->|"reply and result cards"| User
 ```
 
 Components:
@@ -104,8 +105,10 @@ Components:
 - **Enforcement.** Each chat request reads the policy once and uses that snapshot for the whole request. Off tools are not
   offered to the model. The output of a Hidden tool is replaced with a fixed placeholder for the model, and the real
   output travels separately to the user. Earlier tool outputs in the conversation are redacted from what the model
-  sees whenever their tool is now restricted, so a policy change covers the whole conversation. The model's own earlier
-  replies are not rewritten, because free text can't reliably be traced back to a tool.
+  sees whenever their tool is now restricted. The model's own earlier replies are not rewritten: free text can't
+  reliably be traced back to a tool, and whatever those replies said about the data was already in the conversation
+  when it was written. The model still sees those replies, so after a tool is restricted it can repeat what it said
+  earlier.
 - **Errors never leak data.** When a Hidden tool fails, the user sees the full error but the model gets only a generic
   message, unless the MCP server has marked the detail as safe to share.
 - **Result cards.** The chat UI lays a Hidden result out by the shape of the data (rows become a table, known statistical
