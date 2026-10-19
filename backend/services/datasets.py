@@ -1005,11 +1005,12 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         # the corresponding snapshot record.
         if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
             try:
-                snapshots = _fetch_remotefs_snapshots_for_volume(volume_key, token)
-                for snapshot in snapshots:
-                    if snapshot.id == snapshot_id:
-                        snapshot_version = snapshot.version
-                        break
+                snapshot_version = _resolve_netapp_snapshot_version(
+                    volume_key,
+                    snapshot_id,
+                    snapshot_version,
+                    token=token,
+                )
             except Exception as e:
                 logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
 

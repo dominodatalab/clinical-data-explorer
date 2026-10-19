@@ -115,10 +115,10 @@ clients and their service-specific routing.
 
 | Variable | Compatibility behavior |
 |----------|------------------------|
-| `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On older releases, set it manually to the execution data plane domain that serves `/webvfs`. CDE appends `/webvfs/remotefs/v1`; do not include an API path in the value. |
+| `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On Domino 6.3, set it manually when needed to the execution data plane domain that serves `/webvfs`. CDE appends `/webvfs/remotefs/v1`; do not include an API path in the value. |
 | `DOMINO_EXTERNAL_URL` | Existing CDE-defined manual override used only by Governance. Domino does not inject it, and WebVFS does not use it. Do not set it to an App-specific ingress hostname. |
 
-On a release that does not inject `DOMINO_WEBVFS_HOST`, set that variable
+On Domino 6.3 when `DOMINO_WEBVFS_HOST` is not injected, set that variable
 explicitly for NetApp file loading. CDE does not fall back to
 `DOMINO_EXTERNAL_URL`, use request headers, call the legacy direct WebVFS
 service, or infer an API host from `Host` or `X-Forwarded-Host` headers.
