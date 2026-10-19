@@ -5,7 +5,7 @@ from urllib.parse import quote
 
 import backend.services.httpclient as httpclient
 from backend import config
-from backend.auth import get_domino_api_host, get_domino_external_url, get_passthrough_token
+from backend.auth import get_domino_api_host, get_passthrough_token
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +16,7 @@ def resolve_launch_context():
     run_id = config.get_domino_run_id()
     if not run_id:
         return {
-            "redirectUrl": None,
+            "redirectPath": None,
             "available": False,
             "reason": "DOMINO_RUN_ID is not set",
         }
@@ -24,18 +24,17 @@ def resolve_launch_context():
     token = get_passthrough_token()
     if not token:
         return {
-            "redirectUrl": None,
+            "redirectPath": None,
             "available": False,
             "reason": "Authentication is required to resolve the app launch context",
         }
 
     api_host = get_domino_api_host()
-    external_url = get_domino_external_url()
-    if not api_host or not external_url:
+    if not api_host:
         return {
-            "redirectUrl": None,
+            "redirectPath": None,
             "available": False,
-            "reason": "Domino API host or external URL is not configured",
+            "reason": "Domino API host is not configured",
         }
 
     headers = {
@@ -50,7 +49,7 @@ def resolve_launch_context():
         project_id = project.get("id")
         if not project_id or not app_id:
             return {
-                "redirectUrl": None,
+                "redirectPath": None,
                 "available": False,
                 "reason": f"No project was found for run {run_id}",
             }
@@ -58,15 +57,15 @@ def resolve_launch_context():
         extension = _get_project_sidebar_extension(api_host, project_id, app_id, headers)
         if not extension:
             return {
-                "redirectUrl": None,
+                "redirectPath": None,
                 "available": False,
                 "projectId": project_id,
                 "reason": "No enabled project sidebar extension was found for this app's project",
             }
 
-        redirect_url = _build_extension_url(external_url, project, extension["id"], project_id)
+        redirect_path = _build_extension_path(project, extension["id"], project_id)
         return {
-            "redirectUrl": redirect_url,
+            "redirectPath": redirect_path,
             "available": True,
             "projectId": project_id,
             "extensionId": extension["id"],
@@ -76,7 +75,7 @@ def resolve_launch_context():
     except Exception as exc:
         logger.warning("Could not resolve Domino launch context: %s", exc)
         return {
-            "redirectUrl": None,
+            "redirectPath": None,
             "available": False,
             "reason": str(exc),
         }
@@ -144,7 +143,7 @@ def _get_project_sidebar_extension(api_host, project_id, app_id, headers):
     return None
 
 
-def _build_extension_url(external_url, project, extension_id, project_id):
+def _build_extension_path(project, extension_id, project_id):
     owner_username = project.get("ownerUsername")
     project_name = project.get("name")
     if not owner_username or not project_name:
@@ -153,7 +152,7 @@ def _build_extension_url(external_url, project, extension_id, project_id):
     owner_path = quote(owner_username, safe="")
     project_path = quote(project_name, safe="")
     return (
-        f"{external_url.rstrip('/')}/u/{owner_path}/{project_path}/extension"
+        f"/u/{owner_path}/{project_path}/extension"
         f"?mountPointType=projectSidebar&extensionId={quote(extension_id, safe='')}"
         f"&projectId={quote(project_id, safe='')}"
     )

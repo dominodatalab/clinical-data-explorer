@@ -1,5 +1,6 @@
 import { state } from './core/state.js';
 import { apiUrl, fetchWithStatusCheck, getApiErrorMessage, throwIfApiError } from './core/api.js';
+import { resolveDominoExternalUrl } from './core/domino-url.js';
 import { showErrorBanner } from './core/error-banner.js';
 import { loadColumnLabels } from './modules/column-labels.js';
 import { checkGovernanceBundles, createFinding } from './modules/governance.js';
@@ -232,8 +233,8 @@ document.addEventListener('DOMContentLoaded', async () => {
         try {
             const response = await fetchWithStatusCheck(apiUrl('launch-context'));
             const data = await response.json();
-            if (data && data.redirectUrl) {
-                redirectToLaunchContext(data.redirectUrl);
+            if (data && data.redirectPath) {
+                redirectToLaunchContext(resolveDominoExternalUrl(data.redirectPath));
                 return true;
             }
             if (data && data.reason && data.reason !== 'DOMINO_RUN_ID is not set') {

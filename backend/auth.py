@@ -64,7 +64,15 @@ def get_domino_api_host():
 
 
 def get_domino_external_url():
-    """
+    """WARNING: DO NOT USE THIS AS A GENERAL-PURPOSE URL RESOLVER.
+
+    In deployments with App subdomains enabled, X-Forwarded-Host and Host point
+    to the App ingress (for example, app.example.com), not Domino's top-level
+    public origin. The request-header fallback below therefore returns the
+    wrong host in those deployments. API calls must use DOMINO_API_HOST or the
+    relevant service-specific host, and browser redirects must resolve their
+    public origin in the browser.
+
     Get the externally-reachable Domino base URL (scheme + host).
 
     Unlike DOMINO_API_HOST (which points to the in-cluster nucleus-frontend service),
@@ -82,7 +90,9 @@ def get_domino_external_url():
     if override:
         return override.rstrip('/')
 
-    # Try request headers first — works for deployed Apps and Extensions
+    # WARNING: THIS FALLBACK IS INCORRECT WHEN APP SUBDOMAINS ARE ENABLED.
+    # Forwarded host headers identify the App ingress, not the Domino top-level
+    # public origin. This remains only for the existing Governance integration.
     try:
         from flask import has_request_context
         if has_request_context():

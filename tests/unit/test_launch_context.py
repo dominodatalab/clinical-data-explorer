@@ -8,7 +8,7 @@ def test_resolve_launch_context_returns_noop_when_run_id_is_absent(monkeypatch):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: None)
 
     assert launch_context.resolve_launch_context() == {
-        "redirectUrl": None,
+        "redirectPath": None,
         "available": False,
         "reason": "DOMINO_RUN_ID is not set",
     }
@@ -19,7 +19,6 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -65,8 +64,8 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
     monkeypatch.setattr(launch_context.httpclient, "get", fake_get)
 
     assert launch_context.resolve_launch_context() == {
-        "redirectUrl": (
-            "https://external.example/u/integration-test/CDE/extension"
+        "redirectPath": (
+            "/u/integration-test/CDE/extension"
             "?mountPointType=projectSidebar&extensionId=ext-1&projectId=proj-1"
         ),
         "available": True,
@@ -86,6 +85,8 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
         "mount_point_type": "projectSidebar",
         "project_id": "proj-1",
     }
+    assert calls[0][0] == "https://domino.example/api/apps/v1/apps"
+    assert calls[1][0] == "https://domino.example/api/extensions/beta/extensions-ui"
     assert not any("/api/projects/" in url for url, _ in calls)
 
 
@@ -94,7 +95,6 @@ def test_resolve_launch_context_scans_app_pages_until_instance_is_found(monkeypa
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -159,7 +159,6 @@ def test_resolve_launch_context_returns_reason_when_extension_missing(monkeypatc
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
 
     def fake_get(url, **kwargs):
         if url.endswith("/api/apps/v1/apps"):
@@ -187,7 +186,7 @@ def test_resolve_launch_context_returns_reason_when_extension_missing(monkeypatc
     monkeypatch.setattr(launch_context.httpclient, "get", fake_get)
 
     assert launch_context.resolve_launch_context() == {
-        "redirectUrl": None,
+        "redirectPath": None,
         "available": False,
         "projectId": "proj-1",
         "reason": "No enabled project sidebar extension was found for this app's project",
@@ -198,7 +197,6 @@ def test_resolve_launch_context_contextualizes_app_list_failures(monkeypatch):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
 
     def fake_get(url, **kwargs):
         if url.endswith("/api/apps/v1/apps"):
@@ -216,7 +214,6 @@ def test_resolve_launch_context_contextualizes_extension_fetch_failures(monkeypa
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
 
     def fake_get(url, **kwargs):
         if url.endswith("/api/apps/v1/apps"):
@@ -254,11 +251,34 @@ def test_launch_context_route_returns_service_payload(monkeypatch):
     monkeypatch.setattr(
         launch_context_route,
         "resolve_launch_context",
-        lambda: {"redirectUrl": "https://external.example/u/user/project/extension"},
+        lambda: {"redirectPath": "/u/user/project/extension"},
     )
 
     with app.test_client() as client:
         response = client.get("/launch-context")
 
     assert response.status_code == 200
-    assert response.get_json() == {"redirectUrl": "https://external.example/u/user/project/extension"}
+    assert response.get_json() == {"redirectPath": "/u/user/project/extension"}
+
+
+def test_resolve_launch_context_requires_only_domino_api_host(monkeypatch):
+    monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
+    monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
+    monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: None)
+
+    assert launch_context.resolve_launch_context() == {
+        "redirectPath": None,
+        "available": False,
+        "reason": "Domino API host is not configured",
+    }
+
+
+def test_build_extension_path_url_encodes_each_identifier():
+    assert launch_context._build_extension_path(
+        {"ownerUsername": "owner/name", "name": "Project name"},
+        "extension?id",
+        "project&id",
+    ) == (
+        "/u/owner%2Fname/Project%20name/extension"
+        "?mountPointType=projectSidebar&extensionId=extension%3Fid&projectId=project%26id"
+    )

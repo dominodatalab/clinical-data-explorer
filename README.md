@@ -113,7 +113,7 @@ The NetApp file-size check uses a WebVFS-specific base URL. It does not use
 | Variable | Compatibility behavior |
 |----------|------------------------|
 | `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On older releases, set it manually to the execution data plane endpoint that serves `/webvfs`. CDE appends `/webvfs`; do not include that suffix in the value. |
-| `DOMINO_EXTERNAL_URL` | Existing CDE-defined manual override for the public/UI origin used by Governance and project-extension redirects. Domino does not inject it. It remains a legacy WebVFS fallback only when that same origin serves the execution data plane's `/webvfs` route. New WebVFS configuration should use `DOMINO_WEBVFS_HOST`. Do not set it to an App-specific ingress hostname. |
+| `DOMINO_EXTERNAL_URL` | Existing CDE-defined manual override for the public/UI origin used by Governance. Domino does not inject it. It remains a legacy WebVFS fallback only when that same origin serves the execution data plane's `/webvfs` route. New WebVFS configuration should use `DOMINO_WEBVFS_HOST`. Do not set it to an App-specific ingress hostname. |
 
 On a release that does not inject `DOMINO_WEBVFS_HOST`, set that variable
 explicitly for NetApp file loading. CDE falls back to an explicitly configured
