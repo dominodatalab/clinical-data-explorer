@@ -700,16 +700,17 @@ def _download_cache_path(source_type: SourceType, dataset_id: str, snapshot_id: 
     return str(get_file_cache().create_file_path(str(dataset_id), str(file_path), source_type, snapshot_key))
 
 
-def _resolve_netapp_snapshot_version(snapshot_id: str | None, snapshot_version, token=None):
+def _resolve_netapp_snapshot_version(volume_key: str, snapshot_id: str | None, snapshot_version, token=None):
     if snapshot_version not in (None, ''):
         return snapshot_version
     if not snapshot_id or snapshot_id == 'latest':
         return None
 
-    try:
-        return _netapp_snapshot_version(token, snapshot_id)
-    except NotFound:
-        return None
+    snapshots = _fetch_remotefs_snapshots_for_volume(volume_key, token)
+    for snapshot in snapshots:
+        if getattr(snapshot, 'id', None) == snapshot_id:
+            return getattr(snapshot, 'version', None)
+    return None
 
 
 def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) -> DatasetLoadTarget:
@@ -719,6 +720,7 @@ def resolve_dataset_load_target(load_request: DatasetLoadRequest, token=None) ->
     if load_request.source_type == 'netapp' and load_request.volume_key:
         _, file_path = _split_display_name_path(load_request.dataset)
         snapshot_version = _resolve_netapp_snapshot_version(
+            load_request.volume_key,
             load_request.snapshot_id,
             load_request.snapshot_version,
             token=token,
@@ -1003,7 +1005,11 @@ def load_netapp_volume_file(dataset_display_name, volume_key, snapshot_version=N
         # the corresponding snapshot record.
         if (snapshot_version is None or snapshot_version == '') and snapshot_id and snapshot_id != 'latest':
             try:
-                snapshot_version = _netapp_snapshot_version(token, snapshot_id)
+                snapshots = _fetch_remotefs_snapshots_for_volume(volume_key, token)
+                for snapshot in snapshots:
+                    if snapshot.id == snapshot_id:
+                        snapshot_version = snapshot.version
+                        break
             except Exception as e:
                 logger.warning(f"Could not resolve snapshot version for {snapshot_id} on {volume_key}: {e}")
 

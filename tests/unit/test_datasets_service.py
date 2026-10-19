@@ -586,6 +586,26 @@ def test_remotefs_snapshot_client_uses_webvfs_api_base(monkeypatch):
     }
 
 
+def test_netapp_snapshot_version_is_scoped_to_the_selected_volume(monkeypatch):
+    services = _load_datasets_service(monkeypatch)
+    snapshot_lookups = []
+    monkeypatch.setattr(
+        services,
+        "_fetch_remotefs_snapshots_for_volume",
+        lambda volume_key, token: snapshot_lookups.append((volume_key, token)) or [
+            types.SimpleNamespace(id="snap-for-other-volume", version=7),
+        ],
+    )
+
+    assert services._resolve_netapp_snapshot_version(
+        "selected-volume",
+        "requested-snapshot",
+        None,
+        token="test-token",
+    ) is None
+    assert snapshot_lookups == [("selected-volume", "test-token")]
+
+
 def test_discover_netapp_files_for_volume_raises_when_volume_is_missing(monkeypatch):
     services = _load_datasets_service(monkeypatch)
 
@@ -1146,8 +1166,11 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     snapshot_lookups = []
     monkeypatch.setattr(
         services,
-        "_netapp_snapshot_version",
-        lambda token, snapshot_id: snapshot_lookups.append((token, snapshot_id)) or 9,
+        "_fetch_remotefs_snapshots_for_volume",
+        lambda volume_key, token: snapshot_lookups.append((volume_key, token)) or [
+            types.SimpleNamespace(id="snap-uuid-aaa", version=4),
+            types.SimpleNamespace(id="snap-uuid-bbb", version=9),
+        ],
     )
 
     def fake_mcp_post(path, params, session_id=None):
@@ -1170,6 +1193,6 @@ def test_load_netapp_volume_file_resolves_snapshot_id_to_version_when_version_om
     body = response.get_json()
     # SDK pin happened with the resolved version (9) — captured via volume.update().
     assert netapp_client["updated_snapshot_versions"] == ["9"]
-    assert snapshot_lookups == [("test-token", "snap-uuid-bbb")]
+    assert snapshot_lookups == [("vol-123", "test-token")]
     assert body["snapshotVersion"] == 9
     assert body["snapshotId"] == "snap-uuid-bbb"
