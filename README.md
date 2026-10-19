@@ -112,12 +112,16 @@ The NetApp file-size check uses a WebVFS-specific base URL. It does not use
 
 | Variable | Compatibility behavior |
 |----------|------------------------|
-| `DOMINO_WEBVFS_HOST` | Preferred. Domino 6.4 / Cloud Release 94 and later inject this into executions. CDE appends `/webvfs`; do not include that suffix in the value. |
-| `DOMINO_EXTERNAL_URL` | Required fallback for older Domino releases. Set it explicitly to the canonical deployment ingress that serves `/webvfs`. Do not set it to an App-specific ingress hostname. |
+| `DOMINO_WEBVFS_HOST` | Preferred WebVFS endpoint. Domino 6.4 / Cloud Release 94 and later inject this into executions. On older releases, set it manually to the execution data plane endpoint that serves `/webvfs`. CDE appends `/webvfs`; do not include that suffix in the value. |
+| `DOMINO_EXTERNAL_URL` | Existing CDE-defined manual override for the public/UI origin used by Governance and project-extension redirects. Domino does not inject it. It remains a legacy WebVFS fallback only when that same origin serves the execution data plane's `/webvfs` route. New WebVFS configuration should use `DOMINO_WEBVFS_HOST`. Do not set it to an App-specific ingress hostname. |
 
-On a pre-`DOMINO_WEBVFS_HOST` release, `DOMINO_EXTERNAL_URL` must be set
-explicitly for NetApp file loading. CDE does not call the legacy direct
-WebVFS service or infer an API host from `Host` or `X-Forwarded-Host` headers.
+On a release that does not inject `DOMINO_WEBVFS_HOST`, set that variable
+explicitly for NetApp file loading. CDE falls back to an explicitly configured
+`DOMINO_EXTERNAL_URL` only to preserve compatibility with existing projects;
+that fallback is not valid when the public/UI origin and execution data plane
+have different WebVFS ingress routes. CDE does not use request headers for the
+fallback, call the legacy direct WebVFS service, or infer an API host from
+`Host` or `X-Forwarded-Host` headers.
 
 #### Optional: Backend Request and Load Limits
 

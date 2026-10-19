@@ -6,9 +6,11 @@ from backend import config
 def get_webvfs_base_url() -> str:
     """Return a base URL whose next path segment is a WebVFS API route.
 
-    Current Domino releases provide DOMINO_WEBVFS_HOST. Older releases can use
-    an explicitly configured DOMINO_EXTERNAL_URL, but request forwarding
-    headers are never a safe source for a service endpoint.
+    Current Domino releases provide DOMINO_WEBVFS_HOST. CDE's explicitly
+    configured DOMINO_EXTERNAL_URL remains a legacy compatibility fallback
+    where the public origin also serves the execution data plane's WebVFS
+    routes. Request forwarding headers are never a safe source for a service
+    endpoint.
     """
     webvfs_host = (config.get_domino_webvfs_host() or "").strip()
     external_url = (config.get_domino_external_url() or "").strip()
