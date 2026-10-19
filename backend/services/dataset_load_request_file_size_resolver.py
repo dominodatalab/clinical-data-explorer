@@ -80,7 +80,7 @@ def _get_netapp_volume_file_size(
 
 def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None):
     return httpclient.get(
-        f"{get_webvfs_base_url()}/remotefs/v1/volumes/{volume_id}/files/metadata",
+        f"{get_webvfs_base_url()}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
         params={'path': file_path},
         headers={
             'accept': 'application/json',

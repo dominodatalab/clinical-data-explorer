@@ -4,7 +4,7 @@ from backend import config
 
 
 def get_webvfs_base_url() -> str:
-    """Return a base URL whose next path segment is a WebVFS API route.
+    """Return the configured WebVFS host without an API path.
 
     Current Domino releases provide DOMINO_WEBVFS_HOST. CDE's explicitly
     configured DOMINO_EXTERNAL_URL remains a legacy compatibility fallback
@@ -24,4 +24,4 @@ def get_webvfs_base_url() -> str:
     if not host.startswith(("http://", "https://")):
         host = f"http://{host}"
 
-    return f"{host.rstrip('/')}/webvfs"
+    return host.rstrip('/')
