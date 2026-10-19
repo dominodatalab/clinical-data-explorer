@@ -57,7 +57,7 @@ def get_caller_project_role(project_id: str) -> Optional[str]:
     NOTE: checked on a real Domino (2026-10-19, as the project owner): `GET /v4/projects/{id}`
     returns `ownerId` (equal to `id` from `/api/users/v1/self`) and
     `collaborators[].collaboratorId` / `projectRole` (e.g. "Contributor"); an unknown project is a 404.
-    Not yet checked: what a non-collaborator's token gets (403/404 vs 200), and whether
+    A non-collaborator's token gets a 403 (treated here as no role). Not yet checked: whether
     `DOMINO_PROJECT_ID` inside the deployed App is the extension's project.
     """
     host = get_domino_api_host()
