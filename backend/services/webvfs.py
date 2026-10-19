@@ -18,7 +18,7 @@ def get_webvfs_base_url() -> str:
     if not host:
         raise RuntimeError(
             "Domino WebVFS host is not configured; set DOMINO_WEBVFS_HOST "
-            "or DOMINO_EXTERNAL_URL"
+            "(or the legacy DOMINO_EXTERNAL_URL override)"
         )
 
     if not host.startswith(("http://", "https://")):

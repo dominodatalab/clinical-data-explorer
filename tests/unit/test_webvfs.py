@@ -21,7 +21,7 @@ def test_get_webvfs_base_url_uses_domino_webvfs_host(monkeypatch, host, expected
     assert get_webvfs_base_url() == expected
 
 
-def test_get_webvfs_base_url_uses_explicit_external_url_on_older_domino_releases(monkeypatch):
+def test_get_webvfs_base_url_uses_legacy_external_url_fallback(monkeypatch):
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
     monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example/")
 
