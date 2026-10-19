@@ -76,7 +76,7 @@ def test_get_dataset_snapshot_file_size_raises_not_found_for_missing_file_size(m
 def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     calls = []
     monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: "https://domino.example")
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "https://webvfs.example/")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -107,7 +107,7 @@ def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     assert file_size == 88859
     assert calls == [
         (
-            "https://domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
+            "https://webvfs.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
             {
                 "params": {"path": "clinical1.parquet"},
                 "headers": {
@@ -131,8 +131,46 @@ def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monk
         resolver._get_netapp_volume_file_size("Safety Volume/reports/adsl.csv", "vol-id-123", token="test-token")
 
 
-def test_get_netapp_volume_file_metadata_raises_when_external_url_missing(monkeypatch):
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: None)
+def test_get_netapp_volume_file_metadata_does_not_use_request_host(monkeypatch):
+    calls = []
+    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+    monkeypatch.setattr(
+        resolver.httpclient,
+        "get",
+        lambda url, **kwargs: calls.append((url, kwargs)) or {"fileSize": 7},
+    )
 
-    with pytest.raises(RuntimeError, match="Domino external URL not configured"):
+    from flask import Flask
+
+    with Flask(__name__).test_request_context(
+        headers={
+            "Host": "apps.domino.example",
+            "X-Forwarded-Host": "apps.domino.example",
+            "X-Forwarded-Proto": "https",
+        }
+    ):
+        resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")
+
+    assert calls == [
+        (
+            "https://domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
+            {
+                "params": {"path": "reports/adsl.csv"},
+                "headers": {
+                    "accept": "application/json",
+                    "Authorization": "Bearer test-token",
+                },
+            },
+        )
+    ]
+
+
+def test_get_netapp_volume_file_metadata_requires_an_explicit_webvfs_host(monkeypatch):
+    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
+    monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
+
+    with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
         resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")

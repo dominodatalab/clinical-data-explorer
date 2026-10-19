@@ -105,6 +105,20 @@ You can modify this file to add labels for your own datasets. The mappings apply
 
 Configure the following environment variables in your Domino project settings:
 
+#### Domino WebVFS routing
+
+The NetApp file-size check uses a WebVFS-specific base URL. It does not use
+`DOMINO_API_HOST` or the hostname that forwarded the incoming App request.
+
+| Variable | Compatibility behavior |
+|----------|------------------------|
+| `DOMINO_WEBVFS_HOST` | Preferred. Domino 6.4 / Cloud Release 94 and later inject this into executions. CDE appends `/webvfs`; do not include that suffix in the value. |
+| `DOMINO_EXTERNAL_URL` | Required fallback for older Domino releases. Set it explicitly to the canonical deployment ingress that serves `/webvfs`. Do not set it to an App-specific ingress hostname. |
+
+On a pre-`DOMINO_WEBVFS_HOST` release, `DOMINO_EXTERNAL_URL` must be set
+explicitly for NetApp file loading. CDE does not call the legacy direct
+WebVFS service or infer an API host from `Host` or `X-Forwarded-Host` headers.
+
 #### Optional: Backend Request and Load Limits
 
 | Variable | Default | Description |
