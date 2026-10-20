@@ -5,14 +5,11 @@ visiting user's JWT in the Authorization header of every request. We use it
 to call Domino APIs on behalf of that user (datasets, governance, etc.).
 
 `get_domino_api_host` resolves the in-cluster API host (used for Datasets,
-Snapshots, Users, Projects APIs). `get_domino_external_url` resolves the
-user-facing ingress host (required for /api/governance/v1/* which is only
-exposed externally — see watch-out comment in `get_governance_api_url`,
-which still lives in backend/app.py and will move to
-backend/services/governance.py in step 1.4).
+Snapshots, Users, Projects APIs). `get_domino_external_url` attempts to
+resolve a user-facing ingress host, but request headers cannot identify the
+top-level Domino origin when App subdomains are enabled.
 
-These helpers all run inside a Flask request context (they read
-flask.request.headers); calling them outside one will raise.
+Only helpers that read `flask.request` require a Flask request context.
 """
 import logging
 import os
@@ -63,24 +60,15 @@ def get_domino_api_host():
     return None
 
 
-def get_domino_webvfs_host():
-    """
-    Get the in-cluster WebVFS host (DOMINO_WEBVFS_HOST, e.g. http://127.0.0.1:8763), or None.
-
-    It serves `/webvfs/...` for any app regardless of how the app was reached, unlike the
-    external URL, which is derived from the request's host and 404s on `/webvfs` when the
-    app is served through the `apps.` ingress.
-    """
-    host = (config.get_domino_webvfs_host() or '').strip()
-    if not host:
-        return None
-    if not host.startswith('http'):
-        host = f'http://{host}'
-    return host.rstrip('/')
-
-
 def get_domino_external_url():
-    """
+    """WARNING: DO NOT USE THIS AS A GENERAL-PURPOSE URL RESOLVER.
+
+    In deployments with App subdomains enabled, X-Forwarded-Host and Host
+    identify the App ingress rather than Domino's top-level public origin.
+    The request-header fallback below therefore returns the wrong host in
+    those deployments. API calls must use DOMINO_API_HOST or the relevant
+    service-specific host. New callers must not depend on this resolver.
+
     Get the externally-reachable Domino base URL (scheme + host).
 
     Unlike DOMINO_API_HOST (which points to the in-cluster nucleus-frontend service),
@@ -98,7 +86,10 @@ def get_domino_external_url():
     if override:
         return override.rstrip('/')
 
-    # Try request headers first — works for deployed Apps and Extensions
+    # WARNING: THIS FALLBACK BREAKS WHEN APP SUBDOMAINS ARE ENABLED.
+    # Forwarded request headers identify the App ingress in those deployments,
+    # not the top-level Domino origin. Keep this behavior only for existing
+    # callers whose compatibility requirements have not yet been resolved.
     try:
         from flask import has_request_context
         if has_request_context():

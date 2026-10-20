@@ -1,0 +1,60 @@
+import pytest
+
+from backend.services.webvfs import get_webvfs_base_url
+
+
+@pytest.mark.parametrize(
+    ("host", "expected"),
+    [
+        ("http://127.0.0.1:8763", "http://127.0.0.1:8763"),
+        (
+            "http://data-webvfs-service.custom-compute/",
+            "http://data-webvfs-service.custom-compute",
+        ),
+        ("webvfs.internal:8080", "http://webvfs.internal:8080"),
+        ("  https://webvfs.example  ", "https://webvfs.example"),
+        ("HTTPS://webvfs.example", "https://webvfs.example"),
+        ("https://webvfs.example/webvfs", "https://webvfs.example"),
+        ("https://webvfs.example/path?key=value#fragment", "https://webvfs.example"),
+    ],
+)
+def test_get_webvfs_base_url_returns_only_the_configured_origin(monkeypatch, host, expected):
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", host)
+
+    assert get_webvfs_base_url() == expected
+
+
+def test_get_webvfs_base_url_ignores_domino_external_url(monkeypatch):
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "http://127.0.0.1:8763")
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+
+    assert get_webvfs_base_url() == "http://127.0.0.1:8763"
+
+
+@pytest.mark.parametrize("host", [None, "", "   "])
+def test_get_webvfs_base_url_does_not_fall_back_to_domino_external_url(monkeypatch, host):
+    if host is None:
+        monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    else:
+        monkeypatch.setenv("DOMINO_WEBVFS_HOST", host)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://domino.example")
+
+    with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
+        get_webvfs_base_url()
+
+
+@pytest.mark.parametrize(
+    "host",
+    [
+        "/webvfs",
+        "ftp://webvfs.example",
+        "http://webvfs.example:bad",
+        "https://user@webvfs.example",
+        "https://user:password@webvfs.example",
+    ],
+)
+def test_get_webvfs_base_url_rejects_invalid_hosts(monkeypatch, host):
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", host)
+
+    with pytest.raises(RuntimeError, match=r"valid HTTP\(S\) host"):
+        get_webvfs_base_url()

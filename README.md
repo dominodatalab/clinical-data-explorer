@@ -105,6 +105,21 @@ You can modify this file to add labels for your own datasets. The mappings apply
 
 Configure the following environment variables in your Domino project settings:
 
+#### Required for NetApp Volume File Loading
+
+| Variable | Description |
+|----------|-------------|
+| `DOMINO_WEBVFS_HOST` | WebVFS origin used for NetApp file operations. Set only the scheme, host, and optional port; do not include `/webvfs` or another API path. |
+
+Domino 6.4 and Cloud Release 94 or later inject this variable into Apps. On
+Domino 6.3, configure it explicitly to a stable HTTP(S) origin that serves the
+prefixed `/webvfs/...` route. A stock 6.3 direct `data-webvfs-service` address
+is not compatible with that path because its in-cluster route uses the bare
+`/remotefs/...` prefix. CDE deliberately does not fall back to
+`DOMINO_EXTERNAL_URL`, `DOMINO_API_HOST`, or forwarded request headers. NetApp
+file loading reports a configuration error when `DOMINO_WEBVFS_HOST` is absent.
+Deployments older than Domino 6.3 are not supported.
+
 #### Optional: Backend Request and Load Limits
 
 | Variable | Default | Description |

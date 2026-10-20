@@ -1,16 +1,16 @@
 import pytest
 import requests
+from flask import Flask
 from werkzeug.exceptions import NotFound
 
 import backend.services.dataset_load_request_file_size_resolver as resolver
-from backend.auth import get_domino_webvfs_host
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
 from backend.services.httpclient import HTTPClientError
 
 
 @pytest.fixture(autouse=True)
 def no_webvfs_host(monkeypatch):
-    """Workspaces and Apps set DOMINO_WEBVFS_HOST; tests opt in to it explicitly."""
+    """Tests opt in to DOMINO_WEBVFS_HOST explicitly."""
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
 
 
@@ -85,7 +85,7 @@ def test_get_dataset_snapshot_file_size_raises_not_found_for_missing_file_size(m
 def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     calls = []
     monkeypatch.setattr(resolver, "get_passthrough_token_from_authorization_header", lambda header: "test-token")
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: "https://domino.example")
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", "https://webvfs.example/")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -116,7 +116,7 @@ def test_resolve_netapp_volume_file_size_from_webvfs_metadata(monkeypatch):
     assert file_size == 88859
     assert calls == [
         (
-            "https://domino.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
+            "https://webvfs.example/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata",
             {
                 "params": {"path": "clinical1.parquet"},
                 "headers": {
@@ -140,15 +140,6 @@ def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monk
         resolver._get_netapp_volume_file_size("Safety Volume/reports/adsl.csv", "vol-id-123", token="test-token")
 
 
-def test_get_netapp_volume_file_metadata_raises_when_external_url_missing(monkeypatch):
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: None)
-
-    with pytest.raises(RuntimeError, match="Domino external URL not configured"):
-        resolver.get_netapp_volume_file_metadata("vol-id-123", "reports/adsl.csv", token="test-token")
-
-
-# ----- which host serves /webvfs -----
-
 WEBVFS_URL = "http://127.0.0.1:8763"
 EXTERNAL_URL = "https://apps.domino.example"
 METADATA_PATH = "/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata"
@@ -169,99 +160,60 @@ def _scripted_get(monkeypatch, outcomes):
     return urls
 
 
-def _configure_hosts(monkeypatch, webvfs=WEBVFS_URL, external=EXTERNAL_URL):
-    monkeypatch.setattr(resolver, "get_domino_webvfs_host", lambda: webvfs)
-    monkeypatch.setattr(resolver, "get_domino_external_url", lambda: external)
-
-
-def test_netapp_metadata_prefers_the_in_cluster_webvfs_host(monkeypatch):
-    _configure_hosts(monkeypatch)
+def test_netapp_metadata_uses_only_the_configured_webvfs_host(monkeypatch):
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", WEBVFS_URL)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
+    monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
 
-    assert resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t") == {"fileSize": 7}
+    with Flask(__name__).test_request_context(
+        headers={
+            "Host": EXTERNAL_URL.removeprefix("https://"),
+            "X-Forwarded-Host": EXTERNAL_URL.removeprefix("https://"),
+            "X-Forwarded-Proto": "https",
+        }
+    ):
+        metadata = resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
+
+    assert metadata == {"fileSize": 7}
     assert urls == [WEBVFS_URL + METADATA_PATH]
 
 
-def test_netapp_metadata_falls_back_to_the_external_url_when_the_webvfs_host_404s(monkeypatch):
-    _configure_hosts(monkeypatch)
-    urls = _scripted_get(monkeypatch, [HTTPClientError(404, "nope"), {"fileSize": 7}])
+def test_netapp_metadata_does_not_fall_back_when_webvfs_host_is_missing(monkeypatch):
+    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
+    monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
+    calls = []
+    monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    assert resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t") == {"fileSize": 7}
-    assert urls == [WEBVFS_URL + METADATA_PATH, EXTERNAL_URL + METADATA_PATH]
+    with Flask(__name__).test_request_context(
+        headers={
+            "Host": EXTERNAL_URL.removeprefix("https://"),
+            "X-Forwarded-Host": EXTERNAL_URL.removeprefix("https://"),
+            "X-Forwarded-Proto": "https",
+        }
+    ):
+        with pytest.raises(RuntimeError, match="Domino WebVFS host is not configured"):
+            resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
-
-def test_netapp_metadata_falls_back_when_the_webvfs_host_is_unreachable(monkeypatch):
-    _configure_hosts(monkeypatch)
-    urls = _scripted_get(monkeypatch, [requests.exceptions.ConnectionError("refused"), {"fileSize": 7}])
-
-    assert resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t") == {"fileSize": 7}
-    assert len(urls) == 2
-
-
-def test_netapp_metadata_without_a_webvfs_host_uses_the_external_url(monkeypatch):
-    _configure_hosts(monkeypatch, webvfs=None)
-    urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
-
-    resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-
-    assert urls == [EXTERNAL_URL + METADATA_PATH]
+    assert calls == []
 
 
-@pytest.mark.parametrize("status", [400, 401, 403, 500])
-def test_netapp_metadata_does_not_retry_errors_that_a_different_host_wont_fix(monkeypatch, status):
-    """A missing file, a denied token or a server error is the answer, not a wrong host."""
-    _configure_hosts(monkeypatch)
-    urls = _scripted_get(monkeypatch, [HTTPClientError(status, "no"), {"fileSize": 7}])
+@pytest.mark.parametrize(
+    "error",
+    [
+        HTTPClientError(404, "not found"),
+        requests.exceptions.ConnectionError("refused"),
+        requests.exceptions.Timeout("timed out"),
+    ],
+)
+def test_netapp_metadata_propagates_webvfs_errors_without_fallback(monkeypatch, error):
+    monkeypatch.setenv("DOMINO_WEBVFS_HOST", WEBVFS_URL)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
+    urls = _scripted_get(monkeypatch, [error])
 
-    with pytest.raises(HTTPClientError) as raised:
+    with pytest.raises(type(error)) as raised:
         resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
-    assert raised.value.status_code == status
-    assert len(urls) == 1
-
-
-def test_netapp_metadata_raises_the_last_error_when_every_host_404s(monkeypatch):
-    _configure_hosts(monkeypatch)
-    urls = _scripted_get(monkeypatch, [HTTPClientError(404, "first"), HTTPClientError(404, "last")])
-
-    with pytest.raises(HTTPClientError, match="last"):
-        resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-
-    assert len(urls) == 2
-
-
-def test_netapp_metadata_does_not_call_the_same_host_twice(monkeypatch):
-    _configure_hosts(monkeypatch, webvfs=EXTERNAL_URL, external=EXTERNAL_URL)
-    urls = _scripted_get(monkeypatch, [HTTPClientError(404, "nope")])
-
-    with pytest.raises(HTTPClientError):
-        resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-
-    assert urls == [EXTERNAL_URL + METADATA_PATH]
-
-
-def test_netapp_metadata_explicit_external_url_is_still_honored(monkeypatch):
-    _configure_hosts(monkeypatch, webvfs=None, external=None)
-    urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
-
-    resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t", external_url="https://given.example")
-
-    assert urls == ["https://given.example" + METADATA_PATH]
-
-
-@pytest.mark.parametrize("raw, expected", [
-    ("http://127.0.0.1:8763", "http://127.0.0.1:8763"),
-    ("http://127.0.0.1:8763/", "http://127.0.0.1:8763"),
-    ("127.0.0.1:8763", "http://127.0.0.1:8763"),
-    ("  https://webvfs.internal  ", "https://webvfs.internal"),
-    ("", None),
-    ("   ", None),
-    (None, None),
-])
-def test_webvfs_host_is_normalized(monkeypatch, raw, expected):
-    if raw is None:
-        monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    else:
-        monkeypatch.setenv("DOMINO_WEBVFS_HOST", raw)
-
-    assert get_domino_webvfs_host() == expected
+    assert raised.value is error
+    assert urls == [WEBVFS_URL + METADATA_PATH]
