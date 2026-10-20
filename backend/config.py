@@ -109,6 +109,10 @@ def get_domino_external_url():
     return os.environ.get("DOMINO_EXTERNAL_URL")
 
 
+def get_domino_webvfs_host():
+    return os.environ.get("DOMINO_WEBVFS_HOST")
+
+
 def get_domino_project_id():
     return os.environ.get("DOMINO_PROJECT_ID")
 

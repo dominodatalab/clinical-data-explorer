@@ -8,10 +8,10 @@ from werkzeug.exceptions import NotFound
 import backend.services.httpclient as httpclient
 from backend.auth import (
     get_domino_api_host,
-    get_domino_external_url,
     get_passthrough_token,
     get_passthrough_token_from_authorization_header,
 )
+from backend.services.webvfs import get_webvfs_base_url
 
 if TYPE_CHECKING:
     from backend.services.dataset_load_request_queue import DatasetLoadRequest
@@ -78,13 +78,9 @@ def _get_netapp_volume_file_size(
     return file_size
 
 
-def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None, external_url=None):
-    external_url = external_url or get_domino_external_url()
-    if not external_url:
-        raise RuntimeError('Domino external URL not configured')
-
+def get_netapp_volume_file_metadata(volume_id: str, file_path: str, token=None):
     return httpclient.get(
-        f"{external_url}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
+        f"{get_webvfs_base_url()}/webvfs/remotefs/v1/volumes/{volume_id}/files/metadata",
         params={'path': file_path},
         headers={
             'accept': 'application/json',

@@ -46,6 +46,13 @@ export DOMINO_API_HOST=http://localhost:8080
 ./start_servers.sh
 ```
 
+### WebVFS Requests in Backend Features
+
+When implementing backend code that calls WebVFS, use `DOMINO_WEBVFS_HOST` as
+the service origin and append the endpoint path beginning with `/webvfs/` at the
+call site. The variable contains only the scheme, host, and optional port. Local
+development and tests that exercise WebVFS must set it explicitly.
+
 ### Quick Start
 
 See the [QUICKSTART.md](./QUICKSTART.md) for developer information on working on the App.
