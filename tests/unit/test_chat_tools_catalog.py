@@ -205,27 +205,27 @@ def role_lookup(monkeypatch):
 
 def test_role_lookup_uses_the_callers_token(role_lookup):
     respond, lookup, calls = role_lookup
-    respond(200, {"ownerId": "user-1", "collaborators": []})
+    respond(200, {"project": {"ownerId": "user-1", "collaborators": []}})
 
     assert lookup() == "Owner"
-    assert calls == [("http://domino/v4/projects/project-1", {"Authorization": "Bearer caller-jwt", "Accept": "application/json"})]
+    assert calls == [("http://domino/api/projects/v1/projects/project-1", {"Authorization": "Bearer caller-jwt", "Accept": "application/json"})]
 
 
 def test_role_lookup_finds_a_collaborator_role(role_lookup):
     respond, lookup, _ = role_lookup
-    respond(200, {"ownerId": "someone-else", "collaborators": [
-        {"collaboratorId": "user-2", "projectRole": "Owner"},
-        {"collaboratorId": "user-1", "projectRole": "Contributor"},
-    ]})
+    respond(200, {"project": {"ownerId": "someone-else", "collaborators": [
+        {"id": "user-2", "role": "resultsConsumer"},
+        {"id": "user-1", "role": "contributor"},
+    ]}})
 
-    assert lookup() == "Contributor"
+    assert lookup() == "contributor"
 
 
 def test_role_lookup_is_none_for_non_members_and_hidden_projects(role_lookup):
     respond, lookup, _ = role_lookup
-    respond(200, {"ownerId": "someone-else", "collaborators": [{"collaboratorId": "user-2", "projectRole": "Owner"}]})
+    respond(200, {"project": {"ownerId": "someone-else", "collaborators": [{"id": "user-2", "role": "contributor"}]}})
     assert lookup() is None
-    respond(200, {"ownerId": "someone-else"})
+    respond(200, {"project": {"ownerId": "someone-else"}})
     assert lookup() is None
     for status in (401, 403, 404):
         respond(status)

@@ -54,12 +54,15 @@ def get_caller_project_role(project_id: str) -> Optional[str]:
     (or can't see the project at all). Everything Domino-API-specific about this
     check lives here, so the endpoint can be adjusted in one place.
 
-    NOTE: checked on a real Domino (2026-10-19, as the project owner): `GET /v4/projects/{id}`
-    returns `ownerId` (equal to `id` from `/api/users/v1/self`) and
-    `collaborators[].collaboratorId` / `projectRole` (e.g. "Contributor"); an unknown project is a 404.
-    A non-collaborator's token gets a 403 (treated here as no role). Also checked end to end on a
-    deployed App (identity propagation on): the owner's token reaches the App, `DOMINO_PROJECT_ID`
-    there is the App's own project, and the admin check passes.
+    Uses the public project API (`GET /api/projects/v1/projects/{projectId}`, which needs
+    `ListProject`). The response is `{"project": {"ownerId", "collaborators": [{"id", "role"}]}}`.
+    Collaborator roles are lowercase (e.g. "contributor"); the project owner is `ownerId`, not a
+    collaborator entry. A caller who can't see the project gets 401/403/404, treated as no role.
+
+    NOTE: checked on a real Domino (2026-10-20, as the project owner, with an API key): the response
+    shape above, `ownerId` equal to `id` from `/api/users/v1/self`, "contributor" collaborators, and a
+    404 for an unknown project. Not re-checked on the public endpoint: a non-collaborator's token
+    (403 on the previous internal endpoint) and the deployed App with the visiting user's JWT.
     """
     host = get_domino_api_host()
     token = get_passthrough_token()
@@ -67,7 +70,7 @@ def get_caller_project_role(project_id: str) -> Optional[str]:
         raise RuntimeError("Domino API host or caller token is not available")
 
     response = requests.get(
-        f"{host}/v4/projects/{project_id}",
+        f"{host}/api/projects/v1/projects/{project_id}",
         headers={"Authorization": f"Bearer {token}", "Accept": "application/json"},
         timeout=15,
     )
@@ -75,15 +78,15 @@ def get_caller_project_role(project_id: str) -> Optional[str]:
         return None
     response.raise_for_status()
 
-    project = response.json()
+    project = response.json().get("project") or {}
     user_id = _current_user().get("id")
     if not user_id:
         return None
     if project.get("ownerId") == user_id:
         return "Owner"
     for collaborator in project.get("collaborators") or []:
-        if collaborator.get("collaboratorId") == user_id:
-            return collaborator.get("projectRole")
+        if collaborator.get("id") == user_id:
+            return collaborator.get("role")
     return None
 
 

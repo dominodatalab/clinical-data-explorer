@@ -68,7 +68,7 @@ def test_owner_and_contributor_are_admins(client, catalog_tools, monkeypatch, ro
     assert client.get("/admin/api/chat-tools").status_code == 200
 
 
-@pytest.mark.parametrize("role", ["Results Consumer", "ResultsConsumer", "Launcher User", "Project Importer", "", None])
+@pytest.mark.parametrize("role", ["Results Consumer", "ResultsConsumer", "resultsConsumer", "Launcher User", "launcherUser", "Project Importer", "projectImporter", "", None])
 def test_other_roles_are_denied(client, monkeypatch, role):
     monkeypatch.setattr(admin_auth, "get_caller_project_role", lambda project_id: role)
 
