@@ -64,6 +64,24 @@ test('apiUrl handles an app served at the domain root', async () => {
     assert.equal(api.apiUrl('datasets'), '/datasets');
 });
 
+test('getBaseUrl strips the sub-path a page like the admin page is served from', async () => {
+    // getBaseUrl reads the module's `window`, so build one module per pathname.
+    const baseFor = async pathname => (await loadApiModule({ pathname })).getBaseUrl('admin/chat-tools');
+    assert.equal(await baseFor('/apps/my-app/admin/chat-tools'), '/apps/my-app/');
+    assert.equal(await baseFor('/apps/my-app/admin/chat-tools/'), '/apps/my-app/');
+    assert.equal(await baseFor('/admin/chat-tools'), '/');
+    assert.equal(await baseFor('/apps/my-app/'), '/apps/my-app/');
+    assert.equal(await baseFor('/apps/my-app/other'), '/apps/my-app/other/');
+    assert.equal(await baseFor('/apps/my-app/admin/chat-tools-extra'), '/apps/my-app/admin/chat-tools-extra/');
+});
+
+test('getBaseUrl without a suffix is unchanged for the admin path', async () => {
+    const api = await loadApiModule({ pathname: '/apps/my-app/admin/chat-tools' });
+
+    assert.equal(api.getBaseUrl(), '/apps/my-app/admin/chat-tools/');
+    assert.equal(api.getBaseUrl('/admin/chat-tools/'), '/apps/my-app/');
+});
+
 test('ApiError carries response metadata and payload data', async () => {
     const api = await loadApiModule();
     const response = jsonResponse(503, { error: 'Unavailable' }, { statusText: 'Service Unavailable' });

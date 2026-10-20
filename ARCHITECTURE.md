@@ -70,6 +70,69 @@ Bearer token is used to authorize API calls to Domino. The user is not used to m
 local to the app. The session ID is the closest thing to the user ID which is used for identifying state
 that belongs to a user.
 
+### Chat Tool Policy
+
+Admins control which MCP data tools the chat agent may use, and whether it may see what they return. Each tool is
+set to one of three modes: **On**, **Hidden from AI** (the agent can run the tool, but only the user sees the
+output, in a result card) or **Off**. The policy is app-wide, stored in a file, edited on an admin page, and enforced
+on the server between the chat agent and the MCP server, not by instructing the model.
+
+```mermaid
+flowchart LR
+    Admin["Admin page"] -->|"edit, try a tool"| Backend["Flask backend"]
+    Backend -->|"read, write"| File[("Policy file<br/>project's default dataset")]
+    Backend -->|"list tools, preview"| MCP["MCP server"]
+    User["Chat UI"] -->|"chat message"| Backend
+    Backend -->|"runs the chat request"| Agent["Chat agent"]
+    Agent -->|"tool calls"| Enforce["Policy enforcement"]
+    Enforce -->|"allowed calls"| MCP
+    File -.->|"read per request"| Enforce
+    Enforce -->|"On results only"| Agent
+    Agent -->|"reply, plus Hidden results set aside by enforcement"| Backend
+    Backend -->|"reply and result cards"| User
+```
+
+Components:
+
+- **Policy file.** One JSON file in the extension project's default dataset, which is network storage mounted into
+  every replica. The app creates it with defaults at start. Saves are atomic, and a revision check rejects a save made
+  from an out-of-date page. The location can be overridden (see the README).
+- **Admin page and API.** Lists the tools live from the MCP server, so new tools appear without a change here. Access is
+  limited to the Owner and Contributors of the extension's project, checked with the visiting user's own token; if the
+  check can't be completed, access is denied. Saving is refused while the file's location is unusable.
+- **Preview.** "Try it" runs a tool in a separate sandbox session on a small bundled sample, so previewing neither
+  exposes study data nor replaces the dataset the admin has open.
+- **Enforcement.** Each chat request reads the policy once and uses that snapshot for the whole request. Off tools are not
+  offered to the model. The output of a Hidden tool is replaced with a fixed placeholder for the model, and the real
+  output travels separately to the user. Earlier tool outputs in the conversation are redacted from what the model
+  sees whenever their tool is now restricted. The model's own earlier replies are not rewritten: free text can't
+  reliably be traced back to a tool, and whatever those replies said about the data was already in the conversation
+  when it was written. The model still sees those replies, so after a tool is restricted it can repeat what it said
+  earlier.
+- **Errors never leak data.** When a Hidden tool fails, the user sees the full error but the model gets only a generic
+  message, unless the MCP server has marked the detail as safe to share.
+- **Result cards.** The chat UI lays a Hidden result out by the shape of the data (rows become a table, known statistical
+  shapes become a chart) rather than per tool, so new tools display without new UI code. The chat and the admin preview
+  share this.
+- **Scope.** The Table and Explore tabs use the MCP server's REST routes directly and are not governed by the policy.
+  Maintenance and loading routes are not exposed to the agent as tools at all.
+
+How tools are identified. A policy entry is matched to a tool by the tool's name, which comes from its route. Renaming
+a route therefore makes it a new tool: it takes the policy's default for new tools, and the old entry shows up as stale
+on the admin page. The admin page marks both cases, and a test records the full list of tool names so a rename is
+noticed in review.
+
+Failure behavior, which is where to look when the assistant has fewer tools than expected:
+
+| Situation | What the agent gets |
+|-----------|---------------------|
+| File can't be reached (dataset not mounted, broken mount, file missing) | The last policy this process read; if none, the built-in defaults, which turn Off every tool that can return raw rows or individual data points. The admin page explains why and refuses to save. |
+| File was read but is invalid JSON or the wrong shape | No data tools, and no earlier tool output reaches the model. An admin fixes the file or resets it to the defaults on the admin page. |
+| MCP connection fails | The agent runs without tools, and earlier tool outputs are still redacted by the same rule. |
+
+The last policy read is the only copy kept in memory and is used only when the file can't be reached. The file is
+read on every request, so a save on one replica applies on every replica's next message.
+
 ### Dataset Loads Are Queued
 
 Dataset loading is expensive because it includes file downloading,

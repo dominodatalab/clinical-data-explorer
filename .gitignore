@@ -67,3 +67,6 @@ example_domino_frontend_code/
 # datasets/*.csv
 # !datasets/.gitkeep
 
+
+# Local chat tool access policy (see README)
+.chat_tool_policy.json

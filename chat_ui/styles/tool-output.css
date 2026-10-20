@@ -1,0 +1,235 @@
+/* Shared tool output renderer (modules/tool-output.js), used by the chat result
+   cards and by the chat tool settings page, so an admin sees exactly what users see. */
+.tool-output {
+    font-size: 13px;
+    line-height: 20px;
+    min-width: 0;
+}
+
+.tool-output-table-wrap {
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-table {
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.tool-output-table th,
+.tool-output-table td {
+    border: 1px solid var(--color-border-borderlight);
+    padding: 3px 8px;
+    text-align: left;
+    vertical-align: top;
+    white-space: nowrap;
+}
+
+/* Short cells stay on one line and the table scrolls sideways; wrapping every
+   cell squeezed wide tables into one letter per line in a narrow card. */
+.tool-output-table td.tool-output-long {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    min-width: 24ch;
+    max-width: 48ch;
+}
+
+.tool-output-table th {
+    background: var(--color-background-bg);
+    position: sticky;
+    top: 0;
+}
+
+.tool-output-kv th {
+    position: static;
+    font-weight: 600;
+}
+
+.tool-output-number {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.tool-output-note {
+    margin-top: var(--spacing-xxsmall);
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-pre {
+    margin: 0;
+    padding: var(--spacing-xsmall);
+    background: var(--color-background-bg);
+    border: 1px solid var(--color-border-borderlight);
+    border-radius: var(--radius-small);
+    white-space: pre-wrap;
+    overflow-x: auto;
+    max-height: 420px;
+    overflow-y: auto;
+}
+
+.tool-output-children {
+    margin-left: var(--spacing-small);
+    border-left: 1px solid var(--color-border-borderlight);
+    padding-left: var(--spacing-xsmall);
+}
+
+.tool-output-node > summary {
+    cursor: pointer;
+}
+
+.tool-output-key {
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-summary {
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.tool-output-leaf {
+    overflow-wrap: anywhere;
+}
+
+/* Summary strip, sections, chips, matrix tables and the Chart/Table toggle
+   (the shape-aware layout in modules/tool-output.js). */
+.tool-output-sections {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-small);
+    min-width: 0;
+}
+
+.tool-output-summary-strip {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xxsmall) var(--spacing-small);
+    margin: 0;
+}
+
+.tool-output-field {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.tool-output-field dt {
+    font-size: 11px;
+    line-height: 16px;
+    color: var(--color-text-textsecondary);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+
+.tool-output-field dd {
+    margin: 0;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+}
+
+.tool-output-part {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxsmall);
+    min-width: 0;
+}
+
+.tool-output-part-label {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--spacing-xxsmall);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+}
+
+.tool-output-chip {
+    padding: 0 8px;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-large);
+    background: var(--color-background-bg);
+    font-size: 12px;
+    line-height: 20px;
+    overflow-wrap: anywhere;
+}
+
+.tool-output-empty {
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+    font-style: italic;
+}
+
+.tool-output-matrix .tool-output-row-label {
+    position: sticky;
+    left: 0;
+    font-weight: 600;
+}
+
+.tool-output-more > summary {
+    cursor: pointer;
+    font-size: 12px;
+    color: var(--color-text-textsecondary);
+}
+
+.tool-output-more[open] > summary {
+    margin-bottom: var(--spacing-xsmall);
+}
+
+.tool-output-more {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-small);
+}
+
+.tool-output-viz {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-xxsmall);
+    min-width: 0;
+}
+
+.tool-output-toggle {
+    display: inline-flex;
+    align-self: flex-end;
+    border: 1px solid var(--color-border-bordermedium);
+    border-radius: var(--radius-small);
+    overflow: hidden;
+}
+
+.tool-output-toggle-button {
+    padding: 1px 10px;
+    border: 0;
+    background: var(--color-background-bg);
+    color: var(--color-text-textsecondary);
+    font: inherit;
+    font-size: 12px;
+    cursor: pointer;
+}
+
+.tool-output-toggle-button[aria-pressed="true"] {
+    background: var(--color-background-bgprimary);
+    color: var(--color-primary-primary);
+    font-weight: 600;
+}
+
+.tool-output-toggle-button:focus-visible {
+    outline: 2px solid var(--color-primary-primary);
+    outline-offset: -2px;
+}
+
+.tool-output-chart {
+    height: 280px;
+    min-width: 0;
+}
+
+.tool-output-field dd.tool-output-number {
+    text-align: left;
+}

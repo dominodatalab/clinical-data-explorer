@@ -1,0 +1,19 @@
+{
+  "get_feature_stats_feature_stats_get": {"features": ["AGE", "BMIBL"]},
+  "get_target_correlation_correlation_target_get": {"target": "AGE"},
+  "get_feature_histogram_feature_histogram__feature__get": {"feature": "AGE", "bins": 8},
+  "get_feature_boxplot_feature_boxplot__feature__get": {"feature": "BMIBL"},
+  "get_feature_comparison_feature_comparison_get": {"feature1": "HEIGHTBL", "feature2": "WEIGHTBL"},
+  "get_group_analysis_feature_group_analysis_get": {"feature": "AGE", "group_by": "ARM"},
+  "get_value_counts_feature_value_counts__feature__get": {"feature": "RACE", "limit": 5},
+  "get_bar_chart_data_chart_bar_aggregation_post": {"category_column": "ARM", "aggregation": "count"},
+  "get_xy_chart_data_chart_xy_data_post": {"x_column": "HEIGHTBL", "y_column": "WEIGHTBL"},
+  "get_time_series_data_chart_time_series_post": {"date_column": "TRTSDT", "value_column": "AGE", "aggregation": "mean"},
+  "get_histogram_data_chart_histogram_post": {"column": "AGE", "bins": 6},
+  "get_dataset_head_dataset_head_get": {"rows": 5},
+  "expression_filter_table_expression_filter_post": {"expression": "AGE > 75 AND SEX = 'F'", "syntax": "sas"},
+  "get_table_data_table_data_post": {"page": 1, "page_size": 10},
+  "get_table_summary_table_summary_post": {"page": 1, "page_size": 10},
+  "get_column_values_table_column_values__column__get": {"column": "ARM"},
+  "get_column_stats_table_column_stats__column__get": {"column": "AGE"}
+}

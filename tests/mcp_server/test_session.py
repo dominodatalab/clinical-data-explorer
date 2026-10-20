@@ -448,3 +448,64 @@ def test_load_current_df_creates_dataframe_in_loader_thread(monkeypatch):
     assert session_module._sessions["session-4"].file_snapshot_path == "adsl.csv"
     assert session_module._sessions["session-4"].dataframe_size_bytes == 4321
     pd.testing.assert_frame_equal(dataframe_cache.get_cache()["adsl.csv"], reloaded_df)
+
+
+def test_preview_header_uses_separate_session_without_touching_real_session(monkeypatch):
+    from mcp_server.app import create_app
+    from mcp_server.config import PREVIEW_SESSION_SUFFIX
+
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "owner-1"})
+    session_module._current_user_id.set(None)
+    app = create_app()
+
+    @app.post("/test-set-df")
+    async def set_df(name: str):
+        session_module._set_current_df(pd.DataFrame({"a": [1]}), name)
+        return {"session": session_module._current_user_id.get()}
+
+    client = TestClient(app)
+
+    real = client.post("/test-set-df", params={"name": "real.csv"})
+    preview = client.post(
+        "/test-set-df", params={"name": "sample.csv"}, headers={"X-Chat-Tool-Preview": "1"}
+    )
+
+    assert real.json() == {"session": "owner-1"}
+    assert preview.json() == {"session": f"owner-1{PREVIEW_SESSION_SUFFIX}"}
+    assert session_module._sessions["owner-1"].file_snapshot_path == "real.csv"
+    assert session_module._sessions[f"owner-1{PREVIEW_SESSION_SUFFIX}"].file_snapshot_path == "sample.csv"
+
+
+def test_preview_header_must_be_exactly_one(monkeypatch):
+    from mcp_server.app import create_app
+
+    monkeypatch.setattr(session_module, "get_current_user", lambda: {"id": "owner-2"})
+    session_module._current_user_id.set(None)
+    app = create_app()
+
+    @app.get("/test-session")
+    async def current_session():
+        return {"session": session_module._current_user_id.get()}
+
+    client = TestClient(app)
+
+    assert client.get("/test-session", headers={"X-Chat-Tool-Preview": "0"}).json() == {"session": "owner-2"}
+    assert client.get("/test-session").json() == {"session": "owner-2"}
+
+
+@pytest.mark.parametrize("header, expected", [
+    ({"X-Chat-Tool-Preview": "1"}, "owner-3::chat-tool-preview"),
+    ({}, "owner-3"),
+])
+def test_inherited_session_id_never_doubles_or_carries_the_preview_suffix(monkeypatch, header, expected):
+    """A tool call over /mcp inherits the MCP connection request's contextvar value."""
+    from mcp_server.app import create_app
+
+    app = create_app()
+    monkeypatch.setattr(session_module, "_get_session_id", lambda: "owner-3::chat-tool-preview")
+
+    @app.get("/test-session")
+    async def current_session():
+        return {"session": session_module._current_user_id.get()}
+
+    assert TestClient(app).get("/test-session", headers=header).json() == {"session": expected}

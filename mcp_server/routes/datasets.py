@@ -27,10 +27,12 @@ import logging
 
 import numpy as np
 import pandas as pd
-from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi import APIRouter, Query, Request
 from fastapi.encoders import jsonable_encoder
 from starlette.concurrency import run_in_threadpool
 
+from mcp_server.config import INTERNAL_TAG
+from mcp_server.errors import ToolError
 from mcp_server.session import (
     evict_current_session_dataframe,
     _evict_stale_sessions,
@@ -55,7 +57,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
-@router.get("/datasets/list", response_model=DatasetList)
+@router.get("/datasets/list", response_model=DatasetList, tags=[INTERNAL_TAG])
 async def list_datasets():
     """List all available data files (CSV and Parquet) from datasets/ and /mnt/data/"""
     data_files = find_data_files()
@@ -64,7 +66,7 @@ async def list_datasets():
     return {"datasets": file_names, "current_dataset": _get_session_dataset_name()}
 
 
-@router.post("/dataset/load", operation_id="load_dataset")
+@router.post("/dataset/load", operation_id="load_dataset", tags=[INTERNAL_TAG])
 async def load_dataset_endpoint(
     file_snapshot_path: str = Query(..., description="Dataset file path or downloaded snapshot path to load")
 ):
@@ -105,7 +107,7 @@ async def load_dataset_endpoint(
     }
 
 
-@router.post("/dataframes/evict-stale", operation_id="evict_stale_dataframes")
+@router.post("/dataframes/evict-stale", operation_id="evict_stale_dataframes", tags=[INTERNAL_TAG])
 def evict_stale_dataframes(request: Request):
     """Evict idle session metadata and unreferenced cached DataFrames."""
     # SessionMiddleware evicts before this route runs; include its counts
@@ -122,20 +124,20 @@ def evict_stale_dataframes(request: Request):
     )
 
 
-@router.get("/dataframe/size", operation_id="get_current_dataframe_size")
+@router.get("/dataframe/size", operation_id="get_current_dataframe_size", tags=[INTERNAL_TAG])
 def get_current_dataframe_size():
     """Return the cached DataFrame size for the current session."""
     return {"dataframe_size_bytes": get_current_dataframe_size_bytes()}
 
 
-@router.get("/dataframe/current-session", operation_id="get_current_session_dataframe")
+@router.get("/dataframe/current-session", operation_id="get_current_session_dataframe", tags=[INTERNAL_TAG])
 def get_current_session_dataframe():
     """Return the current session's loaded dataset identifier, if any."""
     dataset = _get_session_dataset_name()
     return {"dataset": dataset if dataset and has_current_df(dataset) else None}
 
 
-@router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe")
+@router.post("/dataframe/evict-current-session", operation_id="evict_current_session_dataframe", tags=[INTERNAL_TAG])
 def evict_current_session_dataframe_endpoint():
     """Evict the current session's DataFrame cache entry."""
     return jsonable_encoder(evict_current_session_dataframe())
@@ -178,7 +180,7 @@ async def get_dataset_head(rows: int = Query(5, description="Number of rows to r
     df = get_current_df()
 
     if rows <= 0:
-        raise HTTPException(status_code=400, detail="Rows parameter must be positive")
+        raise ToolError.safe(status_code=400, detail="Rows parameter must be positive")
 
     return df.head(rows).to_dict(orient="records")
 

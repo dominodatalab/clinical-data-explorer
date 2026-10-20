@@ -1,0 +1,479 @@
+"""Chat tool access policy: the model, and the file-backed store.
+
+One JSON file (`chat_tool_policy.json`) holds the app-wide policy. On Domino it
+lives in a Dataset of the extension's project (mounted network storage, so every
+app replica sees a save on its next request); in local dev it is a gitignored
+file in the working directory. See `backend.config.get_chat_tool_policy_path`.
+
+Failure semantics (deterministic):
+
+- file missing, or can't be reached        -> last known good policy if this process
+  (dataset not mounted, broken mount,         read one, else the built-in defaults
+  no permission, path not a folder, ...)      (restrictive: see DEFAULT_DISABLED_TOOLS)
+- file corrupt / fails validation          -> `PolicyInvalid` (callers fail closed)
+- dataset not mounted / not writable       -> saves are refused, and `status()` says why
+
+So a missing or flaky dataset never loosens a policy this process has read, and never
+takes the assistant's safe tools away; only a file that was read and found invalid does,
+because it holds settings an admin chose.
+"""
+import json
+import logging
+import os
+import tempfile
+import threading
+from datetime import datetime, timezone
+from enum import Enum
+from pathlib import Path
+from typing import Callable, Dict, List, Literal, Optional
+
+from pydantic import BaseModel, Field, ValidationError
+
+from backend import config
+
+logger = logging.getLogger(__name__)
+
+CHANGE_LOG_LIMIT = 50
+DEFAULT_MODE_CHANGE_KEY = "(default for new tools)"
+# Appended to `status()` errors for a policy file that can't be reached.
+FALLBACK_NOTE = "Until then, the chat assistant uses the last settings it read, or the built-in defaults."
+
+
+class ToolMode(str, Enum):
+    ENABLED = "enabled"
+    DISABLED = "disabled"
+    USER_ONLY = "user_only"
+
+
+class ToolPolicyEntry(BaseModel):
+    mode: ToolMode
+    note: Optional[str] = Field(default=None, max_length=500)
+
+
+class PolicyChange(BaseModel):
+    at: datetime
+    by: Optional[str]
+    # tool name -> [old mode, new mode]
+    changes: Dict[str, List[str]]
+
+
+class ChatToolPolicy(BaseModel):
+    """Every field is required (a null is allowed where noted), so a policy file can't
+    silently pick up a permissive default: a missing `default_mode` would otherwise mean
+    "enabled". Code that builds a policy uses `build`."""
+
+    schema_version: Literal[1]
+    revision: int
+    default_mode: ToolMode
+    tools: Dict[str, ToolPolicyEntry]
+    updated_at: Optional[datetime]
+    updated_by: Optional[str]
+    change_log: List[PolicyChange]
+
+    @classmethod
+    def build(
+        cls, default_mode: ToolMode, tools: Optional[Dict[str, ToolPolicyEntry]] = None, revision: int = 0
+    ) -> "ChatToolPolicy":
+        """A policy with no save history."""
+        return cls(
+            schema_version=1,
+            revision=revision,
+            default_mode=default_mode,
+            tools=tools or {},
+            updated_at=None,
+            updated_by=None,
+            change_log=[],
+        )
+
+    def mode_for(self, tool_name: str) -> ToolMode:
+        entry = self.tools.get(tool_name)
+        return entry.mode if entry is not None else self.default_mode
+
+
+# Tools that can hand the model individual records or values. Off in the built-in
+# defaults, which are what a new install is seeded with and what the app falls back to
+# when the settings file can't be reached, so an outage never exposes more than a
+# first install does. Everything else returns aggregates and stays On.
+DEFAULT_DISABLED_TOOLS = (
+    "get_dataset_data_dataset_data_get",  # the whole DataFrame
+    "get_dataset_head_dataset_head_get",  # first rows
+    "get_table_data_table_data_post",  # a page of rows
+    "expression_filter_table_expression_filter_post",  # matching rows
+    "get_expression_samples_table_expression_samples_get",  # sample values per column
+    "get_column_values_table_column_values__column__get",  # every distinct value (IDs included)
+    "get_feature_comparison_feature_comparison_get",  # raw (x, y) pairs
+    "get_xy_chart_data_chart_xy_data_post",  # raw scatter points unless an aggregation is given
+    "get_feature_boxplot_feature_boxplot__feature__get",  # lists the outlier values
+)
+
+
+def default_policy() -> ChatToolPolicy:
+    """Built-in defaults: everything On except the tools in `DEFAULT_DISABLED_TOOLS`,
+    which can return raw rows or individual data points."""
+    return ChatToolPolicy.build(
+        ToolMode.ENABLED,
+        {name: ToolPolicyEntry(mode=ToolMode.DISABLED) for name in DEFAULT_DISABLED_TOOLS},
+    )
+
+
+class PolicyInvalid(Exception):
+    """The policy file was read but its content can't be trusted. Callers must fail closed."""
+
+
+class PolicyConflict(Exception):
+    """The policy changed since the caller read it (optimistic concurrency)."""
+
+
+class PolicyStoreUnavailable(Exception):
+    """The policy can't be written (dataset not mounted, read-only, I/O error)."""
+
+
+class StoreStatus(BaseModel):
+    durable: bool
+    path: str
+    error: Optional[str] = None
+
+
+def _now() -> datetime:
+    return datetime.now(timezone.utc)
+
+
+def _describe_errors(exc: ValidationError, limit: int = 5) -> str:
+    """One line per problem, like "default_mode: Field required", worst-first as pydantic reports them."""
+    problems = [
+        f"{'.'.join(str(part) for part in error['loc']) or 'the file'}: {error['msg']}"
+        for error in exc.errors(include_url=False, include_input=False)
+    ]
+    if len(problems) > limit:
+        problems = problems[:limit] + [f"and {len(problems) - limit} more"]
+    return "; ".join(problems)
+
+
+def _diff_modes(old: ChatToolPolicy, new: ChatToolPolicy) -> Dict[str, List[str]]:
+    changes: Dict[str, List[str]] = {}
+    if old.default_mode != new.default_mode:
+        changes[DEFAULT_MODE_CHANGE_KEY] = [old.default_mode.value, new.default_mode.value]
+    for name in sorted(set(old.tools) | set(new.tools)):
+        before, after = old.mode_for(name), new.mode_for(name)
+        if before != after:
+            changes[name] = [before.value, after.value]
+    return changes
+
+
+class ChatToolPolicyStore:
+    """Reads and writes the policy file.
+
+    `load()` reads and parses the file on every call, so a save on any replica is
+    seen on the next chat request. The only copy kept in memory is the last policy
+    this process read, and it is used only when the file can't be reached.
+
+    `save()` is guarded by a `threading.Lock` plus an optimistic `revision`
+    check. Replicas don't share a lock, but admin edits are rare and a lost
+    race surfaces as a 409 on the other writer's next save.
+    """
+
+    def __init__(self, path_provider: Optional[Callable[[], str]] = None):
+        self._path_provider = path_provider or config.get_chat_tool_policy_path
+        self._lock = threading.Lock()
+        self._last_good: Optional[ChatToolPolicy] = None
+        self._last_good_path: Optional[str] = None
+        self._unreachable_logged: Optional[str] = None
+
+    # ----- paths / status -----
+
+    def path(self) -> Path:
+        return Path(self._path_provider())
+
+    def status(self) -> StoreStatus:
+        path = self.path()
+        try:
+            return self._status(path)
+        except OSError as exc:  # e.g. a broken network mount
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=f"The policy file location can't be reached: {exc}. {FALLBACK_NOTE}",
+            )
+
+    def _status(self, path: Path) -> StoreStatus:
+        override = config.get_chat_tool_policy_path_override()
+        parent = path.parent
+        # The policy folder is created on first write, so only its parent has to exist.
+        folder_creatable = not parent.is_dir() and parent.parent.is_dir()
+        if not parent.is_dir() and not folder_creatable:
+            if config.get_domino_run_id() and not override:
+                dataset = config.get_chat_tool_policy_dataset()
+                error = (
+                    f"The dataset '{dataset}' that holds the chat tool settings is not mounted "
+                    f"(expected {parent.parent}). By default this is the project's default dataset; "
+                    "check that the app has dataset mounting enabled, or point CHAT_TOOL_POLICY_DATASET "
+                    "or CHAT_TOOL_POLICY_PATH at another location. Changes can't be saved until then."
+                )
+            else:
+                error = f"The directory for the policy file does not exist: {parent}."
+            return StoreStatus(durable=False, path=str(path), error=f"{error} {FALLBACK_NOTE}")
+        if path.is_dir():
+            setting = "CHAT_TOOL_POLICY_PATH" if override else "The policy file path"
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=(
+                    f"{setting} points at a folder, not a file: {path}. Use a file path such as "
+                    f"{path / config.CHAT_TOOL_POLICY_FILE_NAME}. {FALLBACK_NOTE}"
+                ),
+            )
+        writable_dir = parent.parent if folder_creatable else parent
+        if path.exists() and not os.access(path, os.R_OK):
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=f"The policy file can't be read (permission denied): {path}. {FALLBACK_NOTE}",
+            )
+        if path.exists():
+            writable = os.access(path, os.W_OK) and os.access(parent, os.W_OK)
+        else:
+            writable = os.access(writable_dir, os.W_OK)
+        if not writable:
+            return StoreStatus(
+                durable=False,
+                path=str(path),
+                error=f"The policy file location is not writable: {path}",
+            )
+        return StoreStatus(durable=True, path=str(path))
+
+    # ----- reading -----
+
+    def load(self) -> ChatToolPolicy:
+        """Return the policy as it is on disk right now.
+
+        Raises `PolicyInvalid` only when the file was read and is corrupt or fails
+        validation. A file that can't be reached gives the last known good policy,
+        else the built-in defaults.
+        """
+        path = self.path()
+        try:
+            policy = self._parse(path)
+        except OSError as exc:
+            return self._unreachable(path, exc)
+
+        with self._lock:
+            self._last_good, self._last_good_path = policy.model_copy(deep=True), str(path)
+            self._unreachable_logged = None
+        return policy
+
+    def _parse(self, path: Path) -> ChatToolPolicy:
+        """Read and validate the file. I/O errors (OSError) propagate to the caller.
+
+        `PolicyInvalid` says what is wrong in terms an admin editing the file by hand can act on:
+        where the JSON is malformed, or which fields don't follow the expected format.
+        """
+        try:
+            try:
+                raw = path.read_text(encoding="utf-8")
+            except UnicodeDecodeError as exc:
+                raise PolicyInvalid("it isn't valid UTF-8 text") from exc
+            try:
+                data = json.loads(raw)
+            except json.JSONDecodeError as exc:
+                raise PolicyInvalid(
+                    f"it isn't valid JSON: {exc.msg} at line {exc.lineno}, column {exc.colno}"
+                ) from exc
+            try:
+                return ChatToolPolicy.model_validate(data)
+            except ValidationError as exc:
+                raise PolicyInvalid(f"it doesn't follow the expected format: {_describe_errors(exc)}") from exc
+        except PolicyInvalid as reason:
+            message = f"The chat tool policy file {path} is invalid: {reason}."
+            logger.error(message)
+            raise PolicyInvalid(message) from reason.__cause__
+
+    def _unreachable(self, path: Path, exc: OSError) -> ChatToolPolicy:
+        """The file can't be read. A missing file is normal before the app has
+        seeded one, so with nothing to fall back on it's silent. But once this process has
+        read the policy, a missing file is treated like any other unreachable one: a lost
+        mount often shows up as "not found", and must not loosen a stricter policy."""
+        if isinstance(exc, FileNotFoundError):
+            with self._lock:
+                has_last_good = self._last_good is not None and self._last_good_path == str(path)
+            if not has_last_good:
+                return default_policy()
+        return self._last_good_or_defaults(path, exc)
+
+    def _last_good_or_defaults(self, path: Path, exc: OSError) -> ChatToolPolicy:
+        """The file can't be reached (broken or missing mount, no permission, a path
+        component that isn't a folder). Keep the app working: use the policy this process
+        last read, else the built-in defaults. Logged once per distinct error, not on
+        every chat request."""
+        last_good = self._last_good if self._last_good_path == str(path) else None
+        fallback = "last known good policy" if last_good is not None else "built-in defaults"
+        message = f"Could not read chat tool policy {path} ({exc}); using the {fallback}"
+        if self._unreachable_logged != message:
+            logger.warning(message)
+            self._unreachable_logged = message
+        if last_good is not None:
+            return last_good.model_copy(deep=True)
+        return default_policy()
+
+    # ----- seeding -----
+
+    def seed_if_missing(self) -> bool:
+        """Create the policy file with the built-in defaults when there is none.
+
+        Lets the app set itself up (the owner can then edit it in the dataset or on the
+        settings page). Never overwrites: the file is written to a temp file and then
+        hard-linked into place, so a replica that starts at the same time either loses
+        the race harmlessly or sees the complete file, never a partial one. Returns True
+        when this call created it.
+        """
+        with self._lock:
+            path = self.path()
+            if path.exists():
+                return False
+            status = self.status()
+            if not status.durable:
+                logger.info("Not seeding the chat tool policy: %s", status.error)
+                return False
+            tmp_name = None
+            try:
+                path.parent.mkdir(exist_ok=True)
+                with tempfile.NamedTemporaryFile(
+                    "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+                ) as tmp:
+                    tmp_name = tmp.name
+                    tmp.write(default_policy().model_dump_json(indent=2))
+                    tmp.flush()
+                    os.fsync(tmp.fileno())
+                os.link(tmp_name, path)
+            except FileExistsError:
+                return False  # another replica seeded it first
+            except OSError as exc:
+                logger.warning("Could not seed the chat tool policy at %s: %s", path, exc)
+                return False
+            finally:
+                if tmp_name:
+                    try:
+                        os.unlink(tmp_name)
+                    except OSError:
+                        pass
+            logger.info("Seeded the chat tool policy with defaults at %s", path)
+            return True
+
+    # ----- writing -----
+
+    def save(self, new_policy: ChatToolPolicy, expected_revision: int, actor: Optional[str]) -> ChatToolPolicy:
+        """Replace `default_mode` and `tools` with `new_policy`'s, bumping the revision.
+
+        Raises `PolicyConflict` when `expected_revision` isn't the stored one,
+        `PolicyStoreUnavailable` when the file can't be written, and
+        `PolicyInvalid` when the stored file is corrupt (use `reset`).
+        """
+        with self._lock:
+            current = self._read_current_locked()
+            if current.revision != expected_revision:
+                raise PolicyConflict(
+                    f"Policy is at revision {current.revision}, not {expected_revision}"
+                )
+            return self._write_locked(current, new_policy, actor)
+
+    def reset(self, expected_revision: Optional[int], actor: Optional[str]) -> ChatToolPolicy:
+        """Restore the built-in defaults. A corrupt file is overwritten regardless of
+        `expected_revision`, since it has no trustworthy revision."""
+        with self._lock:
+            try:
+                current = self._read_current_locked()
+            except PolicyInvalid:
+                current = ChatToolPolicy.build(
+                    ToolMode.ENABLED, revision=self._last_good.revision if self._last_good else 0
+                )
+            else:
+                if expected_revision is not None and current.revision != expected_revision:
+                    raise PolicyConflict(
+                        f"Policy is at revision {current.revision}, not {expected_revision}"
+                    )
+            return self._write_locked(current, default_policy(), actor)
+
+    def _read_current_locked(self) -> ChatToolPolicy:
+        path = self.path()
+        try:
+            return self._parse(path)
+        except FileNotFoundError:
+            return default_policy()
+        except OSError as exc:
+            raise PolicyStoreUnavailable(f"Could not read {path}: {exc}") from exc
+
+    def _write_locked(
+        self, current: ChatToolPolicy, new_policy: ChatToolPolicy, actor: Optional[str]
+    ) -> ChatToolPolicy:
+        status = self.status()
+        if not status.durable:
+            raise PolicyStoreUnavailable(status.error or "The policy file can't be written")
+
+        now = _now()
+        change_log = list(current.change_log)
+        changes = _diff_modes(current, new_policy)
+        if changes:
+            change_log.append(PolicyChange(at=now, by=actor, changes=changes))
+        saved = ChatToolPolicy(
+            schema_version=1,
+            revision=current.revision + 1,
+            default_mode=new_policy.default_mode,
+            tools=new_policy.tools,
+            updated_at=now,
+            updated_by=actor,
+            change_log=change_log[-CHANGE_LOG_LIMIT:],
+        )
+        self._atomic_write(self.path(), saved)
+        self._last_good = saved
+        self._last_good_path = str(self.path())
+        return saved.model_copy(deep=True)
+
+    @staticmethod
+    def _atomic_write(path: Path, policy: ChatToolPolicy) -> None:
+        """Write to a temp file in the same directory, then `os.replace` it in."""
+        payload = policy.model_dump_json(indent=2)
+        tmp_name = None
+        try:
+            path.parent.mkdir(exist_ok=True)  # the policy folder inside the dataset
+            with tempfile.NamedTemporaryFile(
+                "w", encoding="utf-8", dir=path.parent, prefix=f".{path.name}.", suffix=".tmp", delete=False
+            ) as tmp:
+                tmp_name = tmp.name
+                tmp.write(payload)
+                tmp.flush()
+                os.fsync(tmp.fileno())
+            os.replace(tmp_name, path)
+        except OSError as exc:
+            if tmp_name:
+                try:
+                    os.unlink(tmp_name)
+                except OSError:
+                    pass
+            raise PolicyStoreUnavailable(f"Could not write {path}: {exc}") from exc
+
+
+_store: Optional[ChatToolPolicyStore] = None
+_store_lock = threading.Lock()
+
+
+def get_policy_store() -> ChatToolPolicyStore:
+    """Process-wide store (path resolved from config on every call)."""
+    global _store
+    with _store_lock:
+        if _store is None:
+            _store = ChatToolPolicyStore()
+        return _store
+
+
+def seed_default_policy() -> bool:
+    """App-start hook: create the default policy file where it will live on Domino.
+
+    Skipped in plain local development (no Domino run and no explicit path), so running the
+    app or tests locally doesn't drop files into the working directory. Never raises.
+    """
+    if not (config.get_domino_run_id() or config.get_chat_tool_policy_path_override()):
+        return False
+    try:
+        return get_policy_store().seed_if_missing()
+    except Exception:
+        logger.exception("Could not seed the chat tool policy")
+        return False

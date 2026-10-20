@@ -39,6 +39,8 @@ from fastapi.responses import JSONResponse
 from fastapi_mcp import FastApiMCP
 
 from mcp_server import config
+from mcp_server.errors import error_body, register_error_handlers
+from mcp_server.config import INTERNAL_TAG, PREVIEW_HEADER
 from mcp_server.session import (
     SessionMiddleware,
     _evict_stale_sessions,
@@ -82,7 +84,7 @@ class UnhandledExceptionMiddleware:
             await self.app(scope, receive, send)
         except HTTPException as exc:
             response = JSONResponse(
-                {"detail": exc.detail},
+                error_body(exc),
                 status_code=exc.status_code,
                 headers=exc.headers,
             )
@@ -122,8 +124,9 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
     app.add_middleware(UnhandledExceptionMiddleware)
+    register_error_handlers(app)
 
-    @app.get("/")
+    @app.get("/", tags=[INTERNAL_TAG])
     async def read_root():
         return {"message": "Welcome to the Generic Dataset Analysis API"}
 
@@ -134,7 +137,7 @@ def create_app() -> FastAPI:
     app.include_router(tables_router)
 
     # Wire FastApiMCP after all routers so every business route is exposed
-    # as an MCP tool (other than `load_dataset`, which is excluded).
+    # as an MCP tool (other than routes tagged `internal`, which are excluded).
     # Connect to this MCP by default with (in pydantic ai for example):
     #   server = MCPServerHTTP(url='http://localhost:3333/mcp')
     #   agent = Agent('openai:gpt-4.1-mini', mcp_servers=[server])
@@ -143,11 +146,15 @@ def create_app() -> FastAPI:
         app,
         name="Generic dataset analysis MCP server",
         description="MCP server for generic dataset analysis API - works with any CSV dataset",
-        exclude_operations=["load_dataset", "evict_stale_dataframes"],
-        # Forward session ID so MCP tool calls hit the right DataFrame
-        headers=["authorization", "x-session-id"],
+        # Maintenance and loading routes are for the Flask backend, not the agent.
+        exclude_tags=[INTERNAL_TAG],
+        # Forward session ID so MCP tool calls hit the right DataFrame, and the
+        # preview header so admin-page tool previews stay in their sandbox session.
+        headers=["authorization", "x-session-id", PREVIEW_HEADER],
     )
     mcp.mount()
+    # Exposed so tests and tooling can inspect the tool catalog without a live MCP connection.
+    app.state.mcp = mcp
 
     return app
 

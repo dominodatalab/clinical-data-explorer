@@ -7,6 +7,7 @@ import { initFileBrowser, openFileBrowserModal } from './modules/file-browser.js
 import { initFilters, renderActiveFilters } from './modules/filters.js';
 import { initExploreCharts, initializeExploreTab, resetExploreCharts } from './modules/explore-charts.js';
 import { initChat, displayMessage, checkChatStatus } from './modules/chat.js';
+import { initAdminLink } from './modules/admin-link.js';
 import {
     tableState,
     initTableView,
@@ -32,8 +33,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     }
 
     // Chat tab DOM lookups, send/clear/keypress wiring, status probe,
-    // displayMessage, thinking animation, renderChart and the 8
-    // type-specific renderers all live in modules/chat.js
+    // displayMessage, thinking animation and chart embedding all live in
+    // modules/chat.js (chart renderers in modules/chart-renderers.js)
     // (plan box 4.4f / P14). We import initChat/displayMessage/
     // checkChatStatus at the top of this file and call initChat()
     // below — see the early-call to initChat() right after this block.
@@ -162,6 +163,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     // calls displayMessage(), but displayMessage() also lazy-resolves
     // chatBox so the early-error edge cases stay safe.
     initChat();
+    initAdminLink();
 
     // Initialize the table view module (DOM refs, row-click delegation,
     // pagination/sidebar/right-panel/summary-cards/stats event wiring).
