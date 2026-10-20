@@ -61,8 +61,8 @@ def get_caller_project_role(project_id: str) -> Optional[str]:
 
     NOTE: checked on a real Domino (2026-10-20, as the project owner, with an API key): the response
     shape above, `ownerId` equal to `id` from `/api/users/v1/self`, "contributor" collaborators, and a
-    404 for an unknown project. Not re-checked on the public endpoint: a non-collaborator's token
-    (403 on the previous internal endpoint) and the deployed App with the visiting user's JWT.
+    404 for an unknown project. Also checked from the UI with a second user: as a non-collaborator the
+    settings page is not available; after being added as a collaborator it appears and changes save.
     """
     host = get_domino_api_host()
     token = get_passthrough_token()
