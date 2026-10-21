@@ -3,12 +3,14 @@ name: Test
 on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review]
+  push:
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: test-${{ github.event.pull_request.number }}
+  group: test-${{ github.workflow }}-${{ github.event.pull_request.number || github.sha }}
   cancel-in-progress: true
 
 jobs:
