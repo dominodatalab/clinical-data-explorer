@@ -16,10 +16,17 @@ The fixture in `tests/e2e/conftest.py` will:
 
 1. Copy `tests/fixtures/sample.csv` into `datasets/_e2e_sample.csv` so the file
    browser can see it.
-2. Start Flask (port 8888) and MCP (port 3333) via `start_servers.sh`.
-3. Wait for both to respond on `/`.
-4. Tear everything down (kill the process group, remove the fixture copy) at
+2. Start the local Domino API mock on an available loopback port with a clean,
+   deterministic local-development environment.
+3. Start Flask (port 8888) and MCP (port 3333) via `start_servers.sh`, pointing
+   their identity requests at that mock.
+4. Wait for all three services to respond.
+5. Tear everything down (kill the process groups, remove the fixture copy) at
    session end — even if the test fails.
+
+Ambient Domino runtime and LLM-provider variables are not passed to the test
+servers. This keeps local file discovery and the unconfigured-chat state stable
+when the suite runs inside a configured developer shell or Domino execution.
 
 If port 3333 or 8888 is already in use, the test is skipped rather than
 fighting the existing servers.
