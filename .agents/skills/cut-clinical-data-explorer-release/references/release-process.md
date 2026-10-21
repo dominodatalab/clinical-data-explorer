@@ -4,7 +4,7 @@ This is the repository's implemented release workflow. Audit it against the live
 
 ## Sources last reconciled
 
-- [Clinical Data Explorer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4218191891/Clinical+Data+Explorer+Runbook), page `4218191891`, version 28, updated 2026-10-08.
+- [Clinical Data Explorer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4218191891/Clinical+Data+Explorer+Runbook), page `4218191891`, version 29, updated 2026-10-20.
 - [Extensions Installer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4263706625/Extensions+Installer+Runbook), page `4263706625`, version 32, updated 2026-07-16.
 - [Clinical Data Explorer repository](https://github.com/dominodatalab/clinical-data-explorer), its local checkout, Git history, tags, releases, PRs, and `extension_versions` branch.
 
@@ -78,7 +78,16 @@ Also run `make test-external` when the changelog touches chat or an external int
 
 Ask: “Did the Clinical Data Explorer Cucu e2e suite pass against `main` at `<sha>`? Please answer yes or no.” Only an unambiguous yes counts. Blank, missing, ambiguous, or negative input means no and stops the release before mutations.
 
-For a yes, ask which exact Domino version or versions passed and record the human's answer for `testedWithDominoVersions`. Do not invent TestRail IDs or infer tested Domino versions. If the human needs a command, the runbook's shape is `CDE_VERSION=main cucu run --tags=@clinical-data-explorer` from the internal e2e service checkout.
+For a yes, ask which exact Domino version or versions passed and record the human's answer for `testedWithDominoVersions`. Do not invent TestRail IDs or infer tested Domino versions.
+
+For a release from `main`, run both of these triggers on an internal-e2e service PR when execution is needed:
+
+```text
+/test-e2e nexus-global-config --tags=clinical-data-explorer
+/test-e2e cucu --tags=clinical-data-explorer
+```
+
+For a non-main candidate, manually run `CDE_VERSION=<ref> cucu run --tags=@clinical-data-explorer` from the internal e2e service checkout. Posting a trigger or starting a command is not passing evidence; require completed results tied to the exact `main` SHA and the human-confirmed Domino version or versions.
 
 ### 6. Recommend and confirm the version
 
