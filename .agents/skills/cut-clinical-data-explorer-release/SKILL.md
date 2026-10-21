@@ -35,6 +35,7 @@ Use authenticated GitHub tooling before a browser and never use unauthenticated 
 Stop and wait at each gate below. Do not infer approval from earlier authorization.
 
 - **Process:** the human explicitly agrees that the presented differences are correct, or that there are no differences.
+- **External tests:** run `make test-external` as a standalone command against the exact functional candidate SHA. Report whether every selected external test actually executed and passed, any failed or errored, or any skipped/were not collected; a successful command exit alone is not passing evidence. Then ask the human to run the same command against that SHA in an appropriately configured environment and report the exact result back. Only an unambiguous human report that at least one selected external test passed and none skipped, failed, or errored clears this gate; deselected non-external tests are expected. Human evidence may be reused across a release branch proven to differ only in release-version metadata, as defined in step 10. Do not ask the human to paste credentials or deployment secrets.
 - **Cucu e2e:** ask whether the Clinical Data Explorer Cucu e2e suite passed against the exact updated `main` SHA. Only an unambiguous “yes” counts; blank, missing, ambiguous, or negative input means “no” and blocks all release mutations. If yes, obtain the exact Domino version or versions tested.
 - **Version:** present the changelog, an exact SemVer recommendation, and the evidence for its bump class. Obtain confirmation of the exact `X.Y.Z` version before creating the release worktree or branch.
 - **Release PR:** after opening the release PR, ask the human to review it and tell you when it is merged. Stop. Create no tag before independently verifying the merge.
@@ -70,7 +71,7 @@ Follow the numbered process and invariants in the reference exactly. In particul
 - branch as `release-X.Y.Z` from freshly fetched `origin/main` in a new worktree;
 - update every true release-version reference, while asking before changing apparently independent package versions;
 - keep names and descriptions stable unless the changelog makes them materially inaccurate;
-- run the documented local suites; never treat the Docker smoke workflow as e2e evidence;
+- run the documented local suites, including `make test-external` as a separate command whose pytest outcome is inspected and reported; never treat the Docker smoke workflow as e2e evidence;
 - put `extension_manifest.json` on the release branch/tag and `extension_versions.json` only on its dedicated registry branch;
 - merge the release PR before creating the stable tag;
 - do not create provisional tags, provisional releases, or provisional registry entries, and do not perform Extension Installer validation;
@@ -81,4 +82,4 @@ Every PR body opened by this workflow must mention `@niole`. PR titles and descr
 
 ## Finish with evidence
 
-Report the stable version and commit; release PR; local test results; human-confirmed Cucu evidence; stable release URL; compatibility evidence; registry PR and final registry entry; and any unresolved caveat. Distinguish observed evidence from human confirmation.
+Report the stable version and commit; release PR; local test results; whether the standalone external tests actually executed; the human-reported external-test result; human-confirmed Cucu evidence; stable release URL; compatibility evidence; registry PR and final registry entry; and any unresolved caveat. Distinguish observed evidence from human confirmation.

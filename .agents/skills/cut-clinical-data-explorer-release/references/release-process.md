@@ -12,7 +12,7 @@ This is the repository's implemented release workflow. Audit it against the live
 
 | Source requirement | Implemented here |
 | --- | --- |
-| Local tests and Cucu e2e tests pass | Steps 4, 5, and 10 require local suites and explicit human Cucu evidence for an exact `main` SHA. |
+| Local tests and Cucu e2e tests pass | Steps 4, 5, and 10 require local suites, a separately observed and human-reported external-test result, and explicit human Cucu evidence for an exact `main` SHA. |
 | Update `main`, create `release-X.Y.Z` from it | Step 7 requires a new worktree from freshly fetched `origin/main`. |
 | Validate `extension_manifest.json`, tags, and `extension_versions.json` | Steps 8, 9, and 13 through 15 validate the tagged manifest and the separately reviewed registry change. |
 | Create a GitHub release | Step 13 pushes the stable tag first, then creates a release named after it with the changelog. |
@@ -30,6 +30,7 @@ The following reconciliations are intentional and must be included when they are
 4. **Metadata locations.** `extension_manifest.json` belongs in released code and the stable tag. `extension_versions.json` belongs only on the dedicated registry branch.
 5. **Compact plan confirmation.** Show humans only differences from the last agreed process. If there are no differences, say so. Print the full process only when requested.
 6. **PR notification.** Every PR body opened by this workflow must mention `@niole`.
+7. **Observable external-test handoff.** Run `make test-external` separately, report whether tests actually executed rather than trusting its exit code, then ask the human to run it against the exact functional candidate SHA and report the result. Selected skips or no selected external tests are not passing evidence; deselected non-external tests are expected.
 
 ## Numbered release process
 
@@ -77,14 +78,24 @@ Set `minDominoVersion` to the highest proven minimum among mandatory dependencie
 
 Treat `minDominoVersion` and `maxDominoVersion` as inclusive installer gates. Add `maxDominoVersion` only for a documented incompatibility and omit it when no defensible upper bound exists; the newest tested version is not a maximum. Treat test coverage separately from inferred support.
 
-On a clean checkout of the exact `main` SHA, run:
+On a clean checkout of the exact `main` SHA, run each command separately:
 
 ```text
 make test-all
 make test-frontend
+make test-external
 ```
 
-Also run `make test-external` when the changelog touches chat or an external integration. If required credentials are unavailable, report that as an unmet release gate rather than silently skipping it. The PR Docker workflow is only a smoke build and is not a replacement for these suites.
+The standalone `make test-external` result is authoritative for the external-test gate even if `make test-all` also collected an external-marked test. Inspect the pytest summary instead of relying on the command exit status:
+
+- at least one selected external test passing with no selected skips, failures, or errors means the external suite executed and passed;
+- any selected failure or error means the external suite executed and failed;
+- any selected skip, or no selected external tests, means the external suite did not fully execute;
+- deselected non-external tests are expected from `pytest -m external` and do not affect this classification.
+
+Report that classification and the exact summary to the human. Then ask the human to run `make test-external` against the recorded candidate SHA in an appropriately configured environment and report the exact pytest result back. Do not ask the human to paste credentials, deployment hostnames, or other secrets into chat; an access-controlled result link is appropriate. Only an unambiguous report that at least one selected external test passed and none skipped, failed, or errored clears the gate. A blank, ambiguous, skipped, uncollected, failed, or errored result blocks creation of the release branch.
+
+The PR Docker workflow is only a smoke build and is not a replacement for these suites.
 
 ### 5. Obtain Cucu e2e evidence
 
@@ -147,7 +158,7 @@ Validate:
 
 ### 10. Test the release branch
 
-Run `make test-all` and `make test-frontend` again. Run `make test-external` when required by the changelog. Fix failures before continuing and keep the changelog current if a fix changes behavior.
+Run `make test-all`, `make test-frontend`, and `make test-external` again as separate commands, and report the standalone external-test classification from step 4. When the release branch differs from the human-tested `main` candidate only in release-version metadata, retain that human result and record why it applies. Ask the human to rerun `make test-external` and report the result when functional or integration behavior changed, the branch was rebased onto a different candidate, or no valid passing human result exists. Any unresolved external-test gate blocks pushing or opening the release PR and all later publication actions. Fix failures before continuing and keep the changelog current if a fix changes behavior.
 
 ### 11. Push and open the release PR
 
