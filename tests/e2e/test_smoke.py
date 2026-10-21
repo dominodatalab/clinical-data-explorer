@@ -127,7 +127,7 @@ def test_app_smoke(live_servers, page):
     # Chat input is only rendered when chat is configured. If the env has no
     # LLM provider configured, the empty state is shown instead — accept either.
     chat_or_empty = page.locator(
-        '[data-testid="chat-input"], #chat-empty-state'
+        '[data-testid="chat-input"]:visible, #chat-empty-state:visible'
     )
     expect(chat_or_empty.first).to_be_visible(timeout=10_000)
     # When the empty state is what rendered, the Domino LLM Gateway must be one
