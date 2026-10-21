@@ -16,7 +16,11 @@ test-e2e:
 	uv run --locked pytest tests/e2e -m "not mocked_integration"
 
 test-all:
-	uv run --locked pytest tests/contract tests/e2e tests/unit tests/mcp_server
+	$(MAKE) test
+	$(MAKE) test-unit
+	$(MAKE) test-frontend
+	$(MAKE) test-mocked-integration
+	$(MAKE) test-e2e
 
 test-external:
 	@uv run --locked pytest -m external; code=$$?; if [ $$code -eq 5 ]; then echo "(no external tests registered yet)"; exit 0; else exit $$code; fi
