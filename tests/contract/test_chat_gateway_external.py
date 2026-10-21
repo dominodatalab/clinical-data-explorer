@@ -1,7 +1,8 @@
 """Gated smoke test against a real Domino LLM Gateway.
 
-Marked `external` and skipped unless both Gateway env vars are set, so it never
-runs in CI by default:
+Direct pytest runs skip unless both Gateway env vars are set. `make
+test-external` supplies Cloud Dogfood defaults when they are absent; `make
+test-all` and CI do not:
 
     DOMINO_LLM_GATEWAY_URL=https://<deploy>/apps/<app-id> \\
     DOMINO_LLM_GATEWAY_MODEL=gpt-5.4-nano \\
