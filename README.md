@@ -428,7 +428,7 @@ Run `make test` before committing. Run `make test-all` before opening a PR.
 - `make test-mocked-integration` — Playwright browser tests with mocked backend responses; no Flask/MCP servers needed
 - `make test-e2e` — Playwright smoke test that walks the whole app with local Flask/MCP servers (~60–90s)
 - `make test-all` — contract, real e2e, unit/MCP, and mocked integration layers
-- `make test-external` — tests that hit real external services (chat). Run these before shipping a change that touches chat.
+- `make test-external` — tests that hit real external services (chat). Run these before shipping a change that touches chat. Explicit Gateway settings are preserved; otherwise this target uses the test-only defaults `DOMINO_LLM_GATEWAY_URL=https://apps.cloud-dogfood.domino.tech/apps/llm_gateway` and `DOMINO_LLM_GATEWAY_MODEL=sonnet5-5`. These defaults point to a real service. Local runs normally need `API_KEY_OVERRIDE`; when used with the default Gateway URL, it must be a Domino PAT issued by Cloud Dogfood and authorized for that model alias. A Domino runtime can use its access-token sidecar instead. The target warns when no override is set, but only the pytest result determines whether the test passed.
 
 First-time setup:
 
