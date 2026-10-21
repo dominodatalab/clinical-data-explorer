@@ -31,6 +31,7 @@ The following reconciliations are intentional and must be included when they are
 5. **Compact plan confirmation.** Show humans only differences from the last agreed process. If there are no differences, say so. Print the full process only when requested.
 6. **PR notification.** Every PR body opened by this workflow must mention `@niole`.
 7. **Observable external-test handoff.** Run `make test-external` separately, report whether tests actually executed rather than trusting its exit code, then ask the human to run it against the exact functional candidate SHA and report the result. Selected skips or no selected external tests are not passing evidence; deselected non-external tests are expected.
+8. **Approved external-test defaults.** The external-test target may default its Gateway URL and model to the repository's documented Cloud Dogfood test values, but it never supplies credentials. Warn when `API_KEY_OVERRIDE` is absent; if that override is used with the Cloud Dogfood default, it must be a PAT issued by cloud-dogfood. Never print or request the credential.
 
 ## Numbered release process
 
@@ -85,6 +86,8 @@ make test-all
 make test-frontend
 make test-external
 ```
+
+The `make test-external` target supplies the approved test-only defaults `DOMINO_LLM_GATEWAY_URL=https://apps.cloud-dogfood.domino.tech/apps/llm_gateway` and `DOMINO_LLM_GATEWAY_MODEL=sonnet5-5` when those variables are absent, but it never supplies credentials. If `API_KEY_OVERRIDE` is set while the default Gateway URL is used, it must be a Domino PAT issued by cloud-dogfood and authorized for the selected model alias; a Domino runtime can instead use its access-token sidecar. If the target warns that `API_KEY_OVERRIDE` is unset and the run is outside Domino or fails for authentication, ask the human to configure authentication in their own environment without pasting the credential into chat. A passing sidecar-authenticated result needs no remediation. The warning itself neither passes nor fails the gate.
 
 The standalone `make test-external` result is authoritative for the external-test gate even if `make test-all` also collected an external-marked test. Inspect the pytest summary instead of relying on the command exit status:
 

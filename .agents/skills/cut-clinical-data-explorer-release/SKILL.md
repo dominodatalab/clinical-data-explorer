@@ -62,7 +62,7 @@ Use the strongest available evidence to determine the registry compatibility fie
 
 Treat `minDominoVersion` and `maxDominoVersion` as inclusive installer gates. Add a maximum only for a documented incompatibility; the newest tested version is not a maximum. Put only exact, human-confirmed Domino versions from completed Cucu runs against the recorded candidate SHA in `testedWithDominoVersions`; never present inferred or historical compatibility as test evidence.
 
-Include the compatibility conclusion, evidence, and uncertainty in the `extension_versions` PR description. The repository is public: do not expose deployment hostnames, credentials, secrets, or other internal run details; use an access-controlled result link when appropriate.
+Include the compatibility conclusion, evidence, and uncertainty in the `extension_versions` PR description. The Cloud Dogfood Gateway URL may remain in repository test documentation as an explicitly approved public test endpoint, but do not repeat it or any other deployment hostname in the registry PR. Never expose credentials, secrets, or internal run details; use an access-controlled result link when appropriate.
 
 ## Execute the approved process
 
