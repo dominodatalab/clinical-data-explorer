@@ -66,8 +66,9 @@ def get_domino_external_url():
     In deployments with App subdomains enabled, X-Forwarded-Host and Host
     identify the App ingress rather than Domino's top-level public origin.
     The request-header fallback below therefore returns the wrong host in
-    those deployments. API calls must use DOMINO_API_HOST or the relevant
-    service-specific host. New callers must not depend on this resolver.
+    those deployments. API calls should use DOMINO_API_HOST or the relevant
+    service-specific host when available. When DOMINO_WEBVFS_HOST is absent,
+    WebVFS uses this resolver as a Domino 6.3.1 compatibility fallback.
 
     Get the externally-reachable Domino base URL (scheme + host).
 
@@ -89,7 +90,8 @@ def get_domino_external_url():
     # WARNING: THIS FALLBACK BREAKS WHEN APP SUBDOMAINS ARE ENABLED.
     # Forwarded request headers identify the App ingress in those deployments,
     # not the top-level Domino origin. Keep this behavior only for existing
-    # callers whose compatibility requirements have not yet been resolved.
+    # callers that require compatibility with Domino versions lacking a
+    # service-specific host.
     try:
         from flask import has_request_context
         if has_request_context():

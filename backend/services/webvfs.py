@@ -1,32 +1,9 @@
 """Resolve the WebVFS endpoint available to the current Domino execution."""
 
-import logging
 from urllib.parse import urlsplit, urlunsplit
 
-from flask import has_request_context, request
-
 from backend import config
-
-logger = logging.getLogger(__name__)
-
-
-def _get_forwarded_request_origin() -> str:
-    """Return the Domino 6.3.1 deployment origin from request headers."""
-    try:
-        if has_request_context():
-            fwd_host = request.headers.get("X-Forwarded-Host") or request.headers.get("Host")
-            fwd_proto = request.headers.get("X-Forwarded-Proto", "https")
-            if (
-                fwd_host
-                and "domino-platform" not in fwd_host
-                and "localhost" not in fwd_host
-            ):
-                # Use first host in a comma-separated list (proxies sometimes chain)
-                fwd_host = fwd_host.split(",")[0].strip()
-                return f"{fwd_proto}://{fwd_host}"
-    except Exception as e:
-        logger.debug(f"Could not derive WebVFS origin from request headers: {e}")
-    return ""
+from backend.auth import get_domino_external_url
 
 
 def get_webvfs_base_url() -> str:
@@ -36,13 +13,14 @@ def get_webvfs_base_url() -> str:
     host = (config.get_domino_webvfs_host() or "").strip()
     source = "DOMINO_WEBVFS_HOST"
     if not host:
-        # Domino 6.3.1 does not inject DOMINO_WEBVFS_HOST, so retain its legacy
-        # deployment-origin route derived from forwarded request headers.
-        host = _get_forwarded_request_origin()
-        source = "Domino WebVFS request origin"
+        # This fallback supports Domino 6.3.1, which does not inject
+        # DOMINO_WEBVFS_HOST. Later versions are expected to provide the
+        # dedicated host so App subdomains cannot change WebVFS routing.
+        host = (get_domino_external_url() or "").strip()
+        source = "Domino external URL"
     if not host:
         raise RuntimeError(
-            "Domino WebVFS host is not configured and no forwarded request origin is available"
+            "Domino WebVFS host is not configured and no external URL is available"
         )
 
     if not host.lower().startswith(("http://", "https://")):

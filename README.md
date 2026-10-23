@@ -51,9 +51,10 @@ export DOMINO_API_HOST=http://localhost:8080
 When implementing backend code that calls WebVFS, append the endpoint path
 beginning with `/webvfs/` to the origin returned by the shared WebVFS resolver.
 Domino 6.4/7.0 and later inject `DOMINO_WEBVFS_HOST`; its value contains only
-the scheme, host, and optional port. Domino 6.3.1 does not inject that variable,
-so the resolver falls back to `X-Forwarded-Host` (or `Host`) and
-`X-Forwarded-Proto` (defaulting to HTTPS), matching the legacy 6.3.1 behavior.
+the scheme, host, and optional port. When that variable is absent, as on Domino
+6.3.1, the resolver falls back to the existing Domino external-URL resolution
+order: `DOMINO_EXTERNAL_URL`, the forwarded request origin, then
+`VSCODE_PROXY_URI`.
 The fallback is not used when `DOMINO_WEBVFS_HOST` is set, which preserves
 routing for deployments that use App subdomains. Set `DOMINO_WEBVFS_HOST`
 explicitly for local development unless you are exercising the Domino 6.3.1
