@@ -83,7 +83,7 @@ def get_domino_external_url():
          reverse proxy when the app is deployed as a Domino App or Extension)
       3. VSCODE_PROXY_URI env var (set in Domino workspaces/IDE sessions)
     """
-    override = config.get_domino_external_url()
+    override = (config.get_domino_external_url() or "").strip()
     if override:
         return override.rstrip('/')
 
@@ -100,12 +100,12 @@ def get_domino_external_url():
             if fwd_host and 'domino-platform' not in fwd_host and 'localhost' not in fwd_host:
                 # Use first host in a comma-separated list (proxies sometimes chain)
                 fwd_host = fwd_host.split(',')[0].strip()
-                return f"{fwd_proto}://{fwd_host}"
+                return f"{fwd_proto}://{fwd_host}".strip()
     except Exception as e:
         logger.debug(f"Could not derive external URL from request headers: {e}")
 
     # Workspace/IDE fallback
-    proxy_uri = config.get_vscode_proxy_uri()
+    proxy_uri = (config.get_vscode_proxy_uri() or "").strip()
     if proxy_uri:
         try:
             from urllib.parse import urlparse
