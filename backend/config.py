@@ -110,7 +110,8 @@ def get_domino_external_url():
 
 
 def get_domino_webvfs_host():
-    return os.environ.get("DOMINO_WEBVFS_HOST")
+    value = os.environ.get("DOMINO_WEBVFS_HOST")
+    return value.strip() if value else value
 
 
 def get_domino_project_id():
