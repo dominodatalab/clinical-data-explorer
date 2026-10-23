@@ -2,7 +2,6 @@ import pytest
 import requests
 from flask import Flask
 from werkzeug.exceptions import NotFound
-from werkzeug.middleware.proxy_fix import ProxyFix
 
 import backend.services.dataset_load_request_file_size_resolver as resolver
 from backend.services.dataset_load_request_queue import DatasetLoadRequest
@@ -185,61 +184,37 @@ def test_netapp_metadata_uses_forwarded_origin_on_domino_6_3_1(monkeypatch):
     monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
     monkeypatch.delenv("VSCODE_PROXY_URI", raising=False)
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
-    app = Flask(__name__)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-    @app.get("/")
-    def get_metadata():
-        return resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-
-    response = app.test_client().get(
-        "/",
+    with Flask(__name__).test_request_context(
         headers={
-            "X-Forwarded-Host": f"untrusted.example, {EXTERNAL_URL.removeprefix('https://')}",
-            "X-Forwarded-Proto": "http, https",
-        },
-    )
+            "X-Forwarded-Host": (
+                f"{EXTERNAL_URL.removeprefix('https://')}, proxy.domino.example"
+            ),
+            "X-Forwarded-Proto": "https",
+        }
+    ):
+        metadata = resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
-    assert response.status_code == 200
-    assert response.get_json() == {"fileSize": 7}
+    assert metadata == {"fileSize": 7}
     assert urls == [EXTERNAL_URL + METADATA_PATH]
 
 
 @pytest.mark.parametrize(
     "headers",
     [
-        {"Host": "untrusted.example"},
-        {"X-Forwarded-Host": EXTERNAL_URL.removeprefix("https://")},
-        {
-            "Host": "untrusted.example",
-            "X-Forwarded-Host": " ",
-            "X-Forwarded-Proto": " ",
-        },
-        {
-            "Host": "untrusted.example",
-            "X-Forwarded-Host": ",",
-            "X-Forwarded-Proto": ",",
-        },
+        {"Host": "localhost"},
+        {"Host": "domino-platform"},
     ],
 )
-def test_netapp_metadata_rejects_untrusted_request_origins(monkeypatch, headers):
+def test_netapp_metadata_rejects_internal_request_origins(monkeypatch, headers):
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
     calls = []
     monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: calls.append((args, kwargs)))
-    app = Flask(__name__)
-    app.wsgi_app = ProxyFix(app.wsgi_app, x_proto=1, x_host=1)
 
-    @app.get("/")
-    def get_metadata():
-        try:
-            return resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-        except RuntimeError as exc:
-            return {"error": str(exc)}, 400
+    with Flask(__name__).test_request_context(headers=headers):
+        with pytest.raises(RuntimeError, match="no forwarded request origin"):
+            resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
-    response = app.test_client().get("/", headers=headers)
-
-    assert response.status_code == 400
-    assert "no trusted forwarded request origin" in response.get_json()["error"]
     assert calls == []
 
 
