@@ -4,15 +4,17 @@ This is the repository's implemented release workflow. Audit it against the live
 
 ## Sources last reconciled
 
-- [Clinical Data Explorer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4218191891/Clinical+Data+Explorer+Runbook), page `4218191891`, version 29, updated 2026-10-20.
+- [Clinical Data Explorer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4218191891/Clinical+Data+Explorer+Runbook), page `4218191891`, version 30, updated 2026-10-21.
 - [Extensions Installer Runbook](https://dominodatalab.atlassian.net/wiki/spaces/ENG/pages/4263706625/Extensions+Installer+Runbook), page `4263706625`, version 32, updated 2026-07-16.
 - [Clinical Data Explorer repository](https://github.com/dominodatalab/clinical-data-explorer), its local checkout, Git history, tags, releases, PRs, and `extension_versions` branch.
+- [`cerebrotech/internal-e2e-tests-service`](https://github.com/cerebrotech/internal-e2e-tests-service), its live branches, trigger documentation and implementation, and `main` at `f04b6ac2a3a46b4ee8027d026303b58355d0ac8e`, reviewed 2026-10-23.
 
 ## Runbook coverage and reconciliations
 
 | Source requirement | Implemented here |
 | --- | --- |
-| Local tests and Cucu e2e tests pass | Steps 4, 5, and 10 require local suites, a separately observed and human-reported external-test result, and explicit human Cucu evidence for an exact `main` SHA. |
+| Local tests and Cucu e2e tests pass | Steps 4, 5, and 10 require local suites, a separately observed and human-reported external-test result, and candidate-bound Cucu runs across the selected Domino compatibility matrix with explicit human confirmation. |
+| Run the documented internal-e2e GitHub triggers on a PR | Step 5 creates one branch-correct temporary PR per selected Domino release branch plus `main`, then posts the `nexus-global-config` and `cucu` commands as separate comments. |
 | Update `main`, create `release-X.Y.Z` from it | Step 7 requires a new worktree from freshly fetched `origin/main`. |
 | Validate `extension_manifest.json`, tags, and `extension_versions.json` | Steps 8, 9, and 13 through 15 validate the tagged manifest and the separately reviewed registry change. |
 | Create a GitHub release | Step 13 pushes the stable tag first, then creates a release named after it with the changelog. |
@@ -26,12 +28,13 @@ The following reconciliations are intentional and must be included when they are
 
 1. **Merge before tagging.** The release PR must merge before the stable tag is created. This overrides the CDE runbook's merge-last order.
 2. **No provisional workflow.** Do not create provisional tags, GitHub prereleases, or provisional registry entries, and do not validate through the Extension Installer. This intentionally omits the installer runbook's provisional path.
-3. **Human-reviewed registry PR and branch-base exception.** Never push release metadata directly to `extension_versions`. To produce a clean PR against the special long-lived `extension_versions` branch, create `release-X.Y.Z-extension_versions` from freshly fetched `origin/extension_versions`, not from `main`. This is the sole exception to the default-branch rule and must be presented for explicit human confirmation when first introduced. Wait for the human to review and merge the PR.
+3. **Human-reviewed registry PR and branch-base exception.** Never push release metadata directly to `extension_versions`. To produce a clean PR against the special long-lived `extension_versions` branch, create `release-X.Y.Z-extension_versions` from freshly fetched `origin/extension_versions`, not from `main`. This is the sole publication-branch exception inside the Clinical Data Explorer repository and must be presented for explicit human confirmation when first introduced. Wait for the human to review and merge the PR.
 4. **Metadata locations.** `extension_manifest.json` belongs in released code and the stable tag. `extension_versions.json` belongs only on the dedicated registry branch.
 5. **Compact plan confirmation.** Show humans only differences from the last agreed process. If there are no differences, say so. Print the full process only when requested.
 6. **PR notification.** Every PR body opened by this workflow must mention `@niole`.
 7. **Observable external-test handoff.** Run `make test-external` separately, report whether tests actually executed rather than trusting its exit code, then ask the human to run it against the exact functional candidate SHA and report the result. Selected skips or no selected external tests are not passing evidence; deselected non-external tests are expected.
 8. **Approved external-test defaults.** The external-test target may default its Gateway URL and model to the repository's documented Cloud Dogfood test values, but it never supplies credentials. Warn when `API_KEY_OVERRIDE` is absent; if that override is used with the Cloud Dogfood default, it must be a PAT issued by cloud-dogfood. Never print or request the credential.
+9. **Cross-version Cucu trigger PRs.** If Cucu has not already run, determine the relevant Domino compatibility test matrix first. In `cerebrotech/internal-e2e-tests-service`, create an empty-commit test PR against each selected release branch and `main`, title each one exactly `DO NOT MERGE`, and post the two documented `/test-e2e` triggers as separate comments. A test branch targeting a release branch starts from that freshly fetched target branch; this is an explicit test-only exception to the default-branch rule. The current e2e flow resolves Clinical Data Explorer from `main` without recording the resolved CDE commit, so `main` must remain at the recorded candidate SHA through result collection and this must be reported as a binding proxy rather than direct SHA proof. Never merge these PRs.
 
 ## Numbered release process
 
@@ -39,11 +42,11 @@ The following reconciliations are intentional and must be included when they are
 
 Read both live runbooks and the current skill. Produce a requirement-to-implementation comparison internally. If any unaccounted requirement differs, propose an exact skill edit and do no release work. Make accepted skill edits in a dedicated worktree and branch from freshly fetched `origin/main`, not in a release worktree. Keep release execution paused until the agreed skill update is merged or the human explicitly chooses to continue from the reviewed local change.
 
-At the process gate, show only differences from the last agreed plan and ask whether they are correct. If nothing changed, say there are no differences and ask for confirmation. Do not print this complete process unless the human asks for it.
+At the process gate, show only differences from the last agreed plan and ask whether they are correct. If nothing changed, say there are no differences and ask for confirmation. If no trustworthy approval baseline exists, say so and present the current reconciliation list once. Do not print this complete process unless the human asks for it.
 
 ### 2. Discover or resume release state
 
-Inspect local worktrees and status, remote release and registry branches, open and merged PRs, remote tags, GitHub releases, and the remote `extension_versions.json`. Resume only a candidate version the human named or one unambiguous candidate whose stable publication is incomplete. A correct stable tag without a GitHub release, or a stable release without a merged and valid registry entry, is still incomplete. If multiple candidates could be active, ask which one to resume.
+Inspect local worktrees and status, remote release and registry branches, open and merged PRs, remote tags, GitHub releases, the remote `extension_versions.json`, and candidate-specific branches, PRs, trigger comments, and results in `cerebrotech/internal-e2e-tests-service`. Resume only a candidate version the human named or one unambiguous candidate whose stable publication is incomplete. A correct stable tag without a GitHub release, or a stable release without a merged and valid registry entry, is still incomplete. If multiple candidates could be active, ask which one to resume.
 
 Historical provisional artifacts are never resumable candidates and this workflow creates no new ones. If an existing release artifact points at the wrong commit or contains unexpected data, stop; never move, reuse, or delete a tag.
 
@@ -54,10 +57,13 @@ Confirm:
 - the repo is the public `dominodatalab/clinical-data-explorer` repository;
 - its default branch is `main` and the `domino-official-extension` topic is present;
 - authenticated GitHub access can read releases and PRs and perform later authorized writes;
+- authenticated GitHub access can read `cerebrotech/internal-e2e-tests-service` and, when test runs are needed, create branches and PRs and post comments there;
 - `extension_manifest.json` exists at repository root and parses as JSON;
 - `origin/extension_versions` exists and its root `extension_versions.json` parses as JSON;
 - every stable registry entry has `version == releaseTag` without the leading `v`, and its tag and published release exist;
 - the intended manifest and registry schema versions remain supported by the live installer specification.
+
+Before creating any Cucu trigger PR, verify on every selected internal-e2e base branch that `tests/common/clinical_data_explorer.Dockerfile` resolves `EXTENSION_VERSION` from `main` by default, the app setup also resolves the Clinical Data Explorer Git reference from `main` when no override is supplied, and the `@clinical-data-explorer` feature references `EXTENSION_CLINICAL_DATA_EXPLORER_IMAGE_NAME`, so CI can discover and build the required custom environment. If those files or variable shapes differ, inspect the branch's implementation and ask the human rather than guessing.
 
 ### 4. Refresh `main`, build the changelog, research compatibility, and run local tests
 
@@ -96,28 +102,44 @@ The standalone `make test-external` result is authoritative for the external-tes
 - any selected skip, or no selected external tests, means the external suite did not fully execute;
 - deselected non-external tests are expected from `pytest -m external` and do not affect this classification.
 
-Report that classification and the exact summary to the human. Then ask the human to run `make test-external` against the recorded candidate SHA in an appropriately configured environment and report the exact pytest result back. Do not ask the human to paste credentials, deployment hostnames, or other secrets into chat; an access-controlled result link is appropriate. Only an unambiguous report that at least one selected external test passed and none skipped, failed, or errored clears the gate. A blank, ambiguous, skipped, uncollected, failed, or errored result blocks creation of the release branch.
+Report that classification and the exact summary to the human. Then ask the human to run `make test-external` against the recorded candidate SHA in an appropriately configured environment and report the exact pytest result back. Do not ask the human to paste credentials, deployment hostnames, or other secrets into chat; an access-controlled result link is appropriate. When Cucu has not run, continue to step 5 and start its PR matrix while this human external-test result is pending; both gates remain blocking for step 6 and later release mutations. Only an unambiguous report that at least one selected external test passed and none skipped, failed, or errored clears the external gate. A blank, ambiguous, skipped, uncollected, failed, or errored result blocks creation of the release branch.
 
 The PR Docker workflow is only a smoke build and is not a replacement for these suites.
 
-### 5. Obtain Cucu e2e evidence
+### 5. Obtain or start Cucu e2e evidence
 
-Ask: “Did the Clinical Data Explorer Cucu e2e suite pass against `main` at `<sha>`? Please answer yes or no.” Only an unambiguous yes counts. Blank, missing, ambiguous, or negative input means no and stops the release before mutations.
+Ask: “Have the Clinical Data Explorer Cucu e2e tests already been run against `main` at `<sha>` for every relevant Domino version? Please answer yes or no.” A “no” means the tests have not run; it does not end the release workflow.
 
-For a yes, ask which exact Domino version or versions passed and record the human's answer for `testedWithDominoVersions`. Never infer tested versions or invent TestRail IDs. De-duplicate and sort the confirmed versions, and bind them to completed results for the recorded candidate SHA.
+Classify the gate as **passed**, **not run**, **pending or partial**, or **failed**. A pending or partial matrix reuses the correct existing PRs and waits; it does not post duplicate triggers. A failed matrix blocks the release and is not rerun automatically. Report the failure and wait for the human to request or approve remediation and a rerun.
 
-For a release from `main`, run both of these triggers on an internal-e2e service PR when execution is needed:
+If the answer is yes, inspect the available run evidence and ask whether both required runs passed on every relevant Domino version. Obtain the exact Domino versions tested and the result links when available. De-duplicate and sort the confirmed versions, bind them to the recorded candidate SHA, and never infer an exact tested version from a branch name or invent TestRail IDs.
 
-```text
-/test-e2e nexus-global-config --tags=clinical-data-explorer
-/test-e2e cucu --tags=clinical-data-explorer
-```
+If the tests have not run, do all of the following:
 
-For a non-main candidate, manually run `CDE_VERSION=<ref> cucu run --tags=@clinical-data-explorer` from the internal e2e service checkout. Posting a trigger or starting a command is not passing evidence; require completed results tied to the exact `main` SHA and human-confirmed Domino versions.
+1. Complete the compatibility assessment from step 4 and select a finite test matrix. Include `main` and one current internal-e2e release branch for each relevant supported Domino release line. Prefer an exact `release-X.Y.Z` ref for an exact `X.Y.Z` test target, but inspect live branch and catalog metadata because naming is not uniform. Record the evidence connecting each branch to the intended release line. Do not automatically include every historical branch at or above `minDominoVersion`; if multiple branches could represent the same line or the mapping is otherwise ambiguous, ask the human which branch to use.
+2. Search existing internal-e2e branches and PRs for this exact Clinical Data Explorer candidate SHA and target matrix. Key resumability on the candidate SHA recorded in the PR body, base branch, and current internal-e2e PR head, not on the non-unique title alone. Reuse an open PR only when its base branch, candidate metadata, empty tree diff, current-head trigger status, and comments are correct. A candidate-related PR with a non-empty or uncertain diff is not valid for this flow: do not mutate, retrigger, duplicate, or treat it as release evidence. Show it to the human and wait for direction before creating a clean replacement. If a matching clean PR exists but only its title or body is wrong, update it only when it is clearly the current user's disposable test PR, otherwise ask the human.
+3. For each missing target, freshly fetch the target base and create a unique test-only branch and worktree from that exact ref. Use a branch name that includes the Clinical Data Explorer candidate short SHA and sanitized target base so collisions and stale branches are visible. The branch targeting `main` starts from updated `main`; a branch targeting a release branch starts from that updated release branch so its PR diff and CI context are correct. This release-branch behavior is an explicit exception for these temporary test PRs.
+4. Create one true empty commit with `git commit --allow-empty`; do not edit a marker, Dockerfile, feature, or other repository file merely to make GitHub accept the PR. Verify the commit's tree equals its parent tree.
+5. Push the test branch and open a draft PR to the selected base branch with the title exactly `DO NOT MERGE`. The body must mention `@niole`, identify the Clinical Data Explorer candidate SHA, intended Domino release line, and exact base branch, and say that the PR exists only to trigger release testing. Do not mention Codex or add a `Validation` section.
+6. Immediately before posting the first trigger, refetch Clinical Data Explorer `origin/main` and verify it still equals the recorded candidate SHA; if it moved, return to step 4. Then, on every test PR, post these as two separate comments, in this order, with no surrounding prose or code fence:
+
+   ```text
+   /test-e2e nexus-global-config --tags=clinical-data-explorer
+   ```
+
+   ```text
+   /test-e2e cucu --tags=clinical-data-explorer
+   ```
+
+7. Verify each PR has the intended base, exact title, empty tree diff, candidate metadata, and both visible trigger comments. After the automation acknowledges them, verify each status comment names the current internal-e2e PR head commit and that the reported catalog matches the intended base branch; a run routed to a different catalog is invalid. Do not add commits after posting the triggers. Report the PR URL and target branch for every matrix row. Tell the human: “The Cucu runs have been started. Let me know when all of them are done.” Then stop. Do not merge or close the test PRs unless the human separately asks.
+
+When the human says the runs are done, inspect the result comments and checks on every test PR, then ask: “Did both Clinical Data Explorer runs pass on every test PR? Please answer yes or no and confirm the exact Domino version tested by each PR.” Refetch Clinical Data Explorer `origin/main` while collecting that answer. Only an unambiguous yes supported by complete results for both triggers on every matrix row, with `origin/main` still at the recorded candidate SHA, clears this gate. If `main` moved, the runs are not usable candidate evidence; return to step 4 and rerun for the new candidate. A missing, pending, cancelled, skipped, failed, errored, wrong-head, or wrong-catalog result blocks the release; report the per-branch status and rerun or remediate before asking again. Record the candidate SHA, exact human-confirmed Domino versions, PR URLs, and result links for `testedWithDominoVersions`, and explicitly state that unchanged `main` is a conservative binding proxy because the jobs do not directly report the resolved CDE commit.
+
+For a non-main Clinical Data Explorer candidate, retain the live runbook's manual path: run `CDE_VERSION=<ref> cucu run --tags=@clinical-data-explorer` against each selected Domino version instead of silently substituting the PR trigger path. Starting a trigger or command is not passing evidence.
 
 ### 6. Recommend and confirm the version
 
-Present the changelog, current stable version, candidate major/minor/patch evidence, and one exact SemVer recommendation. Include the preliminary compatibility conclusion and any unresolved evidence gap. Ask the human to confirm the exact `X.Y.Z`.
+Present the changelog, current stable version, candidate major/minor/patch evidence, and one exact SemVer recommendation. Include the compatibility conclusion, completed test matrix, and any unresolved evidence gap. Ask the human to confirm the exact `X.Y.Z`.
 
 Verify the chosen version is newer than the latest stable version. Treat an existing remote release branch, tag, GitHub release, registry branch, registry PR, or registry entry as resumable only when it belongs to the verified active candidate from step 2; otherwise treat it as a conflict and stop. Do not create anything until the exact version is confirmed.
 
@@ -161,7 +183,7 @@ Validate:
 
 ### 10. Test the release branch
 
-Run `make test-all`, `make test-frontend`, and `make test-external` again as separate commands, and report the standalone external-test classification from step 4. When the release branch differs from the human-tested `main` candidate only in release-version metadata, retain that human result and record why it applies. Ask the human to rerun `make test-external` and report the result when functional or integration behavior changed, the branch was rebased onto a different candidate, or no valid passing human result exists. Any unresolved external-test gate blocks pushing or opening the release PR and all later publication actions. Fix failures before continuing and keep the changelog current if a fix changes behavior.
+Run `make test-all`, `make test-frontend`, and `make test-external` again as separate commands, and report the standalone external-test classification from step 4. When the release branch differs from the human-tested `main` candidate only in release-version metadata, retain the external and Cucu results and record why they apply. Ask the human to rerun `make test-external` and return to step 5 for a new candidate-bound Cucu matrix when functional or integration behavior changed, the branch was rebased onto a different candidate, or no valid passing result exists. Any unresolved test gate blocks pushing or opening the release PR and all later publication actions. Fix failures before continuing and keep the changelog current if a fix changes behavior.
 
 ### 11. Push and open the release PR
 
@@ -175,7 +197,7 @@ Ask the human to review the release PR and tell you after it is merged. Stop and
 
 When the human returns, independently verify the PR is merged, fetch `origin/main`, and record the PR's merge commit. Confirm the merged tree contains the final stable metadata and matches the reviewed release tree. Because this repository squash-merges, compare trees rather than requiring identical commit IDs.
 
-If unrelated or functional changes entered the release tree, return to the changelog, test, e2e, compatibility, and version gates as appropriate. Do not tag a moving `main` tip; use the verified merge commit explicitly. If the release PR changed functional release metadata rather than only version values, obtain Cucu evidence for the merged `main` SHA before continuing.
+If unrelated or functional changes entered the release tree, return to the changelog, test, e2e, compatibility, and version gates as appropriate. Do not tag a moving `main` tip; use the verified merge commit explicitly. If the release PR changed functional release metadata rather than only version values, return to step 5 and obtain the full Cucu matrix for the merged `main` SHA before continuing.
 
 ### 13. Publish the stable tag and GitHub release
 
@@ -203,7 +225,7 @@ Only after the stable GitHub release exists, fetch `origin/extension_versions` a
 release-X.Y.Z-extension_versions
 ```
 
-This branch intentionally starts from `origin/extension_versions`, not `main`, because its PR base is `extension_versions`. This is the required exception to the repository's default-branch rule; every other new branch still starts from updated `main`. Do not rely on the stored wording as approval when the exception is newly introduced—present it at the process gate and obtain explicit confirmation.
+This branch intentionally starts from `origin/extension_versions`, not `main`, because its PR base is `extension_versions`. This is the required publication-branch exception inside the Clinical Data Explorer repository; every other new branch in this repository starts from updated `main`. The separate internal-e2e test-only branch exception is defined in step 5. Do not rely on the stored wording as approval when the registry exception is newly introduced—present it at the process gate and obtain explicit confirmation.
 
 Revalidate the approved compatibility conclusion using the evidence collected in steps 4 and 5. If evidence has changed, conflicts, or cannot establish a safe minimum, stop and ask the human rather than guessing. Add one stable registry entry that follows the existing ordering and style:
 
