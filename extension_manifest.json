@@ -16,13 +16,13 @@
         "autoCompatibleWithDomino": false,
         "visibility": "global",
         "buildArgs": {
-          "EXTENSION_VERSION": "v1.1.0"
+          "EXTENSION_VERSION": "v1.1.1"
         }
       }
     },
     "appName": "Domino Clinical Data Explorer App",
     "appDescription": "Clinical Data Explorer is an AI-powered dataset analysis application that helps you explore, filter, and visualize data through an intuitive web interface. It supports natural language queries and provides interactive visualizations for clinical and general datasets.",
-    "appVersionDescription": "Domino Clinical Data Explorer 1.1.0",
+    "appVersionDescription": "Domino Clinical Data Explorer 1.1.1",
     "vanityUrl": "clinical-data-explorer-extension",
     "entryPoint": "start_servers_prod.sh",
     "visibility": "authenticated",
