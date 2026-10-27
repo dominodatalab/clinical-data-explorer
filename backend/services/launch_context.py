@@ -30,12 +30,12 @@ def resolve_launch_context():
         }
 
     api_host = get_domino_api_host()
-    external_url = get_domino_external_url()
+    external_url = (get_domino_external_url() or "").strip()
     if not api_host or not external_url:
         return {
             "redirectUrl": None,
             "available": False,
-            "reason": "Domino API host or external URL is not configured",
+            "reason": "Domino API host or DOMINO_URL is not configured",
         }
 
     headers = {

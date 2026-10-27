@@ -1,3 +1,4 @@
+import pytest
 from flask import Flask
 
 import backend.routes.launch_context as launch_context_route
@@ -19,7 +20,7 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setattr(launch_context, "get_domino_external_url", lambda: "https://external.example")
+    monkeypatch.setenv("DOMINO_URL", "https://external.example/")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -64,7 +65,12 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
 
     monkeypatch.setattr(launch_context.httpclient, "get", fake_get)
 
-    assert launch_context.resolve_launch_context() == {
+    with Flask(__name__).test_request_context(
+        headers={"Host": "apps.domino.example", "X-Forwarded-Host": "apps.domino.example"}
+    ):
+        result = launch_context.resolve_launch_context()
+
+    assert result == {
         "redirectUrl": (
             "https://external.example/u/integration-test/CDE/extension"
             "?mountPointType=projectSidebar&extensionId=ext-1&projectId=proj-1"
@@ -75,6 +81,10 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
         "ownerUsername": "integration-test",
         "projectName": "CDE",
     }
+    assert [url for url, _ in calls] == [
+        "https://domino.example/api/apps/v1/apps",
+        "https://domino.example/api/extensions/beta/extensions-ui",
+    ]
     assert calls[0][1]["headers"]["Authorization"] == "Bearer token-1"
     assert calls[0][1]["params"] == {
         "limit": 50,
@@ -87,6 +97,28 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
         "project_id": "proj-1",
     }
     assert not any("/api/projects/" in url for url, _ in calls)
+
+
+@pytest.mark.parametrize("domino_url", [None, "", "   "])
+def test_resolve_launch_context_requires_domino_url(monkeypatch, domino_url):
+    monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
+    monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
+    monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
+    if domino_url is None:
+        monkeypatch.delenv("DOMINO_URL", raising=False)
+    else:
+        monkeypatch.setenv("DOMINO_URL", domino_url)
+
+    def unexpected_get(*args, **kwargs):
+        pytest.fail("App discovery must not run without DOMINO_URL")
+
+    monkeypatch.setattr(launch_context.httpclient, "get", unexpected_get)
+
+    assert launch_context.resolve_launch_context() == {
+        "redirectUrl": None,
+        "available": False,
+        "reason": "Domino API host or DOMINO_URL is not configured",
+    }
 
 
 def test_resolve_launch_context_scans_app_pages_until_instance_is_found(monkeypatch):

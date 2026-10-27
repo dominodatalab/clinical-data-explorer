@@ -52,13 +52,11 @@ When implementing backend code that calls WebVFS, append the endpoint path
 beginning with `/webvfs/` to the origin returned by the shared WebVFS resolver.
 Domino 6.4/7.0 and later inject `DOMINO_WEBVFS_HOST`; its value contains only
 the scheme, host, and optional port. When that variable is absent, as on Domino
-6.3.1, the resolver falls back to the existing Domino external-URL resolution
-order: `DOMINO_EXTERNAL_URL`, the forwarded request origin, then
-`VSCODE_PROXY_URI`.
-The fallback is not used when `DOMINO_WEBVFS_HOST` is set, which preserves
-routing for deployments that use App subdomains. Set `DOMINO_WEBVFS_HOST`
-explicitly for local development unless you are exercising the Domino 6.3.1
-fallback.
+6.3.1, the resolver falls back to `DOMINO_URL`. This fallback requires the
+deployment origin to serve `/webvfs/...` for the requested volume. Keep
+`DOMINO_WEBVFS_HOST` set when a deployment requires a data-plane-specific
+WebVFS service. Set it explicitly for local development unless you are
+exercising the Domino 6.3.1 fallback.
 
 ### Quick Start
 
@@ -118,6 +116,20 @@ You can modify this file to add labels for your own datasets. The mappings apply
 ### Environment Variables
 
 Configure the following environment variables in your Domino project settings:
+
+#### Domino Deployment Origin
+
+The production runtime supplies `DOMINO_URL`, the public origin of the Domino
+deployment (scheme, host, and optional port, for example
+`https://domino.example`). The external URL resolver returns this value directly
+for project-extension redirects, Governance API URLs, and the WebVFS fallback.
+It does not infer the deployment origin from the App's request headers.
+
+For local development, workspaces, or older environments that do not supply
+`DOMINO_URL`, set it explicitly before starting the app. Configurations using
+`DOMINO_EXTERNAL_URL` or relying on `VSCODE_PROXY_URI` must set `DOMINO_URL`
+instead. Without it, launch redirects are unavailable, Governance cannot
+resolve its endpoint, and WebVFS requires `DOMINO_WEBVFS_HOST`.
 
 #### Optional: Backend Request and Load Limits
 

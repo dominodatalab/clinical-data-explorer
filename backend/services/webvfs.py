@@ -8,19 +8,18 @@ from backend.auth import get_domino_external_url
 
 def get_webvfs_base_url() -> str:
     """Return the WebVFS origin for the current Domino version."""
-    # Domino 6.4/7.0 and later inject the service-specific host. Prefer it so
-    # App subdomains cannot redirect WebVFS traffic to the App ingress.
+    # Domino 6.4/7.0 and later inject the service-specific host for the
+    # execution's data plane.
     host = config.get_domino_webvfs_host()
     error_message_source = "DOMINO_WEBVFS_HOST"
     if not host:
         # This fallback supports Domino 6.3.1, which does not inject
-        # DOMINO_WEBVFS_HOST. Later versions are expected to provide the
-        # dedicated host so App subdomains cannot change WebVFS routing.
-        host = get_domino_external_url()
-        error_message_source = "Domino external URL"
+        # DOMINO_WEBVFS_HOST. The deployment origin must serve /webvfs/.
+        host = (get_domino_external_url() or "").strip()
+        error_message_source = "DOMINO_URL"
     if not host:
         raise RuntimeError(
-            "Domino WebVFS host is not configured and no external URL is available"
+            "DOMINO_WEBVFS_HOST is not configured and no external URL is available; set DOMINO_URL"
         )
 
     if not host.lower().startswith(("http://", "https://")):

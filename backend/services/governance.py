@@ -1,20 +1,5 @@
-"""Governance API helpers.
-
-Extracted from `backend/app.py` (REFACTOR_PLAN.md §1, step 1.4). For now
-this only owns `get_governance_api_url`. The bundle/finding HTTP helpers
-are still inlined inside the `/governance/*` route handlers in
-`backend/app.py`; they'll move into `backend/routes/governance.py` in
-step 1.5b (and any reusable bits should be lifted into this module at
-that time).
-
-`get_governance_api_url` reads the Flask `request` (only when called from
-inside a request context) for header-based diagnostics, so this module
-does import Flask. It otherwise does no HTTP — it just builds the
-externally-reachable governance base URL.
-"""
+"""Build the Governance API URL at the public Domino deployment origin."""
 import logging
-
-from flask import request
 
 from backend.auth import get_domino_external_url
 
@@ -22,41 +7,10 @@ logger = logging.getLogger(__name__)
 
 
 def get_governance_api_url():
-    """
-    Get the governance API base URL.
-
-    IMPORTANT: Governance APIs (/api/governance/v1/*) are only exposed via the
-    external ingress URL, not the internal nucleus-frontend service that
-    DOMINO_API_HOST points to. Hitting them via DOMINO_API_HOST returns
-    404 "Public api endpoint ... not found". So we must use the external URL.
-    """
-    external_url = get_domino_external_url()
+    """Return the Governance endpoint exposed through Domino's public ingress."""
+    external_url = (get_domino_external_url() or "").strip()
     if external_url:
-        return f"{external_url}/api/governance/v1"
+        return f"{external_url.rstrip('/')}/api/governance/v1"
 
-    # Help diagnosis without writing request header values to non-error logs.
-    try:
-        from flask import has_request_context
-        if has_request_context():
-            relevant_header_count = sum(
-                1 for k in request.headers.keys()
-                if k.lower() in (
-                    'host',
-                    'x-forwarded-host',
-                    'x-forwarded-proto',
-                    'x-forwarded-for',
-                    'x-forwarded-prefix',
-                    'x-original-host',
-                    'x-original-uri',
-                    'referer',
-                )
-            )
-            logger.warning(
-                "External Domino URL not available; request carried %d relevant forwarding headers",
-                relevant_header_count,
-            )
-        else:
-            logger.warning("External Domino URL not available - governance features will not work")
-    except Exception:
-        logger.warning("External Domino URL not available - governance features will not work")
+    logger.warning("DOMINO_URL is not configured - governance features will not work")
     return None
