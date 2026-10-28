@@ -6,6 +6,12 @@ from backend import config
 from backend.services.webvfs import get_webvfs_base_url
 
 
+@pytest.fixture(autouse=True)
+def no_webvfs_configuration(monkeypatch):
+    for name in ("DOMINO_WEBVFS_HOST", "DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+        monkeypatch.delenv(name, raising=False)
+
+
 @pytest.mark.parametrize(
     ("host", "expected"),
     [
@@ -83,31 +89,34 @@ def test_get_webvfs_base_url_uses_domino_url_origin_and_ignores_app_headers(monk
         assert get_webvfs_base_url() == "https://domino.example"
 
 
-@pytest.mark.parametrize("domino_url", [None, "", "   "])
-def test_get_webvfs_base_url_raises_when_no_host_or_domino_url_is_available(
-    monkeypatch, domino_url
-):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    if domino_url is None:
-        monkeypatch.delenv("DOMINO_URL", raising=False)
-    else:
-        monkeypatch.setenv("DOMINO_URL", domino_url)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://external.example")
-    monkeypatch.setenv("VSCODE_PROXY_URI", "https://workspace.example/proxy/123")
-
-    with Flask(__name__).test_request_context(
-        headers={
-            "Host": "apps.domino.example",
-            "X-Forwarded-Host": "domino.example",
-            "X-Forwarded-Proto": "https",
-        }
-    ):
-        with pytest.raises(RuntimeError, match="no external URL is available"):
-            get_webvfs_base_url()
-
-
 @pytest.mark.parametrize(
-    "domino_url",
+    ("name", "value"),
+    [
+        ("DOMINO_EXTERNAL_URL", "  https://domino.example/base/  "),
+        ("VSCODE_PROXY_URI", "  https://domino.example/proxy/123/  "),
+    ],
+)
+def test_get_webvfs_base_url_uses_compatibility_fallback_without_request_context(
+    monkeypatch, name, value
+):
+    monkeypatch.setenv(name, value)
+
+    assert get_webvfs_base_url() == "https://domino.example"
+
+
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_get_webvfs_base_url_raises_when_no_external_url_is_available(monkeypatch, value):
+    if value is not None:
+        for name in ("DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+            monkeypatch.setenv(name, value)
+
+    with pytest.raises(RuntimeError, match="no external URL is available"):
+        get_webvfs_base_url()
+
+
+@pytest.mark.parametrize("name", ["DOMINO_URL", "DOMINO_EXTERNAL_URL"])
+@pytest.mark.parametrize(
+    "external_url",
     [
         "ftp://domino.example",
         "https://user@domino.example",
@@ -115,12 +124,19 @@ def test_get_webvfs_base_url_raises_when_no_host_or_domino_url_is_available(
         "https://domino.example:bad",
     ],
 )
-def test_get_webvfs_base_url_rejects_invalid_domino_urls(monkeypatch, domino_url):
+def test_get_webvfs_base_url_rejects_invalid_external_urls(monkeypatch, name, external_url):
     monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.setenv("DOMINO_URL", domino_url)
+    monkeypatch.setenv(name, external_url)
 
-    with pytest.raises(RuntimeError, match=r"DOMINO_URL must contain a valid HTTP\(S\) host"):
+    with pytest.raises(RuntimeError, match=r"Domino external URL must contain a valid HTTP\(S\) host"):
         get_webvfs_base_url()
+
+
+@pytest.mark.parametrize("host", ["/", ", proxy.example"])
+def test_get_webvfs_base_url_rejects_invalid_forwarded_hosts(host):
+    with Flask(__name__).test_request_context(headers={"X-Forwarded-Host": host}):
+        with pytest.raises(RuntimeError, match=r"Domino external URL must contain a valid HTTP\(S\) host"):
+            get_webvfs_base_url()
 
 
 @pytest.mark.parametrize(

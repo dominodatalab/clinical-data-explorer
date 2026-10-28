@@ -5,6 +5,12 @@ import backend.routes.launch_context as launch_context_route
 import backend.services.launch_context as launch_context
 
 
+@pytest.fixture(autouse=True)
+def no_external_url_configuration(monkeypatch):
+    for name in ("DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+        monkeypatch.delenv(name, raising=False)
+
+
 def test_resolve_launch_context_returns_noop_when_run_id_is_absent(monkeypatch):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: None)
 
@@ -15,12 +21,13 @@ def test_resolve_launch_context_returns_noop_when_run_id_is_absent(monkeypatch):
     }
 
 
-def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
+@pytest.mark.parametrize("name", ["DOMINO_URL", "DOMINO_EXTERNAL_URL"])
+def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch, name):
     calls = []
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    monkeypatch.setenv("DOMINO_URL", "https://external.example/")
+    monkeypatch.setenv(name, "  https://external.example/  ")
 
     def fake_get(url, **kwargs):
         calls.append((url, kwargs))
@@ -99,25 +106,24 @@ def test_resolve_launch_context_builds_project_sidebar_redirect(monkeypatch):
     assert not any("/api/projects/" in url for url, _ in calls)
 
 
-@pytest.mark.parametrize("domino_url", [None, "", "   "])
-def test_resolve_launch_context_requires_domino_url(monkeypatch, domino_url):
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_resolve_launch_context_requires_external_url(monkeypatch, value):
     monkeypatch.setattr(launch_context.config, "get_domino_run_id", lambda: "instance-1")
     monkeypatch.setattr(launch_context, "get_passthrough_token", lambda: "token-1")
     monkeypatch.setattr(launch_context, "get_domino_api_host", lambda: "https://domino.example")
-    if domino_url is None:
-        monkeypatch.delenv("DOMINO_URL", raising=False)
-    else:
-        monkeypatch.setenv("DOMINO_URL", domino_url)
+    if value is not None:
+        for name in ("DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+            monkeypatch.setenv(name, value)
 
     def unexpected_get(*args, **kwargs):
-        pytest.fail("App discovery must not run without DOMINO_URL")
+        pytest.fail("App discovery must not run without an external URL")
 
     monkeypatch.setattr(launch_context.httpclient, "get", unexpected_get)
 
     assert launch_context.resolve_launch_context() == {
         "redirectUrl": None,
         "available": False,
-        "reason": "Domino API host or DOMINO_URL is not configured",
+        "reason": "Domino API host or external URL is not configured",
     }
 
 

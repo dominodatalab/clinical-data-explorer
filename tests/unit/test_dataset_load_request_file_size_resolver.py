@@ -10,9 +10,8 @@ from backend.services.httpclient import HTTPClientError
 
 @pytest.fixture(autouse=True)
 def no_webvfs_configuration(monkeypatch):
-    """Tests opt in to DOMINO_WEBVFS_HOST or DOMINO_URL explicitly."""
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.delenv("DOMINO_URL", raising=False)
+    for name in ("DOMINO_WEBVFS_HOST", "DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_resolve_project_dataset_id_raises_not_found(monkeypatch):
@@ -199,8 +198,9 @@ def test_netapp_metadata_uses_domino_url_and_ignores_app_headers(monkeypatch):
     assert urls == [DOMINO_URL + METADATA_PATH]
 
 
-def test_netapp_metadata_uses_domino_url_without_request_context(monkeypatch):
-    monkeypatch.setenv("DOMINO_URL", DOMINO_URL)
+@pytest.mark.parametrize("name", ["DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"])
+def test_netapp_metadata_uses_external_url_without_request_context(monkeypatch, name):
+    monkeypatch.setenv(name, f"  {DOMINO_URL}/  ")
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
 
     metadata = resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
@@ -209,20 +209,16 @@ def test_netapp_metadata_uses_domino_url_without_request_context(monkeypatch):
     assert urls == [DOMINO_URL + METADATA_PATH]
 
 
-@pytest.mark.parametrize("domino_url", [None, "", "   "])
-def test_netapp_metadata_raises_before_request_when_no_domino_url_is_available(monkeypatch, domino_url):
-    if domino_url is not None:
-        monkeypatch.setenv("DOMINO_URL", domino_url)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://external.example")
-    monkeypatch.setenv("VSCODE_PROXY_URI", "https://workspace.example/proxy/123")
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_netapp_metadata_raises_before_request_when_no_external_url_is_available(monkeypatch, value):
+    if value is not None:
+        for name in ("DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+            monkeypatch.setenv(name, value)
     calls = []
     monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: calls.append((args, kwargs)))
 
-    with Flask(__name__).test_request_context(
-        headers={"X-Forwarded-Host": "domino.example", "X-Forwarded-Proto": "https"}
-    ):
-        with pytest.raises(RuntimeError, match="no external URL is available"):
-            resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
+    with pytest.raises(RuntimeError, match="no external URL is available"):
+        resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
     assert calls == []
 

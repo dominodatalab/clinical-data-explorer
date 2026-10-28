@@ -109,6 +109,10 @@ def get_domino_url():
     return os.environ.get("DOMINO_URL")
 
 
+def get_domino_external_url():
+    return os.environ.get("DOMINO_EXTERNAL_URL")
+
+
 def get_domino_webvfs_host():
     value = os.environ.get("DOMINO_WEBVFS_HOST")
     return value.strip() if value else value
@@ -227,6 +231,10 @@ def get_chat_user_only_result_max_bytes() -> int:
     return int(os.environ.get("CHAT_USER_ONLY_RESULT_MAX_BYTES", CHAT_USER_ONLY_RESULT_MAX_BYTES_DEFAULT))
 
 
+def get_vscode_proxy_uri():
+    return os.environ.get("VSCODE_PROXY_URI")
+
+
 LOG_LEVEL = get_log_level()
 VERBOSE_LOGGING = get_verbose_logging()
 
@@ -244,9 +252,11 @@ DEV_ACCESS_TOKEN = get_dev_access_token()
 DOMINO_API_HOST_OVERRIDE = get_domino_api_host_override()
 DOMINO_API_HOST = get_domino_api_host()
 DOMINO_URL = get_domino_url()
+DOMINO_EXTERNAL_URL = get_domino_external_url()
 DOMINO_PROJECT_ID = get_domino_project_id()
 DOMINO_RUN_ID = get_domino_run_id()
 DOMINO_REMOTE_FILE_SYSTEM_HOSTPORT = get_domino_remote_file_system_hostport()
+VSCODE_PROXY_URI = get_vscode_proxy_uri()
 
 DATA_FILE_SIZE_LIMIT = int(os.environ.get("DATA_FILE_SIZE_LIMIT_B", 500 * ONE_MB))
 DATA_FILE_CACHE_EXPIRATION_SECONDS = int(os.environ.get("DATA_FILE_CACHE_EXPIRATION_SECONDS", 60))

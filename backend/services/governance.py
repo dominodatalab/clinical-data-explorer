@@ -8,9 +8,9 @@ logger = logging.getLogger(__name__)
 
 def get_governance_api_url():
     """Return the Governance endpoint exposed through Domino's public ingress."""
-    external_url = (get_domino_external_url() or "").strip()
+    external_url = get_domino_external_url()
     if external_url:
-        return f"{external_url.rstrip('/')}/api/governance/v1"
+        return f"{external_url}/api/governance/v1"
 
-    logger.warning("DOMINO_URL is not configured - governance features will not work")
+    logger.warning("External Domino URL is not configured - governance features will not work")
     return None
