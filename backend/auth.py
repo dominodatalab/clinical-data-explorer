@@ -104,7 +104,7 @@ def get_domino_external_url():
             parsed = urlparse(proxy_uri)
             if parsed.scheme and parsed.netloc:
                 return f"{parsed.scheme}://{parsed.netloc}".rstrip('/')
-        except ValueError:
+        except Exception:
             logger.warning("Could not parse VSCODE_PROXY_URI")
 
     return None
