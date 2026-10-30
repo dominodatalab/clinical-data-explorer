@@ -9,6 +9,7 @@ Some dataset related features require dependencies that only exist in Domino exe
 - In the central config dashboard, set `com.cerebro.domino.workbench.workspace.sandboxForwardedPortsInVsCode=false`
 - Launch a vscode workspace
 - Set `MAIN_APP_PORT=8000`
+- Set `DOMINO_URL` to your Domino deployment origin (for example, `https://domino.example`) if the environment does not supply it.
 - Follow the next instructions to install and run the app.
 - Then open the vscode proxied port for the flask app via the popup provided by vscode
 -

@@ -9,9 +9,9 @@ from backend.services.httpclient import HTTPClientError
 
 
 @pytest.fixture(autouse=True)
-def no_webvfs_host(monkeypatch):
-    """Tests opt in to DOMINO_WEBVFS_HOST explicitly."""
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
+def no_webvfs_configuration(monkeypatch):
+    for name in ("DOMINO_WEBVFS_HOST", "DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+        monkeypatch.delenv(name, raising=False)
 
 
 def test_resolve_project_dataset_id_raises_not_found(monkeypatch):
@@ -141,7 +141,7 @@ def test_get_netapp_volume_file_size_raises_not_found_for_missing_file_size(monk
 
 
 WEBVFS_URL = "http://127.0.0.1:8763"
-EXTERNAL_URL = "https://apps.domino.example"
+DOMINO_URL = "https://domino.example"
 METADATA_PATH = "/webvfs/remotefs/v1/volumes/vol-id-123/files/metadata"
 
 
@@ -162,14 +162,14 @@ def _scripted_get(monkeypatch, outcomes):
 
 def test_netapp_metadata_uses_only_the_configured_webvfs_host(monkeypatch):
     monkeypatch.setenv("DOMINO_WEBVFS_HOST", WEBVFS_URL)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
+    monkeypatch.setenv("DOMINO_URL", DOMINO_URL)
     monkeypatch.setenv("DOMINO_API_HOST", "https://api.domino.example")
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
 
     with Flask(__name__).test_request_context(
         headers={
-            "Host": EXTERNAL_URL.removeprefix("https://"),
-            "X-Forwarded-Host": EXTERNAL_URL.removeprefix("https://"),
+            "Host": "apps.domino.example",
+            "X-Forwarded-Host": "apps.domino.example",
             "X-Forwarded-Proto": "https",
         }
     ):
@@ -179,63 +179,41 @@ def test_netapp_metadata_uses_only_the_configured_webvfs_host(monkeypatch):
     assert urls == [WEBVFS_URL + METADATA_PATH]
 
 
-def test_netapp_metadata_uses_forwarded_origin_from_external_url_resolver(monkeypatch):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
-    monkeypatch.delenv("VSCODE_PROXY_URI", raising=False)
+def test_netapp_metadata_uses_domino_url_and_ignores_app_headers(monkeypatch):
+    monkeypatch.setenv("DOMINO_URL", DOMINO_URL)
+    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://external.example")
+    monkeypatch.setenv("VSCODE_PROXY_URI", "https://workspace.example/proxy/123")
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
 
     with Flask(__name__).test_request_context(
         headers={
-            "X-Forwarded-Host": (
-                f"{EXTERNAL_URL.removeprefix('https://')}, proxy.domino.example"
-            ),
+            "Host": "apps.domino.example",
+            "X-Forwarded-Host": "apps.domino.example, proxy.domino.example",
             "X-Forwarded-Proto": "https",
         }
     ):
         metadata = resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
     assert metadata == {"fileSize": 7}
-    assert urls == [EXTERNAL_URL + METADATA_PATH]
+    assert urls == [DOMINO_URL + METADATA_PATH]
 
 
-@pytest.mark.parametrize(
-    "headers",
-    [
-        {"Host": "localhost"},
-        {"Host": "domino-platform"},
-    ],
-)
-def test_netapp_metadata_rejects_internal_request_origins(monkeypatch, headers):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
-    monkeypatch.delenv("VSCODE_PROXY_URI", raising=False)
-    calls = []
-    monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: calls.append((args, kwargs)))
-
-    with Flask(__name__).test_request_context(headers=headers):
-        with pytest.raises(RuntimeError, match="no external URL is available"):
-            resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
-
-    assert calls == []
-
-
-def test_netapp_metadata_uses_domino_external_url_on_domino_6_3_1(monkeypatch):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", EXTERNAL_URL)
-    monkeypatch.setenv("VSCODE_PROXY_URI", "https://workspace.example/proxy/123")
+@pytest.mark.parametrize("name", ["DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"])
+def test_netapp_metadata_uses_external_url_without_request_context(monkeypatch, name):
+    monkeypatch.setenv(name, f"  {DOMINO_URL}/  ")
     urls = _scripted_get(monkeypatch, [{"fileSize": 7}])
 
     metadata = resolver.get_netapp_volume_file_metadata("vol-id-123", "a.csv", token="t")
 
     assert metadata == {"fileSize": 7}
-    assert urls == [EXTERNAL_URL + METADATA_PATH]
+    assert urls == [DOMINO_URL + METADATA_PATH]
 
 
-def test_netapp_metadata_raises_before_request_when_no_external_url_is_available(monkeypatch):
-    monkeypatch.delenv("DOMINO_WEBVFS_HOST", raising=False)
-    monkeypatch.delenv("DOMINO_EXTERNAL_URL", raising=False)
-    monkeypatch.delenv("VSCODE_PROXY_URI", raising=False)
+@pytest.mark.parametrize("value", [None, "", "   "])
+def test_netapp_metadata_raises_before_request_when_no_external_url_is_available(monkeypatch, value):
+    if value is not None:
+        for name in ("DOMINO_URL", "DOMINO_EXTERNAL_URL", "VSCODE_PROXY_URI"):
+            monkeypatch.setenv(name, value)
     calls = []
     monkeypatch.setattr(resolver.httpclient, "get", lambda *args, **kwargs: calls.append((args, kwargs)))
 
@@ -255,7 +233,7 @@ def test_netapp_metadata_raises_before_request_when_no_external_url_is_available
 )
 def test_netapp_metadata_propagates_webvfs_errors_without_fallback(monkeypatch, error):
     monkeypatch.setenv("DOMINO_WEBVFS_HOST", WEBVFS_URL)
-    monkeypatch.setenv("DOMINO_EXTERNAL_URL", "https://public.domino.example")
+    monkeypatch.setenv("DOMINO_URL", DOMINO_URL)
     urls = _scripted_get(monkeypatch, [error])
 
     with pytest.raises(type(error)) as raised:

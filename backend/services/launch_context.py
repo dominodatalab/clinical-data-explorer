@@ -153,7 +153,7 @@ def _build_extension_url(external_url, project, extension_id, project_id):
     owner_path = quote(owner_username, safe="")
     project_path = quote(project_name, safe="")
     return (
-        f"{external_url.rstrip('/')}/u/{owner_path}/{project_path}/extension"
+        f"{external_url}/u/{owner_path}/{project_path}/extension"
         f"?mountPointType=projectSidebar&extensionId={quote(extension_id, safe='')}"
         f"&projectId={quote(project_id, safe='')}"
     )

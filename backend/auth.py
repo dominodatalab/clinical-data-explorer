@@ -5,17 +5,16 @@ visiting user's JWT in the Authorization header of every request. We use it
 to call Domino APIs on behalf of that user (datasets, governance, etc.).
 
 `get_domino_api_host` resolves the in-cluster API host (used for Datasets,
-Snapshots, Users, Projects APIs). `get_domino_external_url` attempts to
-resolve a user-facing ingress host, but request headers cannot identify the
-top-level Domino origin when App subdomains are enabled.
+Snapshots, Users, Projects APIs).
 
 Only helpers that read `flask.request` require a Flask request context.
 """
 import logging
 import os
+from urllib.parse import urlparse
 
 from backend import config
-from flask import request
+from flask import has_request_context, request
 
 logger = logging.getLogger(__name__)
 
@@ -61,58 +60,51 @@ def get_domino_api_host():
 
 
 def get_domino_external_url():
-    """WARNING: DO NOT USE THIS AS A GENERAL-PURPOSE URL RESOLVER.
+    """Resolve the external Domino base URL with Domino 6.3.x compatibility.
 
-    In deployments with App subdomains enabled, X-Forwarded-Host and Host
-    identify the App ingress rather than Domino's top-level public origin.
-    The request-header fallback below therefore returns the wrong host in
-    those deployments. API calls should use DOMINO_API_HOST or the relevant
-    service-specific host when available. When DOMINO_WEBVFS_HOST is absent,
-    WebVFS uses this resolver as a Domino 6.3.1 compatibility fallback.
+    Use the first available source, trimming whitespace and trailing slashes:
+      1. DOMINO_URL, supplied by Domino 6.4/7.0 and later.
+      2. DOMINO_EXTERNAL_URL, an optional manually configured public URL.
+      3. X-Forwarded-Host / X-Forwarded-Proto, or Host with HTTPS by default.
+      4. The origin of VSCODE_PROXY_URI for workspace/IDE sessions.
+    Return None if no source is available. Only the header fallback requires
+    a Flask request context.
 
-    Get the externally-reachable Domino base URL (scheme + host).
+    Domino 6.3.x (before 6.4/7.0) does not supply DOMINO_URL, so the other
+    sources support those deployments. WARNING: with App subdomains enabled
+    and neither DOMINO_URL nor DOMINO_EXTERNAL_URL configured, request
+    headers identify the App ingress rather than the deployment origin.
+    That can send browser redirects and API requests to the wrong host,
+    resulting in missing routes/404s. Set DOMINO_EXTERNAL_URL explicitly in
+    those deployments.
 
-    Unlike DOMINO_API_HOST (which points to the in-cluster nucleus-frontend service),
-    this is the user-facing ingress URL. Some APIs — notably /api/governance/v1/* —
-    are only registered at the external ingress and return 404 when hit via the
-    internal service host.
-
-    Resolution order:
-      1. DOMINO_EXTERNAL_URL env var (manual override)
-      2. X-Forwarded-Host / X-Forwarded-Proto request headers (set by the Domino
-         reverse proxy when the app is deployed as a Domino App or Extension)
-      3. VSCODE_PROXY_URI env var (set in Domino workspaces/IDE sessions)
+    This URL serves browser redirects and ingress-only APIs such as
+    Governance. Prefer DOMINO_API_HOST or a service-specific host for APIs
+    that support them; WebVFS prefers DOMINO_WEBVFS_HOST when supplied.
     """
-    override = (config.get_domino_external_url() or "").strip()
-    if override:
-        return override.rstrip('/')
+    for configured_url in (config.get_domino_url(), config.get_domino_external_url()):
+        url = (configured_url or "").strip()
+        if url:
+            # Preserve the scheme delimiter so malformed origins remain invalid.
+            scheme, separator, remainder = url.partition('://')
+            if separator:
+                return f"{scheme}://{remainder.rstrip('/')}"
+            return url.rstrip('/')
 
-    # WARNING: THIS FALLBACK BREAKS WHEN APP SUBDOMAINS ARE ENABLED.
-    # Forwarded request headers identify the App ingress in those deployments,
-    # not the top-level Domino origin. Keep this behavior only for existing
-    # callers that require compatibility with Domino versions lacking a
-    # service-specific host.
-    try:
-        from flask import has_request_context
-        if has_request_context():
-            fwd_host = request.headers.get('X-Forwarded-Host') or request.headers.get('Host')
-            fwd_proto = request.headers.get('X-Forwarded-Proto', 'https')
-            if fwd_host and 'domino-platform' not in fwd_host and 'localhost' not in fwd_host:
-                # Use first host in a comma-separated list (proxies sometimes chain)
-                fwd_host = fwd_host.split(',')[0].strip()
-                return f"{fwd_proto}://{fwd_host}".strip()
-    except Exception as e:
-        logger.debug(f"Could not derive external URL from request headers: {e}")
+    if has_request_context():
+        fwd_host = request.headers.get('X-Forwarded-Host') or request.headers.get('Host')
+        fwd_proto = request.headers.get('X-Forwarded-Proto', 'https')
+        if fwd_host and 'domino-platform' not in fwd_host and 'localhost' not in fwd_host:
+            fwd_host = fwd_host.split(',')[0].strip().rstrip('/')
+            return f"{fwd_proto}://{fwd_host}".strip()
 
-    # Workspace/IDE fallback
     proxy_uri = (config.get_vscode_proxy_uri() or "").strip()
     if proxy_uri:
         try:
-            from urllib.parse import urlparse
             parsed = urlparse(proxy_uri)
             if parsed.scheme and parsed.netloc:
-                return f"{parsed.scheme}://{parsed.netloc}"
-        except Exception as e:
-            logger.warning(f"Could not parse VSCODE_PROXY_URI: {e}")
+                return f"{parsed.scheme}://{parsed.netloc}".rstrip('/')
+        except Exception:
+            logger.warning("Could not parse VSCODE_PROXY_URI")
 
     return None

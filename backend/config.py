@@ -105,6 +105,10 @@ def get_domino_api_host():
     return os.environ.get("DOMINO_API_HOST")
 
 
+def get_domino_url():
+    return os.environ.get("DOMINO_URL")
+
+
 def get_domino_external_url():
     return os.environ.get("DOMINO_EXTERNAL_URL")
 
@@ -247,6 +251,7 @@ LLM_BASE_URL, LLM_API_KEY, LLM_MODEL = get_llm_config()
 DEV_ACCESS_TOKEN = get_dev_access_token()
 DOMINO_API_HOST_OVERRIDE = get_domino_api_host_override()
 DOMINO_API_HOST = get_domino_api_host()
+DOMINO_URL = get_domino_url()
 DOMINO_EXTERNAL_URL = get_domino_external_url()
 DOMINO_PROJECT_ID = get_domino_project_id()
 DOMINO_RUN_ID = get_domino_run_id()
